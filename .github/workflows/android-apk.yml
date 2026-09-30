@@ -27,8 +27,15 @@ jobs:
           distribution: temurin
           java-version: 21
 
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
+      - name: Set up Android SDK packages
+        # NOTE: android-actions/setup-android@v3 is broken (it tries to install
+        # the long-removed "tools" package and fails). GitHub's ubuntu-latest
+        # runners ship a pre-installed SDK at $ANDROID_HOME; we just accept
+        # licenses and ensure the API-36 platform + build-tools exist.
+        run: |
+          echo "ANDROID_HOME=$ANDROID_HOME"
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" "platforms;android-36" "build-tools;36.0.0" "platform-tools"
 
       - name: Install dependencies
         run: npm ci
