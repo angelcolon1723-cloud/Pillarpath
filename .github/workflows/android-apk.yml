@@ -44,7 +44,10 @@ jobs:
         run: npm run build
 
       - name: Sync Capacitor with production URL
+        # cap sync expects android/app/src/main/assets to exist when writing
+        # the capacitor config; with server.url set no web assets are needed.
         run: |
+          mkdir -p android/app/src/main/assets
           PILLARPATH_WEB_URL="${{ inputs.web_url }}" npx cap sync android
 
       - name: Build debug APK
