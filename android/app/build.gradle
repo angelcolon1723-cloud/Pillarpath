@@ -17,9 +17,25 @@ android {
         }
     }
     buildTypes {
+        debug {
+            // Shared beta debug key: android/app/debug.keystore (same key on every
+            // CI runner, so each beta APK installs cleanly over the previous one).
+            signingConfig signingConfigs.debugShared
+        }
         release {
             minifyEnabled false
             proguardFiles getDefaultProguardFile('proguard-android.txt'), 'proguard-rules.pro'
+        }
+    }
+    signingConfigs {
+        // Beta-only shared debug signing. These are the well-known Android debug
+        // credentials, safe to commit for beta distribution. The future Play
+        // Store release key will be generated separately and kept private.
+        debugShared {
+            storeFile file("debug.keystore")
+            storePassword "android"
+            keyAlias "androiddebugkey"
+            keyPassword "android"
         }
     }
 }
