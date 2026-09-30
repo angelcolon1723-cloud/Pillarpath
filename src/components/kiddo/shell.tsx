@@ -8,7 +8,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
-import { LedgerMark } from "@/components/kiddo/mark";
+import { PillarMark } from "@/components/kiddo/mark";
 import {
   ParentAward,
   ParentChores,
@@ -183,7 +183,7 @@ export function AppShell() {
       <div className="mx-auto flex min-h-dvh w-full max-w-[520px] flex-col bg-bg px-5 pt-[max(1rem,env(safe-area-inset-top))] shadow-[var(--shadow-border)] md:min-h-[100dvh] md:border-x md:border-border">
         <header className="mb-5 flex items-center justify-between gap-3">
           <div className="flex min-w-0 items-center gap-2.5">
-            <LedgerMark />
+            <PillarMark />
             <div className="min-w-0">
               <div className="font-display text-lg font-semibold leading-none tracking-tight">
                 Pillarpath

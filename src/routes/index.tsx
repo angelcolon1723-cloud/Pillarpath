@@ -16,7 +16,7 @@ import { useCurrentUserState } from "@/lib/auth/use-current-user";
 import { PillarpathApp } from "@/components/pillarpath-app";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { LedgerMark } from "@/components/kiddo/mark";
+import { PillarMark } from "@/components/kiddo/mark";
 import { STUDIO_BANDS, STUDIO_ROOMS } from "@/lib/studio-path";
 
 export const Route = createFileRoute("/")({ component: Home });
@@ -41,7 +41,7 @@ function BootScreen() {
     <div className="grid min-h-dvh place-items-center bg-bg text-ink">
       <div className="text-center">
         <div className="mx-auto mb-4">
-          <LedgerMark className="size-14" />
+          <PillarMark className="size-14" />
         </div>
         <p className="font-display text-2xl font-semibold">Pillarpath</p>
         <p className="mt-1 text-sm text-muted">Preparing your family workspace…</p>
@@ -56,7 +56,7 @@ function Landing() {
       <header className="border-b border-border bg-bg/85 px-5 py-4 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div className="flex items-center gap-3">
-            <LedgerMark />
+            <PillarMark />
             <div>
               <p className="font-display text-xl font-semibold">Pillarpath</p>
               <p className="text-xs text-muted">Family commerce</p>
@@ -233,7 +233,7 @@ function Landing() {
       <footer className="px-5 py-10">
         <div className="mx-auto flex max-w-6xl flex-col gap-4 text-sm text-muted sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2">
-            <LedgerMark />
+            <PillarMark />
             <span>Pillarpath</span>
           </div>
           <span>Family finance, commerce, and a growing studio</span>

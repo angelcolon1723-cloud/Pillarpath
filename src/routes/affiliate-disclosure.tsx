@@ -1,5 +1,5 @@
 import { createFileRoute, Link } from "@tanstack/react-router";
-import { LedgerMark } from "@/components/kiddo/mark";
+import { PillarMark } from "@/components/kiddo/mark";
 
 export const Route = createFileRoute("/affiliate-disclosure")({
   component: Disclosure,
@@ -9,7 +9,7 @@ function Disclosure() {
   return (
     <main className="mx-auto max-w-3xl px-5 py-10">
       <div className="mb-6 flex items-center gap-2">
-        <LedgerMark />
+        <PillarMark />
         <span className="font-display text-xl font-semibold">Pillarpath</span>
       </div>
       <h1 className="font-display text-3xl font-semibold">Affiliate Disclosure</h1>

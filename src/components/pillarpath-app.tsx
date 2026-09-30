@@ -30,7 +30,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import { LedgerMark } from "@/components/kiddo/mark";
+import { PillarMark } from "@/components/kiddo/mark";
 import {
   ParentAward,
   ParentHistory,
@@ -171,7 +171,7 @@ export function PillarpathApp() {
       <div className="grid min-h-dvh place-items-center bg-bg text-ink">
         <div className="text-center">
           <div className="mx-auto mb-4">
-            <LedgerMark className="size-14" />
+            <PillarMark className="size-14" />
           </div>
           <p className="font-display text-2xl font-semibold">Loading Pillarpath</p>
           <p className="mt-1 text-sm text-muted">Preparing your family workspace…</p>
@@ -228,7 +228,7 @@ export function PillarpathApp() {
       <div className="mx-auto min-h-dvh max-w-[1500px] lg:grid lg:grid-cols-[240px_1fr]">
         <aside className="hidden border-r border-border bg-surface/80 p-4 lg:flex lg:flex-col">
           <div className="mb-8 flex items-center gap-3 px-2">
-            <LedgerMark />
+            <PillarMark />
             <div>
               <p className="font-display text-xl font-semibold">Pillarpath</p>
               <p className="text-xs text-muted">Family commerce</p>
@@ -313,7 +313,7 @@ export function PillarpathApp() {
           <header className="sticky top-0 z-30 border-b border-border bg-bg/90 px-4 py-3 backdrop-blur-xl sm:px-6 lg:px-8">
             <div className="flex items-center justify-between gap-4">
               <div className="flex items-center gap-3 lg:hidden">
-                <LedgerMark />
+                <PillarMark />
                 <span className="font-display text-xl font-semibold">Pillarpath</span>
               </div>
               <div className="hidden lg:block">

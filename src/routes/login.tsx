@@ -9,7 +9,7 @@ import {
   getEnabledSocialProviders,
   type SocialProviderInfo,
 } from "@/lib/auth/social-providers-list";
-import { LedgerMark } from "@/components/kiddo/mark";
+import { PillarMark } from "@/components/kiddo/mark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
@@ -86,7 +86,7 @@ function LoginForm() {
       <div className="mx-auto grid min-h-[calc(100dvh-4rem)] max-w-6xl items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
         <section className="hidden lg:block">
           <div className="mb-8 flex items-center gap-3">
-            <LedgerMark />
+            <PillarMark />
             <span className="font-display text-2xl font-semibold">Pillarpath</span>
           </div>
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-accent">
@@ -114,7 +114,7 @@ function LoginForm() {
         <section className="mx-auto w-full max-w-md rounded-[2rem] border border-border bg-surface p-6 shadow-[var(--shadow-border-hover)] sm:p-8">
           <div className="mb-6 lg:hidden">
             <div className="mb-4 flex items-center gap-3">
-              <LedgerMark />
+              <PillarMark />
               <span className="font-display text-2xl font-semibold">Pillarpath</span>
             </div>
             <p className="text-sm text-muted">Family commerce and financial learning.</p>
