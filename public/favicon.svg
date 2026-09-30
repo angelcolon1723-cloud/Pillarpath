@@ -1,7 +1,11 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <rect width="32" height="32" rx="8" fill="#050505"/>
-  <rect x="5" y="6" width="22" height="20" rx="5" fill="#45c58a"/>
-  <rect x="10" y="11" width="12" height="2" rx="1" fill="#06100b"/>
-  <rect x="10" y="15.2" width="9" height="2" rx="1" fill="#06100b"/>
-  <rect x="10" y="19.4" width="6" height="2" rx="1" fill="#06100b"/>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <rect width="64" height="64" rx="14" fill="#0A0F0C"/>
+  <!-- three mint-green pillar bars, middle tallest -->
+  <rect x="14" y="36" width="8" height="18" rx="4" fill="#45C58A"/>
+  <rect x="28" y="30" width="8" height="24" rx="4" fill="#45C58A"/>
+  <rect x="42" y="36" width="8" height="18" rx="4" fill="#45C58A"/>
+  <!-- upward arrow flowing from the middle pillar -->
+  <path d="M32 30 V17 M27 22 L32 17 L37 22" stroke="#45C58A" stroke-width="4.5" stroke-linecap="round" stroke-linejoin="round" fill="none"/>
+  <!-- gold coin above the arrow tip -->
+  <circle cx="32" cy="9" r="5" fill="#F5B942" stroke="#0A0F0C" stroke-width="1.5"/>
 </svg>
