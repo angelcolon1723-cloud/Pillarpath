@@ -162,36 +162,45 @@
 /* auth screens outside the workspaces keep the base dark tokens.       */
 /* ------------------------------------------------------------------ */
 
-/* Parent — "family command center": warm, calm, in control. */
+/* Parent — "private bank of the future": deep obsidian, champagne gold,
+   hairline precision. Premium futuristic fintech. */
 .theme-parent {
-  --color-bg: #faf7f2;
-  --color-bg-deep: #f1eae0;
-  --color-surface: #ffffff;
-  --color-surface-2: #f4eee2;
-  --color-ink: #2b2a24;
-  --color-muted: #6f6a5c;
-  --color-subtle: #a29b88;
-  --color-accent: #1f7a52;
-  --color-accent-foreground: #ffffff;
-  --color-accent-soft: #e1efe6;
-  --color-border: #e7dfcd;
-  --color-danger: #c0523c;
-  --color-danger-foreground: #fff8f3;
-  --color-danger-soft: #f7e3db;
-  --color-success: #2e7d4f;
-  --color-success-foreground: #ffffff;
-  --color-success-soft: #e0efe5;
-  --color-warn: #96690f;
-  --color-warn-soft: #f6eacb;
-  --color-vault: #123b28;
-  --color-vault-foreground: #f2f7ee;
+  --color-bg: #07090f;
+  --color-bg-deep: #04060b;
+  --color-surface: #0e1219;
+  --color-surface-2: #151b26;
+  --color-ink: #f5f1e6;
+  --color-muted: #a9a294;
+  --color-subtle: #6f6a5d;
+  --color-accent: #d9b26a;
+  --color-accent-foreground: #191204;
+  --color-accent-soft: rgba(217, 178, 106, 0.12);
+  --color-border: rgba(217, 178, 106, 0.15);
+  --color-danger: #e0785f;
+  --color-danger-foreground: #fff6ef;
+  --color-danger-soft: rgba(224, 120, 95, 0.14);
+  --color-success: #6fd598;
+  --color-success-foreground: #06130c;
+  --color-success-soft: rgba(111, 213, 152, 0.12);
+  --color-warn: #f0c453;
+  --color-warn-soft: rgba(240, 196, 83, 0.13);
+  --color-vault: #0b1f14;
+  --color-vault-foreground: #eef7e8;
+  --color-candy: #d9b26a;
+  --color-coral: #e0785f;
   --shadow-border:
-    0px 0px 0px 1px rgba(74, 60, 38, 0.07),
-    0px 10px 28px -20px rgba(96, 74, 44, 0.35);
+    0px 0px 0px 1px rgba(217, 178, 106, 0.1),
+    0px 12px 30px -20px rgba(0, 0, 0, 0.9);
   --shadow-border-hover:
-    0px 0px 0px 1px rgba(74, 60, 38, 0.12),
-    0px 14px 32px -20px rgba(96, 74, 44, 0.45);
+    0px 0px 0px 1px rgba(217, 178, 106, 0.18),
+    0px 16px 36px -20px rgba(0, 0, 0, 0.95);
   --font-display: "Fraunces", ui-serif, Georgia, serif;
+  background-color: var(--color-bg);
+  background-image:
+    radial-gradient(ellipse 90% 34% at 50% -8%, rgba(217, 178, 106, 0.1), transparent 70%),
+    linear-gradient(rgba(217, 178, 106, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(217, 178, 106, 0.025) 1px, transparent 1px);
+  background-size: auto, 44px 44px, 44px 44px;
 }
 
 /* Child — "cosmic playground": deep-space dark, neon glow, glass. */
@@ -238,54 +247,190 @@
     radial-gradient(ellipse 70% 55% at 50% 112%, rgba(240, 171, 252, 0.12), transparent 70%);
 }
 
-/* Teacher — "classroom": chalkboard green, chalk ink, amber highlighter. */
+/* Teacher — "mission control": deep command blue-black, holographic cyan,
+   dense HUD panels, mono numerals. Professional command-center feel. */
 .theme-teacher {
-  --color-bg: #142a1f;
-  --color-bg-deep: #0e1e15;
-  --color-surface: #1e3b2e;
-  --color-surface-2: #234434;
-  --color-ink: #f7f4ea;
-  --color-muted: #cfc8b2;
-  --color-subtle: #99917a;
-  --color-accent: #f2b84b;
-  --color-accent-foreground: #2a1f08;
-  --color-accent-soft: #4a3a17;
-  --color-border: #2e5040;
-  --color-danger: #e26d5a;
-  --color-danger-foreground: #fff6ef;
-  --color-danger-soft: #4e241b;
-  --color-success: #7bd88f;
-  --color-success-foreground: #0c2314;
-  --color-success-soft: #1c3a26;
-  --color-warn: #f2b84b;
-  --color-warn-soft: #4a3a17;
-  --color-vault: #0e2a1d;
-  --color-vault-foreground: #fff3d4;
+  --color-bg: #05090d;
+  --color-bg-deep: #030609;
+  --color-surface: #0b141b;
+  --color-surface-2: #101b25;
+  --color-ink: #e9f2f8;
+  --color-muted: #8fa2b5;
+  --color-subtle: #5a6d7f;
+  --color-accent: #4fd8ff;
+  --color-accent-foreground: #03141c;
+  --color-accent-soft: rgba(79, 216, 255, 0.1);
+  --color-border: rgba(79, 216, 255, 0.13);
+  --color-danger: #ff7d6b;
+  --color-danger-foreground: #2b0d08;
+  --color-danger-soft: rgba(255, 125, 107, 0.13);
+  --color-success: #5fd99a;
+  --color-success-foreground: #06130c;
+  --color-success-soft: rgba(95, 217, 154, 0.11);
+  --color-warn: #f5b544;
+  --color-warn-soft: rgba(245, 181, 68, 0.12);
+  --color-vault: #08131c;
+  --color-vault-foreground: #e3f2fa;
   --shadow-border:
-    0px 0px 0px 1px rgba(247, 244, 234, 0.09),
-    0px 10px 24px -18px rgba(0, 0, 0, 0.7);
+    0px 0px 0px 1px rgba(79, 216, 255, 0.1),
+    0px 12px 30px -20px rgba(0, 0, 0, 0.9);
   --shadow-border-hover:
-    0px 0px 0px 1px rgba(247, 244, 234, 0.14),
-    0px 14px 28px -18px rgba(0, 0, 0, 0.75);
+    0px 0px 0px 1px rgba(79, 216, 255, 0.18),
+    0px 16px 36px -20px rgba(0, 0, 0, 0.95);
+  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  background-color: var(--color-bg);
   background-image:
-    radial-gradient(circle at 50% -12%, color-mix(in oklab, var(--color-accent) 7%, transparent), transparent 42%);
+    radial-gradient(ellipse 80% 30% at 50% -6%, rgba(79, 216, 255, 0.08), transparent 70%),
+    linear-gradient(rgba(79, 216, 255, 0.022) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(79, 216, 255, 0.022) 1px, transparent 1px);
+  background-size: auto, 40px 40px, 40px 40px;
 }
 
-/* ---- Parent: calm editorial headers ---- */
+/* Landing — "front door to the future": deep space, neon brand gradient.
+   Reuses the phase-1 cosmic tokens so the public page feels like the same
+   next-generation identity as the workspaces. */
+.theme-landing {
+  --color-bg: #04041a;
+  --color-bg-deep: #020210;
+  --color-surface: rgba(20, 20, 46, 0.72);
+  --color-surface-2: rgba(28, 28, 60, 0.72);
+  --color-ink: #f1f3ff;
+  --color-muted: #a6abd0;
+  --color-subtle: #6f749e;
+  --color-accent: #22d3ee;
+  --color-accent-foreground: #04121a;
+  --color-accent-soft: rgba(34, 211, 238, 0.12);
+  --color-border: rgba(148, 163, 255, 0.16);
+  --color-danger: #ff7d9c;
+  --color-danger-foreground: #2b0a14;
+  --color-danger-soft: rgba(255, 125, 156, 0.14);
+  --color-success: #a3e635;
+  --color-success-foreground: #17230a;
+  --color-success-soft: rgba(163, 230, 53, 0.13);
+  --color-warn: #fcd34d;
+  --color-warn-soft: rgba(252, 211, 77, 0.13);
+  --color-vault: #221447;
+  --color-vault-foreground: #f0eaff;
+  --color-candy: #22d3ee;
+  --color-coral: #f0abfc;
+  --font-display: "Baloo 2", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+  --shadow-border:
+    0px 0px 0px 1px rgba(148, 163, 255, 0.14),
+    0px 14px 34px -18px rgba(34, 211, 238, 0.28);
+  --shadow-border-hover:
+    0px 0px 0px 1px rgba(148, 163, 255, 0.22),
+    0px 18px 40px -18px rgba(34, 211, 238, 0.4);
+  background-color: var(--color-bg);
+  background-image:
+    var(--cosmic-stars),
+    radial-gradient(ellipse 75% 42% at 85% -5%, rgba(124, 58, 237, 0.32), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 4% 12%, rgba(34, 211, 238, 0.16), transparent 70%),
+    radial-gradient(ellipse 70% 55% at 50% 112%, rgba(240, 171, 252, 0.12), transparent 70%);
+}
+
+/* ---- Parent: private-bank-of-the-future details ---- */
 .theme-parent .screen-enter > header h1 {
-  letter-spacing: -0.025em;
+  letter-spacing: -0.02em;
+  background: linear-gradient(100deg, #faf6ea 20%, #e8cf9a 55%, #d9b26a 85%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
 }
 
 .theme-parent .screen-enter > header p:first-child {
   color: var(--color-accent);
   font-weight: 700;
-  font-size: 0.8rem;
-  letter-spacing: 0.05em;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
   text-transform: uppercase;
 }
 
 .theme-parent [role="tab"] {
   letter-spacing: 0.01em;
+}
+
+/* Cards — hairline gold, deep surface, top sheen */
+.theme-parent [data-slot="card"] {
+  border: 1px solid rgba(217, 178, 106, 0.16);
+  background: linear-gradient(180deg, rgba(24, 29, 41, 0.9), rgba(14, 18, 25, 0.9));
+  box-shadow:
+    inset 0 1px 0 rgba(245, 241, 230, 0.05),
+    0 14px 34px -22px rgba(0, 0, 0, 0.9);
+}
+
+/* Platinum spendable-balance hero */
+.theme-parent .screen-enter > div.bg-ink {
+  background: linear-gradient(135deg, #fbf8ee 0%, #ece5d0 60%, #ddd2b4 100%);
+  border: 1px solid rgba(217, 178, 106, 0.55);
+  box-shadow:
+    0 0 34px rgba(217, 178, 106, 0.22),
+    0 18px 44px -20px rgba(0, 0, 0, 0.85);
+}
+
+/* Vault — deep emerald with a gold rim */
+.theme-parent .bg-vault {
+  background: linear-gradient(150deg, #0d2417 0%, #0b1f14 60%, #08130d 100%);
+  border: 1px solid rgba(217, 178, 106, 0.35);
+  box-shadow:
+    0 0 26px rgba(217, 178, 106, 0.14),
+    0 18px 44px -20px rgba(0, 0, 0, 0.9);
+}
+
+/* Gold primary buttons */
+.theme-parent [data-slot="button"].bg-accent {
+  font-weight: 700;
+  box-shadow:
+    0 0 18px rgba(217, 178, 106, 0.35),
+    0 8px 20px -10px rgba(217, 178, 106, 0.5);
+}
+
+/* Gold progress bars */
+.theme-parent [role="progressbar"] > div {
+  box-shadow: 0 0 12px rgba(217, 178, 106, 0.5);
+}
+
+/* Bottom dock — dark glass with a gold rim */
+.theme-parent .child-dock {
+  background: rgba(7, 9, 15, 0.86);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(217, 178, 106, 0.22);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.6);
+}
+
+.theme-parent .child-dock .bg-accent-soft {
+  border: 1px solid rgba(217, 178, 106, 0.35);
+  box-shadow: inset 0 0 12px rgba(217, 178, 106, 0.12);
+}
+
+/* Sticky top bar — dark glass with a hairline gold underline */
+.theme-parent header.sticky {
+  background: rgba(7, 9, 15, 0.82);
+  border-bottom: 1px solid rgba(217, 178, 106, 0.18);
+  box-shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.8);
+}
+
+/* Tab lists */
+.theme-parent [role="tablist"] {
+  border-radius: 0.9rem;
+  border: 1px solid rgba(217, 178, 106, 0.14);
+  background: rgba(10, 13, 20, 0.7);
+}
+
+.theme-parent [role="tab"][aria-selected="true"] {
+  box-shadow: 0 0 12px rgba(217, 178, 106, 0.18);
+}
+
+/* More bottom sheet */
+.theme-parent .more-sheet {
+  background: linear-gradient(180deg, #141924 0%, #0d1119 100%);
+  border-top: 1px solid rgba(217, 178, 106, 0.3);
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.7);
+}
+
+/* Desktop sidebar — active nav gets a gold edge */
+.theme-parent aside nav .bg-accent-soft {
+  border: 1px solid rgba(217, 178, 106, 0.3);
 }
 
 /* ---- Child: cosmic playground details ---- */
@@ -478,6 +623,44 @@
   background-image: none;
 }
 
+/* ---- Landing: front-door-to-the-future details ---- */
+.theme-landing h1 {
+  background: linear-gradient(100deg, #f4f6ff 10%, #67e8f9 45%, #c4b5fd 75%, #f0abfc 95%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 22px rgba(34, 211, 238, 0.3));
+}
+
+.theme-landing h2 {
+  letter-spacing: -0.01em;
+}
+
+/* Glass cards */
+.theme-landing [data-slot="card"] {
+  border: 1px solid rgba(148, 163, 255, 0.16);
+  background: linear-gradient(180deg, rgba(32, 32, 62, 0.66), rgba(18, 18, 40, 0.66));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 0 0 1px rgba(148, 163, 255, 0.05),
+    0 16px 40px -20px rgba(34, 211, 238, 0.3);
+}
+
+/* Neon primary buttons */
+.theme-landing [data-slot="button"].bg-accent {
+  box-shadow:
+    0 0 16px rgba(34, 211, 238, 0.45),
+    0 6px 18px -8px rgba(34, 211, 238, 0.6);
+}
+
+/* Header — deep-space glass */
+.theme-landing > header {
+  background: rgba(4, 4, 26, 0.78);
+  border-bottom: 1px solid rgba(34, 211, 238, 0.18);
+  box-shadow: 0 10px 30px -14px rgba(34, 211, 238, 0.25);
+}
+
 /* Slightly rotated sticker cards — opt in with .tilt-l / .tilt-r */
 .tilt-l {
   transform: rotate(-1.4deg);
@@ -487,23 +670,27 @@
   transform: rotate(1.4deg);
 }
 
-/* ---- Teacher: chalkboard worksheet details ---- */
-.theme-teacher [data-slot="card"] {
-  border: 1.5px dashed color-mix(in oklab, var(--color-ink) 26%, transparent);
+/* ---- Teacher: mission-control details ---- */
+/* No handwriting on the command deck */
+.theme-teacher .font-hand {
+  font-family: var(--font-display);
+  font-weight: 700;
+  letter-spacing: -0.01em;
 }
 
+/* Command header — replaces the notebook look with a HUD panel */
 .theme-teacher .hero-notebook {
   position: relative;
   overflow: hidden;
   border-radius: 1rem;
-  padding: 1.1rem 1.25rem 1.1rem 3.25rem;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    transparent 0,
-    transparent 1.65rem,
-    color-mix(in oklab, var(--color-ink) 16%, transparent) 1.65rem,
-    color-mix(in oklab, var(--color-ink) 16%, transparent) calc(1.65rem + 1px)
-  );
+  padding: 1.1rem 1.25rem 1.1rem 1.5rem;
+  border: 1px solid rgba(79, 216, 255, 0.22);
+  background-image:
+    radial-gradient(circle at 96% 8%, rgba(79, 216, 255, 0.16), transparent 42%),
+    linear-gradient(180deg, rgba(16, 27, 37, 0.94), rgba(8, 14, 20, 0.94));
+  box-shadow:
+    inset 0 1px 0 rgba(233, 242, 248, 0.06),
+    0 0 24px rgba(79, 216, 255, 0.1);
 }
 
 .theme-teacher .hero-notebook::before {
@@ -511,9 +698,98 @@
   position: absolute;
   top: 0;
   bottom: 0;
-  left: 2.1rem;
-  width: 2px;
-  background: color-mix(in oklab, var(--color-danger) 55%, transparent);
+  left: 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--color-accent), transparent);
+}
+
+/* Panels — solid hairline, deep command surface */
+.theme-teacher [data-slot="card"] {
+  border: 1px solid rgba(79, 216, 255, 0.14);
+  background: linear-gradient(180deg, rgba(17, 28, 39, 0.88), rgba(10, 18, 26, 0.88));
+  box-shadow:
+    inset 0 1px 0 rgba(233, 242, 248, 0.05),
+    0 14px 32px -22px rgba(0, 0, 0, 0.9);
+}
+
+/* Section eyebrows — cyan, wide-tracked, uppercase */
+.theme-teacher header > p:first-child {
+  color: var(--color-accent);
+  font-weight: 700;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* HUD numerals */
+.theme-teacher .tabular-nums {
+  font-family: var(--font-mono);
+  letter-spacing: -0.01em;
+}
+
+/* Holographic primary buttons */
+.theme-teacher [data-slot="button"].bg-accent {
+  font-weight: 700;
+  box-shadow:
+    0 0 16px rgba(79, 216, 255, 0.35),
+    0 6px 18px -8px rgba(79, 216, 255, 0.5);
+}
+
+/* Cyan progress bars */
+.theme-teacher [role="progressbar"] > div {
+  box-shadow: 0 0 12px rgba(79, 216, 255, 0.5);
+}
+
+/* Bottom dock — command bar */
+.theme-teacher .child-dock {
+  background: rgba(5, 9, 13, 0.88);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(79, 216, 255, 0.22);
+  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.65);
+}
+
+.theme-teacher .child-dock .bg-accent-soft {
+  border: 1px solid rgba(79, 216, 255, 0.35);
+  box-shadow: inset 0 0 12px rgba(79, 216, 255, 0.12);
+}
+
+/* Sticky top bar — dark glass with a cyan scanline */
+.theme-teacher header.sticky {
+  background: rgba(5, 9, 13, 0.84);
+  border-bottom: 1px solid rgba(79, 216, 255, 0.2);
+  box-shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.85);
+}
+
+/* Tab lists */
+.theme-teacher [role="tablist"] {
+  border-radius: 0.75rem;
+  border: 1px solid rgba(79, 216, 255, 0.14);
+  background: rgba(6, 11, 16, 0.7);
+}
+
+.theme-teacher [role="tab"][aria-selected="true"] {
+  box-shadow: 0 0 12px rgba(79, 216, 255, 0.2);
+}
+
+/* More bottom sheet */
+.theme-teacher .more-sheet {
+  background: linear-gradient(180deg, #0e1822 0%, #080f16 100%);
+  border-top: 1px solid rgba(79, 216, 255, 0.28);
+  box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.7);
+}
+
+/* Vault / privacy panel — cyan rim */
+.theme-teacher .bg-vault {
+  border: 1px solid rgba(79, 216, 255, 0.25);
+  box-shadow:
+    0 0 24px rgba(79, 216, 255, 0.1),
+    0 18px 44px -20px rgba(0, 0, 0, 0.9);
+}
+
+/* Desktop sidebar — active nav gets a cyan edge */
+.theme-teacher aside nav .bg-accent-soft {
+  border: 1px solid rgba(79, 216, 255, 0.3);
 }
 
 @media (prefers-reduced-motion: reduce) {

@@ -52,7 +52,7 @@ function BootScreen() {
 
 function Landing() {
   return (
-    <main className="min-h-dvh bg-bg text-ink">
+    <main className="theme-landing min-h-dvh bg-bg text-ink">
       <header className="border-b border-border bg-bg/85 px-5 py-4 backdrop-blur-xl">
         <div className="mx-auto flex max-w-6xl items-center justify-between">
           <div className="flex items-center gap-3">

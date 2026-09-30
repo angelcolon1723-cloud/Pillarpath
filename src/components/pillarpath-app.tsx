@@ -8,14 +8,12 @@ import {
   Home,
   LayoutDashboard,
   LineChart,
-  Megaphone,
   MoreHorizontal,
   PackageCheck,
   Settings,
   ShoppingBag,
   Sparkles,
   Store,
-  Truck,
   Users,
   X,
 } from "lucide-react";
@@ -67,8 +65,6 @@ import {
   Dashboard,
   EmptyState,
   FamilyProfiles,
-  FulfillmentView,
-  MarketingView,
   OrdersView,
   ProductArt,
   SectionIntro,
@@ -90,8 +86,6 @@ const parentNav: Array<[ParentSection, string, typeof Home]> = [
   ["future-units", "Future Units", BarChart3],
   ["unit-market", "Unit Market", LineChart],
   ["partners", "Partners", Handshake],
-  ["marketing", "Marketing", Megaphone],
-  ["fulfillment", "Dropship", Truck],
   ["settings", "Settings", Settings],
 ];
 
@@ -299,12 +293,6 @@ export function PillarpathApp() {
               <p className="flex items-center gap-2">
                 <CreditCard className="size-3.5" /> Stripe Checkout ready
               </p>
-              <p className="flex items-center gap-2">
-                <Truck className="size-3.5" /> Supplier fulfillment ready
-              </p>
-              <p className="flex items-center gap-2">
-                <Megaphone className="size-3.5" /> Growth tools included
-              </p>
             </div>
           </div>
         </aside>
@@ -401,8 +389,6 @@ export function PillarpathApp() {
                           "future-units",
                           "unit-market",
                           "partners",
-                          "marketing",
-                          "fulfillment",
                           "settings",
                         ] as string[]
                       ).includes(parentSection)
@@ -421,19 +407,21 @@ export function PillarpathApp() {
       </div>
 
       {moreOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden">
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="More menu">
           <button
             type="button"
             aria-label="Close menu"
             className="absolute inset-0 bg-black/70"
             onClick={() => setMoreOpen(false)}
           />
-          <div className="absolute inset-x-0 bottom-0 rounded-t-[1.75rem] border-t border-border bg-surface p-5 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+          <div className="more-sheet absolute inset-x-0 bottom-0 rounded-t-[1.75rem] border-t border-border bg-surface p-5 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
+            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-border" aria-hidden="true" />
             <div className="mb-4 flex items-center justify-between">
               <h2 className="font-display text-xl font-semibold">More</h2>
               <button
                 type="button"
                 onClick={() => setMoreOpen(false)}
+                aria-label="Close menu"
                 className="grid size-11 place-items-center rounded-xl border border-border"
               >
                 <X className="size-5" />
@@ -441,20 +429,29 @@ export function PillarpathApp() {
             </div>
             <div className="grid grid-cols-2 gap-2">
               {(role === "parent" ? parentNav.slice(4) : teacherNav.slice(4)).map(
-                ([id, label, Icon]) => (
-                  <button
-                    key={id}
-                    type="button"
-                    onClick={() => {
-                      navigate(id);
-                      setMoreOpen(false);
-                    }}
-                    className="flex min-h-14 items-center gap-3 rounded-2xl border border-border bg-bg px-4 text-left text-sm font-semibold"
-                  >
-                    <Icon className="size-4 text-accent" />
-                    {label}
-                  </button>
-                ),
+                ([id, label, Icon]) => {
+                  const isActive = activeSection === id;
+                  return (
+                    <button
+                      key={id}
+                      type="button"
+                      aria-current={isActive ? "page" : undefined}
+                      onClick={() => {
+                        navigate(id);
+                        setMoreOpen(false);
+                      }}
+                      className={cn(
+                        "flex min-h-14 items-center gap-3 rounded-2xl border px-4 text-left text-sm font-semibold",
+                        isActive
+                          ? "border-accent/50 bg-accent-soft text-accent"
+                          : "border-border bg-bg",
+                      )}
+                    >
+                      <Icon className="size-4 text-accent" />
+                      {label}
+                    </button>
+                  );
+                },
               )}
               <button
                 type="button"
@@ -525,8 +522,6 @@ function ParentWorkspace({
 
   if (section === "store") return <StoreGrid products={data.products} onAdded={onRefresh} />;
   if (section === "orders") return <OrdersView data={data} />;
-  if (section === "marketing") return <MarketingView data={data} onRefresh={onRefresh} />;
-  if (section === "fulfillment") return <FulfillmentView data={data} />;
   if (section === "settings") return <SettingsView data={data} onRefresh={onRefresh} />;
   if (section === "future-units") return <FutureUnitsMarket data={data} onRefresh={onRefresh} />;
   if (section === "unit-market") return <UnitMarketView data={data} onRefresh={onRefresh} />;

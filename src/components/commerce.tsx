@@ -178,14 +178,14 @@ export function Dashboard({
         <SectionIntro
           eyebrow="Parent workspace"
           title={`Welcome, ${data.profile.display_name.split(" ")[0]}`}
-          text="Family ledger, store, marketing, and fulfillment in one place."
+          text="Family ledger, store, and orders in one place."
         />
         <Button onClick={() => onNavigate("store")}>
           <ShoppingBag className="size-4" />
           Open store
         </Button>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
         <Metric
           title="Store revenue"
           value={money(revenue)}
@@ -203,12 +203,6 @@ export function Dashboard({
           value={String(data.children.length)}
           delta="Supervised profiles"
           icon={Users}
-        />
-        <Metric
-          title="Campaigns"
-          value={String(data.campaigns.length)}
-          delta="Growth programs"
-          icon={BarChart3}
         />
       </div>
       <div className="grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
@@ -311,13 +305,7 @@ export function Dashboard({
           </button>
         </Card>
       </div>
-      <div className="grid gap-4 md:grid-cols-3">
-        <QuickAction
-          icon={Megaphone}
-          title="Build a campaign"
-          text="Create a growth program"
-          onClick={() => onNavigate("marketing")}
-        />
+      <div className="grid gap-4 md:grid-cols-2">
         <QuickAction
           icon={BarChart3}
           title="Reserve Future Units"
