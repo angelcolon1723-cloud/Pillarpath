@@ -39,6 +39,11 @@ import { ensureDbReady, getPglite } from "../db";
 import { emailAndPasswordEnabled } from "./email-password";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
 import { GROK_PROVIDERS } from "./providers";
+import {
+  buildCustomOAuthPlugin,
+  buildDirectSocialProviders,
+  directProviderIds,
+} from "./direct-providers.server";
 import { pgliteDialect } from "./pglite-dialect";
 import {
   GROK_ISSUER_DEFAULT,
@@ -150,6 +155,8 @@ export const SESSION_TOKEN_COOKIE = "__Host-grok-auth.session_token";
 
 // Built separately so the `betterAuth({...})` call stays easy to edit without
 // breaking brackets (models often trip on the conditional plugin spread).
+// Built separately so the `betterAuth({...})` call stays easy to edit without
+// breaking brackets (models often trip on the conditional plugin spread).
 const grokOAuthPlugin = authConfigured
   ? genericOAuth({
       config: GROK_PROVIDERS.map(({ providerId, idp }) => ({
@@ -171,6 +178,10 @@ const grokOAuthPlugin = authConfigured
       })),
     })
   : null;
+
+// PillarPath's own custom direct OAuth providers (Instagram, Snapchat) —
+// env-gated in `./direct-providers.server`, null when none are configured.
+const directOAuthPlugin = buildCustomOAuthPlugin();
 
 export const auth = betterAuth({
   baseURL,
@@ -196,6 +207,7 @@ export const auth = betterAuth({
       enabled: true,
       trustedProviders: [
         ...GROK_PROVIDERS.map((p) => p.providerId),
+        ...directProviderIds(),
         GATE_PROVIDER_ID,
       ],
       // X's synthetic email is never "verified", so don't gate linking on the
@@ -212,6 +224,12 @@ export const auth = betterAuth({
 
   // Local email/password — toggled only via `./email-password` (not a plugin).
   ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
+
+  // PillarPath's OWN direct social providers (Google, Apple, Facebook,
+  // TikTok, X via Better Auth built-ins; Instagram + Snapchat via
+  // genericOAuth below). Each is env-gated in `./direct-providers.server` —
+  // absent credentials simply mean the provider (and its button) stays off.
+  socialProviders: buildDirectSocialProviders(),
 
   // `__Host-` prefixed cookies: the browser REFUSES any same-named cookie that
   // carries a `Domain` attribute, so a sibling `*.grok.me` app cannot "toss" a
@@ -237,6 +255,10 @@ export const auth = betterAuth({
     // One genericOAuth provider per upstream (when auth is on), all federating
     // to the broker with the SAME client and differing only by the `idp` hint.
     ...(grokOAuthPlugin ? [grokOAuthPlugin] : []),
+
+    // Custom direct OAuth providers with no Better Auth built-in
+    // (Instagram, Snapchat) — env-gated, null when none are configured.
+    ...(directOAuthPlugin ? [directOAuthPlugin] : []),
 
     // Accept `Authorization: Bearer <session-token>` as an alternative to the
     // cookie. Needed for the LIVE PREVIEW: the app runs in an embedded iframe

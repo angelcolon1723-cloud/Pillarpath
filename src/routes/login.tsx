@@ -1,10 +1,14 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
 import { ArrowRight, CheckCircle2, LockKeyhole } from "lucide-react";
 import { toast } from "sonner";
-import { GROK_PROVIDERS, authClient, signIn } from "@/lib/auth/client";
+import { authClient, signInDirect } from "@/lib/auth/client";
 import { emailAndPasswordEnabled } from "@/lib/auth/email-password";
 import { SignedIn, SignedOut } from "@/lib/auth/gates";
+import {
+  getEnabledSocialProviders,
+  type SocialProviderInfo,
+} from "@/lib/auth/social-providers-list";
 import { LedgerMark } from "@/components/kiddo/mark";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -31,6 +35,32 @@ function LoginForm() {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  // Direct social providers configured on the server (env-driven). Null while
+  // loading; empty when none are configured (email sign-in still works).
+  const [providers, setProviders] = useState<SocialProviderInfo[] | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getEnabledSocialProviders()
+      .then((list) => {
+        if (!cancelled) setProviders(list);
+      })
+      .catch(() => {
+        if (!cancelled) setProviders([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  async function socialSignIn(provider: SocialProviderInfo) {
+    setBusy(true);
+    try {
+      await signInDirect(provider, { callbackURL: "/" });
+    } catch (error) {
+      toast.error(error instanceof Error ? error.message : "Sign-in failed");
+      setBusy(false);
+    }
+  }
 
   async function submit(event: React.FormEvent) {
     event.preventDefault();
@@ -136,23 +166,28 @@ function LoginForm() {
               </Button>
             </form>
           ) : null}
-          <div className="my-5 flex items-center gap-3 text-xs text-muted">
-            <span className="h-px flex-1 bg-border" />
-            <span>or continue with</span>
-            <span className="h-px flex-1 bg-border" />
-          </div>
-          <div className="grid gap-2">
-            {GROK_PROVIDERS.map((provider) => (
-              <Button
-                key={provider.providerId}
-                variant="outline"
-                className="h-11 w-full"
-                onClick={() => void signIn(provider.providerId, { callbackURL: "/" })}
-              >
-                {provider.label}
-              </Button>
-            ))}
-          </div>
+          {providers !== null && providers.length > 0 ? (
+            <>
+              <div className="my-5 flex items-center gap-3 text-xs text-muted">
+                <span className="h-px flex-1 bg-border" />
+                <span>or continue with</span>
+                <span className="h-px flex-1 bg-border" />
+              </div>
+              <div className="grid gap-2">
+                {(providers ?? []).map((provider) => (
+                  <Button
+                    key={provider.id}
+                    variant="outline"
+                    className="h-11 w-full"
+                    disabled={busy}
+                    onClick={() => void socialSignIn(provider)}
+                  >
+                    {provider.label}
+                  </Button>
+                ))}
+              </div>
+            </>
+          ) : null}
           <button
             type="button"
             className="mt-5 min-h-11 w-full text-sm text-muted underline-offset-4 hover:text-ink hover:underline"

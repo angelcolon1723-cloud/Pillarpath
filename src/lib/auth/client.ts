@@ -2,6 +2,7 @@ import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { runPreSignInSignOut, runSignOut } from "../../../scripts/sign-out-plan.mjs";
 import { GROK_PROVIDERS } from "./providers";
+import type { SocialProviderInfo } from "./social-providers-list";
 
 /**
  * Better Auth client for this React SPA (browser-side).
@@ -81,6 +82,33 @@ function inLivePreview(): boolean {
 
 /** Message the popup posts back to the opener once sign-in completes. */
 type PopupMessage = { source: "grok-auth-popup"; token: string | null; error?: string };
+
+/**
+ * Start sign-in with one of PillarPath's OWN direct social providers
+ * (Google, Apple, Facebook, TikTok, X, Instagram, Snapchat).
+ *
+ * - kind "social": Better Auth built-in provider -> full-page redirect to the
+ *   upstream, which returns to /api/auth/callback/<id>.
+ * - kind "oauth2": custom genericOAuth provider (Instagram, Snapchat) ->
+ *   reuses the oauth2 flow below, returning to /api/auth/oauth2/callback/<id>.
+ */
+export async function signInDirect(
+  provider: SocialProviderInfo,
+  opts: { callbackURL?: string; errorCallbackURL?: string } = {},
+): Promise<void> {
+  if (provider.kind === "oauth2") {
+    await signIn(provider.id, opts);
+    return;
+  }
+  const callbackURL = opts.callbackURL ?? "/";
+  await authClient.signOut().catch(() => {});
+  const { error } = await authClient.signIn.social({
+    provider: provider.id,
+    callbackURL,
+    errorCallbackURL: opts.errorCallbackURL ?? "/",
+  });
+  if (error) throw new Error(error.message ?? "Sign-in failed");
+}
 
 /**
  * Start sign-in with one upstream provider (`providerId` from `GROK_PROVIDERS`),
