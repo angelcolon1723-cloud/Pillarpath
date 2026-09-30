@@ -25,7 +25,7 @@
   --color-paper: #000000;
 
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
-  --font-display: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  --font-display: "Baloo 2", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
   --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
   --font-playful: "Baloo 2", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
   --font-hand: "Caveat", "Segoe Script", cursive;
@@ -157,50 +157,58 @@
 }
 
 /* ------------------------------------------------------------------ */
-/* Workspace themes — one world per role. Applied at the workspace     */
-/* root (pillarpath-app + demo AppShell). Marketing, landing, and      */
-/* auth screens outside the workspaces keep the base dark tokens.       */
+/* Workspace themes — ONE cosmic/neon identity for the whole app.        */
+/* Applied at the workspace root (pillarpath-app + demo AppShell).     */
+/* The child keeps the neon cyan/violet/magenta mix; the parent and     */
+/* teacher share the same deep-space language and differ by accent hue  */
+/* only (emerald / sapphire). Login, landing, and legal screens reuse   */
+/* .theme-landing (default neon mix).                                   */
 /* ------------------------------------------------------------------ */
 
-/* Parent — "private bank of the future": deep obsidian, champagne gold,
-   hairline precision. Premium futuristic fintech. */
+/* Parent — cosmic command, emerald neon accent (money/growth). Same
+   deep-space identity as the landing page and child workspace; only the
+   accent hue changes between workspaces. */
 .theme-parent {
-  --color-bg: #07090f;
-  --color-bg-deep: #04060b;
-  --color-surface: #0e1219;
-  --color-surface-2: #151b26;
-  --color-ink: #f5f1e6;
-  --color-muted: #a9a294;
-  --color-subtle: #6f6a5d;
-  --color-accent: #d9b26a;
-  --color-accent-foreground: #191204;
-  --color-accent-soft: rgba(217, 178, 106, 0.12);
-  --color-border: rgba(217, 178, 106, 0.15);
-  --color-danger: #e0785f;
-  --color-danger-foreground: #fff6ef;
-  --color-danger-soft: rgba(224, 120, 95, 0.14);
-  --color-success: #6fd598;
-  --color-success-foreground: #06130c;
-  --color-success-soft: rgba(111, 213, 152, 0.12);
-  --color-warn: #f0c453;
-  --color-warn-soft: rgba(240, 196, 83, 0.13);
-  --color-vault: #0b1f14;
-  --color-vault-foreground: #eef7e8;
-  --color-candy: #d9b26a;
-  --color-coral: #e0785f;
+  --color-bg: #060614;
+  --color-bg-deep: #0a0a1e;
+  --color-surface: #14142b;
+  --color-surface-2: #1d1d38;
+  --color-ink: #f1f3ff;
+  --color-muted: #a6abd0;
+  --color-subtle: #6f749e;
+  --color-accent: #34d399;
+  --color-accent-foreground: #04120c;
+  --color-accent-soft: rgba(52, 211, 153, 0.12);
+  --color-border: rgba(52, 211, 153, 0.16);
+  --color-danger: #ff7d9c;
+  --color-danger-foreground: #2b0a14;
+  --color-danger-soft: rgba(255, 125, 156, 0.14);
+  --color-success: #a3e635;
+  --color-success-foreground: #17230a;
+  --color-success-soft: rgba(163, 230, 53, 0.13);
+  --color-warn: #fcd34d;
+  --color-warn-soft: rgba(252, 211, 77, 0.13);
+  --color-vault: #0a1f16;
+  --color-vault-foreground: #e9f7ee;
+  --color-candy: #34d399;
+  --color-coral: #f0abfc;
+  --font-display: "Baloo 2", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+  --radius-sm: 1rem;
+  --radius-md: 1.375rem;
+  --radius-lg: 1.875rem;
+  --radius-xl: 2.375rem;
   --shadow-border:
-    0px 0px 0px 1px rgba(217, 178, 106, 0.1),
-    0px 12px 30px -20px rgba(0, 0, 0, 0.9);
+    0px 0px 0px 1px rgba(52, 211, 153, 0.14),
+    0px 14px 34px -18px rgba(52, 211, 153, 0.28);
   --shadow-border-hover:
-    0px 0px 0px 1px rgba(217, 178, 106, 0.18),
-    0px 16px 36px -20px rgba(0, 0, 0, 0.95);
-  --font-display: "Fraunces", ui-serif, Georgia, serif;
+    0px 0px 0px 1px rgba(52, 211, 153, 0.22),
+    0px 18px 40px -18px rgba(52, 211, 153, 0.4);
   background-color: var(--color-bg);
   background-image:
-    radial-gradient(ellipse 90% 34% at 50% -8%, rgba(217, 178, 106, 0.1), transparent 70%),
-    linear-gradient(rgba(217, 178, 106, 0.025) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(217, 178, 106, 0.025) 1px, transparent 1px);
-  background-size: auto, 44px 44px, 44px 44px;
+    var(--cosmic-stars),
+    radial-gradient(ellipse 75% 42% at 85% -5%, rgba(52, 211, 153, 0.2), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 4% 12%, rgba(124, 58, 237, 0.28), transparent 70%),
+    radial-gradient(ellipse 70% 55% at 50% 112%, rgba(240, 171, 252, 0.1), transparent 70%);
 }
 
 /* Child — "cosmic playground": deep-space dark, neon glow, glass. */
@@ -247,43 +255,50 @@
     radial-gradient(ellipse 70% 55% at 50% 112%, rgba(240, 171, 252, 0.12), transparent 70%);
 }
 
-/* Teacher — "mission control": deep command blue-black, holographic cyan,
-   dense HUD panels, mono numerals. Professional command-center feel. */
+/* Teacher — cosmic command, sapphire neon accent. Same deep-space
+   identity as the rest of the app; only the accent hue changes between
+   workspaces. */
 .theme-teacher {
-  --color-bg: #05090d;
-  --color-bg-deep: #030609;
-  --color-surface: #0b141b;
-  --color-surface-2: #101b25;
-  --color-ink: #e9f2f8;
-  --color-muted: #8fa2b5;
-  --color-subtle: #5a6d7f;
-  --color-accent: #4fd8ff;
-  --color-accent-foreground: #03141c;
-  --color-accent-soft: rgba(79, 216, 255, 0.1);
-  --color-border: rgba(79, 216, 255, 0.13);
-  --color-danger: #ff7d6b;
-  --color-danger-foreground: #2b0d08;
-  --color-danger-soft: rgba(255, 125, 107, 0.13);
-  --color-success: #5fd99a;
-  --color-success-foreground: #06130c;
-  --color-success-soft: rgba(95, 217, 154, 0.11);
-  --color-warn: #f5b544;
-  --color-warn-soft: rgba(245, 181, 68, 0.12);
-  --color-vault: #08131c;
-  --color-vault-foreground: #e3f2fa;
+  --color-bg: #060614;
+  --color-bg-deep: #0a0a1e;
+  --color-surface: #14142b;
+  --color-surface-2: #1d1d38;
+  --color-ink: #f1f3ff;
+  --color-muted: #a6abd0;
+  --color-subtle: #6f749e;
+  --color-accent: #60a5fa;
+  --color-accent-foreground: #06121f;
+  --color-accent-soft: rgba(96, 165, 250, 0.12);
+  --color-border: rgba(96, 165, 250, 0.16);
+  --color-danger: #ff7d9c;
+  --color-danger-foreground: #2b0a14;
+  --color-danger-soft: rgba(255, 125, 156, 0.14);
+  --color-success: #a3e635;
+  --color-success-foreground: #17230a;
+  --color-success-soft: rgba(163, 230, 53, 0.13);
+  --color-warn: #fcd34d;
+  --color-warn-soft: rgba(252, 211, 77, 0.13);
+  --color-vault: #0d1930;
+  --color-vault-foreground: #e8f1ff;
+  --color-candy: #60a5fa;
+  --color-coral: #f0abfc;
+  --font-display: "Baloo 2", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+  --radius-sm: 1rem;
+  --radius-md: 1.375rem;
+  --radius-lg: 1.875rem;
+  --radius-xl: 2.375rem;
   --shadow-border:
-    0px 0px 0px 1px rgba(79, 216, 255, 0.1),
-    0px 12px 30px -20px rgba(0, 0, 0, 0.9);
+    0px 0px 0px 1px rgba(96, 165, 250, 0.14),
+    0px 14px 34px -18px rgba(96, 165, 250, 0.28);
   --shadow-border-hover:
-    0px 0px 0px 1px rgba(79, 216, 255, 0.18),
-    0px 16px 36px -20px rgba(0, 0, 0, 0.95);
-  --font-display: "Outfit", ui-sans-serif, system-ui, sans-serif;
+    0px 0px 0px 1px rgba(96, 165, 250, 0.22),
+    0px 18px 40px -18px rgba(96, 165, 250, 0.4);
   background-color: var(--color-bg);
   background-image:
-    radial-gradient(ellipse 80% 30% at 50% -6%, rgba(79, 216, 255, 0.08), transparent 70%),
-    linear-gradient(rgba(79, 216, 255, 0.022) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(79, 216, 255, 0.022) 1px, transparent 1px);
-  background-size: auto, 40px 40px, 40px 40px;
+    var(--cosmic-stars),
+    radial-gradient(ellipse 75% 42% at 85% -5%, rgba(96, 165, 250, 0.2), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 4% 12%, rgba(124, 58, 237, 0.28), transparent 70%),
+    radial-gradient(ellipse 70% 55% at 50% 112%, rgba(240, 171, 252, 0.1), transparent 70%);
 }
 
 /* Landing — "front door to the future": deep space, neon brand gradient.
@@ -328,109 +343,126 @@
     radial-gradient(ellipse 70% 55% at 50% 112%, rgba(240, 171, 252, 0.12), transparent 70%);
 }
 
-/* ---- Parent: private-bank-of-the-future details ---- */
+/* ---- Parent: cosmic details, emerald neon accent ---- */
+/* Neon gradient headlines — emerald into violet */
 .theme-parent .screen-enter > header h1 {
-  letter-spacing: -0.02em;
-  background: linear-gradient(100deg, #faf6ea 20%, #e8cf9a 55%, #d9b26a 85%);
+  letter-spacing: -0.01em;
+  background: linear-gradient(100deg, #f4f6ff 15%, #6ee7b7 52%, #c4b5fd 85%);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  filter: drop-shadow(0 0 14px rgba(52, 211, 153, 0.35));
 }
 
 .theme-parent .screen-enter > header p:first-child {
   color: var(--color-accent);
-  font-weight: 700;
+  font-weight: 800;
   font-size: 0.72rem;
-  letter-spacing: 0.16em;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
 .theme-parent [role="tab"] {
   letter-spacing: 0.01em;
-}
-
-/* Cards — hairline gold, deep surface, top sheen */
-.theme-parent [data-slot="card"] {
-  border: 1px solid rgba(217, 178, 106, 0.16);
-  background: linear-gradient(180deg, rgba(24, 29, 41, 0.9), rgba(14, 18, 25, 0.9));
-  box-shadow:
-    inset 0 1px 0 rgba(245, 241, 230, 0.05),
-    0 14px 34px -22px rgba(0, 0, 0, 0.9);
-}
-
-/* Platinum spendable-balance hero */
-.theme-parent .screen-enter > div.bg-ink {
-  background: linear-gradient(135deg, #fbf8ee 0%, #ece5d0 60%, #ddd2b4 100%);
-  border: 1px solid rgba(217, 178, 106, 0.55);
-  box-shadow:
-    0 0 34px rgba(217, 178, 106, 0.22),
-    0 18px 44px -20px rgba(0, 0, 0, 0.85);
-}
-
-/* Vault — deep emerald with a gold rim */
-.theme-parent .bg-vault {
-  background: linear-gradient(150deg, #0d2417 0%, #0b1f14 60%, #08130d 100%);
-  border: 1px solid rgba(217, 178, 106, 0.35);
-  box-shadow:
-    0 0 26px rgba(217, 178, 106, 0.14),
-    0 18px 44px -20px rgba(0, 0, 0, 0.9);
-}
-
-/* Gold primary buttons */
-.theme-parent [data-slot="button"].bg-accent {
+  border-radius: 0.9rem;
   font-weight: 700;
+}
+
+/* Glassmorphism cards */
+.theme-parent [data-slot="card"] {
+  border: 1px solid rgba(52, 211, 153, 0.16);
+  background: linear-gradient(180deg, rgba(32, 32, 62, 0.66), rgba(18, 18, 40, 0.66));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
   box-shadow:
-    0 0 18px rgba(217, 178, 106, 0.35),
-    0 8px 20px -10px rgba(217, 178, 106, 0.5);
+    0 0 0 1px rgba(52, 211, 153, 0.05),
+    0 16px 40px -20px rgba(52, 211, 153, 0.3);
 }
 
-/* Gold progress bars */
+/* Spendable hero — deep emerald nebula, neon rim */
+.theme-parent .screen-enter > div.bg-ink {
+  background: linear-gradient(135deg, #0b2b1d 0%, #10402a 48%, #1b2f5c 100%);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  box-shadow:
+    0 0 0 1px rgba(167, 139, 250, 0.18),
+    0 0 34px rgba(52, 211, 153, 0.3),
+    0 20px 48px -18px rgba(52, 211, 153, 0.45);
+}
+
+/* Vault — emerald nebula card */
+.theme-parent .bg-vault {
+  background: linear-gradient(150deg, #0b2b1d 0%, #0e3a24 52%, #1b2f5c 100%);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  box-shadow:
+    0 0 26px rgba(52, 211, 153, 0.35),
+    0 18px 44px -18px rgba(52, 211, 153, 0.5);
+}
+
+/* Neon primary buttons */
+.theme-parent [data-slot="button"].bg-accent {
+  font-weight: 800;
+  box-shadow:
+    0 0 16px rgba(52, 211, 153, 0.45),
+    0 6px 18px -8px rgba(52, 211, 153, 0.6);
+}
+
+.theme-parent [data-slot="button"].bg-accent:active {
+  box-shadow: 0 0 28px rgba(52, 211, 153, 0.75);
+}
+
+/* Glowing progress bars */
 .theme-parent [role="progressbar"] > div {
-  box-shadow: 0 0 12px rgba(217, 178, 106, 0.5);
+  box-shadow: 0 0 12px rgba(52, 211, 153, 0.55);
 }
 
-/* Bottom dock — dark glass with a gold rim */
+/* Bottom dock — dark glass with an emerald rim */
 .theme-parent .child-dock {
-  background: rgba(7, 9, 15, 0.86);
+  background: rgba(8, 8, 24, 0.8);
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
-  border-top: 1px solid rgba(217, 178, 106, 0.22);
-  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.6);
+  border-top: 1px solid rgba(52, 211, 153, 0.3);
+  box-shadow: 0 -12px 40px rgba(52, 211, 153, 0.16);
 }
 
 .theme-parent .child-dock .bg-accent-soft {
-  border: 1px solid rgba(217, 178, 106, 0.35);
-  box-shadow: inset 0 0 12px rgba(217, 178, 106, 0.12);
+  border: 1px solid rgba(52, 211, 153, 0.4);
+  box-shadow:
+    0 0 16px rgba(52, 211, 153, 0.35),
+    inset 0 0 12px rgba(52, 211, 153, 0.14);
 }
 
-/* Sticky top bar — dark glass with a hairline gold underline */
+/* Sticky top bar — dark glass with emerald underline */
 .theme-parent header.sticky {
-  background: rgba(7, 9, 15, 0.82);
-  border-bottom: 1px solid rgba(217, 178, 106, 0.18);
-  box-shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.8);
+  background: rgba(6, 6, 20, 0.74);
+  border-bottom: 1px solid rgba(52, 211, 153, 0.24);
+  box-shadow: 0 10px 30px -12px rgba(52, 211, 153, 0.28);
 }
 
 /* Tab lists */
 .theme-parent [role="tablist"] {
-  border-radius: 0.9rem;
-  border: 1px solid rgba(217, 178, 106, 0.14);
-  background: rgba(10, 13, 20, 0.7);
+  border-radius: 1.25rem;
+  border: 1px solid rgba(52, 211, 153, 0.14);
+  background: rgba(12, 12, 30, 0.6);
 }
 
 .theme-parent [role="tab"][aria-selected="true"] {
-  box-shadow: 0 0 12px rgba(217, 178, 106, 0.18);
+  box-shadow: 0 0 14px rgba(52, 211, 153, 0.3);
 }
 
 /* More bottom sheet */
 .theme-parent .more-sheet {
-  background: linear-gradient(180deg, #141924 0%, #0d1119 100%);
-  border-top: 1px solid rgba(217, 178, 106, 0.3);
+  background: linear-gradient(180deg, rgba(20, 20, 46, 0.96), rgba(10, 10, 28, 0.96));
+  border-top: 1px solid rgba(52, 211, 153, 0.3);
   box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.7);
 }
 
-/* Desktop sidebar — active nav gets a gold edge */
+/* Desktop sidebar — active nav gets an emerald edge */
 .theme-parent aside nav .bg-accent-soft {
-  border: 1px solid rgba(217, 178, 106, 0.3);
+  border: 1px solid rgba(52, 211, 153, 0.3);
+}
+
+.theme-parent nav button {
+  letter-spacing: 0.01em;
 }
 
 /* ---- Child: cosmic playground details ---- */
@@ -670,7 +702,7 @@
   transform: rotate(1.4deg);
 }
 
-/* ---- Teacher: mission-control details ---- */
+/* ---- Teacher: cosmic details, sapphire neon accent ---- */
 /* No handwriting on the command deck */
 .theme-teacher .font-hand {
   font-family: var(--font-display);
@@ -678,19 +710,57 @@
   letter-spacing: -0.01em;
 }
 
-/* Command header — replaces the notebook look with a HUD panel */
+/* Neon gradient headlines — sapphire into violet */
+.theme-teacher .screen-enter > header h1 {
+  letter-spacing: -0.01em;
+  background: linear-gradient(100deg, #f4f6ff 15%, #93c5fd 52%, #c4b5fd 85%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 14px rgba(96, 165, 250, 0.35));
+}
+
+/* Section eyebrows — sapphire, wide-tracked, uppercase */
+.theme-teacher .screen-enter > header p:first-child,
+.theme-teacher header > p:first-child {
+  color: var(--color-accent);
+  font-weight: 800;
+  font-size: 0.72rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+/* HUD numerals stay mono — they read as telemetry in neon */
+.theme-teacher .tabular-nums {
+  font-family: var(--font-mono);
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Glassmorphism cards */
+.theme-teacher [data-slot="card"] {
+  border: 1px solid rgba(96, 165, 250, 0.16);
+  background: linear-gradient(180deg, rgba(32, 32, 62, 0.66), rgba(18, 18, 40, 0.66));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 0 0 1px rgba(96, 165, 250, 0.05),
+    0 16px 40px -20px rgba(96, 165, 250, 0.3);
+}
+
+/* Hero panel — sapphire nebula */
 .theme-teacher .hero-notebook {
   position: relative;
   overflow: hidden;
-  border-radius: 1rem;
+  border-radius: 1.25rem;
   padding: 1.1rem 1.25rem 1.1rem 1.5rem;
-  border: 1px solid rgba(79, 216, 255, 0.22);
+  border: 1px solid rgba(96, 165, 250, 0.3);
   background-image:
-    radial-gradient(circle at 96% 8%, rgba(79, 216, 255, 0.16), transparent 42%),
-    linear-gradient(180deg, rgba(16, 27, 37, 0.94), rgba(8, 14, 20, 0.94));
+    radial-gradient(circle at 96% 8%, rgba(96, 165, 250, 0.22), transparent 42%),
+    linear-gradient(180deg, rgba(32, 32, 62, 0.9), rgba(18, 18, 40, 0.9));
   box-shadow:
-    inset 0 1px 0 rgba(233, 242, 248, 0.06),
-    0 0 24px rgba(79, 216, 255, 0.1);
+    inset 0 1px 0 rgba(241, 243, 255, 0.06),
+    0 0 24px rgba(96, 165, 250, 0.18);
 }
 
 .theme-teacher .hero-notebook::before {
@@ -703,93 +773,81 @@
   background: linear-gradient(180deg, var(--color-accent), transparent);
 }
 
-/* Panels — solid hairline, deep command surface */
-.theme-teacher [data-slot="card"] {
-  border: 1px solid rgba(79, 216, 255, 0.14);
-  background: linear-gradient(180deg, rgba(17, 28, 39, 0.88), rgba(10, 18, 26, 0.88));
-  box-shadow:
-    inset 0 1px 0 rgba(233, 242, 248, 0.05),
-    0 14px 32px -22px rgba(0, 0, 0, 0.9);
-}
-
-/* Section eyebrows — cyan, wide-tracked, uppercase */
-.theme-teacher header > p:first-child {
-  color: var(--color-accent);
-  font-weight: 700;
-  font-size: 0.72rem;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-}
-
-/* HUD numerals */
-.theme-teacher .tabular-nums {
-  font-family: var(--font-mono);
-  letter-spacing: -0.01em;
-}
-
-/* Holographic primary buttons */
+/* Neon primary buttons */
 .theme-teacher [data-slot="button"].bg-accent {
-  font-weight: 700;
+  font-weight: 800;
   box-shadow:
-    0 0 16px rgba(79, 216, 255, 0.35),
-    0 6px 18px -8px rgba(79, 216, 255, 0.5);
+    0 0 16px rgba(96, 165, 250, 0.45),
+    0 6px 18px -8px rgba(96, 165, 250, 0.6);
 }
 
-/* Cyan progress bars */
+.theme-teacher [data-slot="button"].bg-accent:active {
+  box-shadow: 0 0 28px rgba(96, 165, 250, 0.75);
+}
+
+/* Glowing progress bars */
 .theme-teacher [role="progressbar"] > div {
-  box-shadow: 0 0 12px rgba(79, 216, 255, 0.5);
+  box-shadow: 0 0 12px rgba(96, 165, 250, 0.55);
 }
 
-/* Bottom dock — command bar */
+/* Bottom dock — dark glass with a sapphire rim */
 .theme-teacher .child-dock {
-  background: rgba(5, 9, 13, 0.88);
+  background: rgba(8, 8, 24, 0.8);
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
-  border-top: 1px solid rgba(79, 216, 255, 0.22);
-  box-shadow: 0 -12px 40px rgba(0, 0, 0, 0.65);
+  border-top: 1px solid rgba(96, 165, 250, 0.3);
+  box-shadow: 0 -12px 40px rgba(96, 165, 250, 0.16);
 }
 
 .theme-teacher .child-dock .bg-accent-soft {
-  border: 1px solid rgba(79, 216, 255, 0.35);
-  box-shadow: inset 0 0 12px rgba(79, 216, 255, 0.12);
+  border: 1px solid rgba(96, 165, 250, 0.4);
+  box-shadow:
+    0 0 16px rgba(96, 165, 250, 0.35),
+    inset 0 0 12px rgba(96, 165, 250, 0.14);
 }
 
-/* Sticky top bar — dark glass with a cyan scanline */
+/* Sticky top bar — dark glass with sapphire underline */
 .theme-teacher header.sticky {
-  background: rgba(5, 9, 13, 0.84);
-  border-bottom: 1px solid rgba(79, 216, 255, 0.2);
-  box-shadow: 0 10px 30px -14px rgba(0, 0, 0, 0.85);
+  background: rgba(6, 6, 20, 0.74);
+  border-bottom: 1px solid rgba(96, 165, 250, 0.24);
+  box-shadow: 0 10px 30px -12px rgba(96, 165, 250, 0.28);
 }
 
 /* Tab lists */
 .theme-teacher [role="tablist"] {
-  border-radius: 0.75rem;
-  border: 1px solid rgba(79, 216, 255, 0.14);
-  background: rgba(6, 11, 16, 0.7);
+  border-radius: 1.25rem;
+  border: 1px solid rgba(96, 165, 250, 0.14);
+  background: rgba(12, 12, 30, 0.6);
+}
+
+.theme-teacher [role="tab"] {
+  border-radius: 0.9rem;
+  font-weight: 700;
 }
 
 .theme-teacher [role="tab"][aria-selected="true"] {
-  box-shadow: 0 0 12px rgba(79, 216, 255, 0.2);
+  box-shadow: 0 0 14px rgba(96, 165, 250, 0.3);
 }
 
 /* More bottom sheet */
 .theme-teacher .more-sheet {
-  background: linear-gradient(180deg, #0e1822 0%, #080f16 100%);
-  border-top: 1px solid rgba(79, 216, 255, 0.28);
+  background: linear-gradient(180deg, rgba(20, 20, 46, 0.96), rgba(10, 10, 28, 0.96));
+  border-top: 1px solid rgba(96, 165, 250, 0.3);
   box-shadow: 0 -20px 60px rgba(0, 0, 0, 0.7);
 }
 
-/* Vault / privacy panel — cyan rim */
+/* Vault — sapphire nebula */
 .theme-teacher .bg-vault {
-  border: 1px solid rgba(79, 216, 255, 0.25);
+  background: linear-gradient(150deg, #16294d 0%, #1b2f5c 52%, #251659 100%);
+  border: 1px solid rgba(96, 165, 250, 0.4);
   box-shadow:
-    0 0 24px rgba(79, 216, 255, 0.1),
-    0 18px 44px -20px rgba(0, 0, 0, 0.9);
+    0 0 26px rgba(96, 165, 250, 0.3),
+    0 18px 44px -18px rgba(96, 165, 250, 0.5);
 }
 
-/* Desktop sidebar — active nav gets a cyan edge */
+/* Desktop sidebar — active nav gets a sapphire edge */
 .theme-teacher aside nav .bg-accent-soft {
-  border: 1px solid rgba(79, 216, 255, 0.3);
+  border: 1px solid rgba(96, 165, 250, 0.3);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -832,14 +890,6 @@
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
-}
-
-.theme-parent [role="tab"] {
-  letter-spacing: 0.01em;
-}
-
-.theme-parent nav button {
-  letter-spacing: 0.01em;
 }
 
 .studio-grid::after {

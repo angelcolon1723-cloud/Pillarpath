@@ -82,7 +82,7 @@ function LoginForm() {
   }
 
   return (
-    <main className="min-h-dvh bg-bg px-5 py-8 text-ink">
+    <main className="theme-landing min-h-dvh bg-bg px-5 py-8 text-ink">
       <div className="mx-auto grid min-h-[calc(100dvh-4rem)] max-w-6xl items-center gap-10 lg:grid-cols-[1.05fr_0.95fr]">
         <section className="hidden lg:block">
           <div className="mb-8 flex items-center gap-3">

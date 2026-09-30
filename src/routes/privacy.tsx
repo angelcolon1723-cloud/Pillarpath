@@ -7,7 +7,8 @@ export const Route = createFileRoute("/privacy")({
 
 function Privacy() {
   return (
-    <main className="mx-auto max-w-3xl px-5 py-10">
+    <main className="theme-landing min-h-dvh bg-bg text-ink">
+      <div className="mx-auto max-w-3xl px-5 py-10">
       <div className="mb-6 flex items-center gap-2">
         <PillarMark />
         <span className="font-display text-xl font-semibold">Pillarpath</span>
@@ -45,6 +46,7 @@ function Privacy() {
       <Link to="/" className="mt-8 inline-block text-sm font-semibold text-accent">
         ← Back to Pillarpath
       </Link>
+      </div>
     </main>
   );
 }
