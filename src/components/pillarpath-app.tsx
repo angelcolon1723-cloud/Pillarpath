@@ -224,7 +224,7 @@ export function PillarpathApp() {
         : teacherNavLabels[teacherSection];
 
   return (
-    <div className={cn("min-h-dvh bg-bg text-ink", role === "child" ? "app-child" : "app-parent")}>
+    <div className={cn("min-h-dvh bg-bg text-ink", role === "child" ? "theme-child" : role === "teacher" ? "theme-teacher" : "theme-parent")}>
       <div className="mx-auto min-h-dvh max-w-[1500px] lg:grid lg:grid-cols-[240px_1fr]">
         <aside className="hidden border-r border-border bg-surface/80 p-4 lg:flex lg:flex-col">
           <div className="mb-8 flex items-center gap-3 px-2">

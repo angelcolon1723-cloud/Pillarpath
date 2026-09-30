@@ -110,7 +110,7 @@ export function ChildHome() {
 
       <FrozenBanner />
 
-      <div className="overflow-hidden rounded-xl bg-ink p-5 text-bg shadow-[var(--shadow-border)]">
+      <div className="tilt-r overflow-hidden rounded-xl bg-ink p-5 text-bg shadow-[var(--shadow-border)]">
         <p className="text-xs font-medium uppercase tracking-wider text-bg/60">
           Spendable
         </p>
@@ -120,7 +120,7 @@ export function ChildHome() {
         <p className="mt-1 text-sm text-bg/70">Pillar Units · {available} available</p>
       </div>
 
-      <Card className="bg-vault p-5 text-vault-foreground">
+      <Card className="tilt-l bg-vault p-5 text-vault-foreground">
         <p className="text-xs font-medium uppercase tracking-wider text-vault-foreground/60">
           Savings vault
         </p>
@@ -401,7 +401,7 @@ export function ChildVault() {
         </p>
       </header>
       <FrozenBanner />
-      <Card className="bg-vault p-5 text-vault-foreground">
+      <Card className="tilt-l bg-vault p-5 text-vault-foreground">
         <p className="text-xs font-medium uppercase tracking-wider text-vault-foreground/60">
           {vaultGoal}
         </p>
@@ -491,7 +491,7 @@ export function ChildLearn() {
         </p>
       </header>
 
-      <Card className="bg-vault p-5 text-vault-foreground">
+      <Card className="tilt-r bg-vault p-5 text-vault-foreground">
         <p className="text-xs font-medium uppercase tracking-wider text-vault-foreground/60">
           Your rule
         </p>

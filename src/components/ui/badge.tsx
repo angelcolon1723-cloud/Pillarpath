@@ -9,6 +9,7 @@ function Badge({
 }) {
   return (
     <span
+      data-slot="badge"
       className={cn(
         "inline-flex min-h-5 min-w-5 items-center justify-center rounded-full px-1.5 text-xs font-semibold tabular-nums leading-none",
         tone === "accent" && "bg-accent text-accent-foreground",

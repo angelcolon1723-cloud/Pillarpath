@@ -145,15 +145,17 @@ function SectionHeader({
   eyebrow,
   title,
   text,
+  className,
 }: {
   eyebrow: string;
   title: string;
   text?: string;
+  className?: string;
 }) {
   return (
-    <header>
+    <header className={className}>
       <p className="text-sm font-medium text-muted">{eyebrow}</p>
-      <h1 className="font-display text-3xl font-semibold tracking-tight">{title}</h1>
+      <h1 className="font-hand text-4xl font-semibold tracking-tight">{title}</h1>
       {text ? <p className="mt-1 text-sm text-muted">{text}</p> : null}
     </header>
   );
@@ -193,6 +195,7 @@ function TeacherDashboard() {
         eyebrow="Teacher workspace"
         title={`Welcome, ${teacherName}`}
         text="Financial literacy, responsibility, and creativity — taught as a classroom experience."
+        className="hero-notebook"
       />
 
       <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">

@@ -27,6 +27,11 @@
   --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
   --font-display: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
   --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --font-playful: "Baloo 2", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+  --font-hand: "Caveat", "Segoe Script", cursive;
+
+  --color-candy: #ffc93c;
+  --color-coral: #ff7a59;
 
   --radius-sm: 0.625rem;
   --radius-md: 0.875rem;
@@ -85,92 +90,228 @@
     );
 }
 
-/* The parent experience is calm, compact, and dashboard-like. */
-.app-parent {
-  --color-bg: #090909;
-  --color-bg-deep: #050505;
-  --color-surface: #111111;
-  --color-surface-2: #191919;
-  --color-ink: #f4f4f1;
-  --color-muted: #a4a49e;
-  --color-subtle: #777771;
-  --color-accent: #45c58a;
-  --color-accent-foreground: #06100b;
-  --color-accent-soft: #10291d;
-  --color-border: #2b2b2b;
-  --color-vault: #0e2820;
-  --color-vault-foreground: #e4fff1;
-  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+/* ------------------------------------------------------------------ */
+/* Workspace themes — one world per role. Applied at the workspace     */
+/* root (pillarpath-app + demo AppShell). Marketing, landing, and      */
+/* auth screens outside the workspaces keep the base dark tokens.       */
+/* ------------------------------------------------------------------ */
+
+/* Parent — "family command center": warm, calm, in control. */
+.theme-parent {
+  --color-bg: #faf7f2;
+  --color-bg-deep: #f1eae0;
+  --color-surface: #ffffff;
+  --color-surface-2: #f4eee2;
+  --color-ink: #2b2a24;
+  --color-muted: #6f6a5c;
+  --color-subtle: #a29b88;
+  --color-accent: #1f7a52;
+  --color-accent-foreground: #ffffff;
+  --color-accent-soft: #e1efe6;
+  --color-border: #e7dfcd;
+  --color-danger: #c0523c;
+  --color-danger-foreground: #fff8f3;
+  --color-danger-soft: #f7e3db;
+  --color-success: #2e7d4f;
+  --color-success-foreground: #ffffff;
+  --color-success-soft: #e0efe5;
+  --color-warn: #96690f;
+  --color-warn-soft: #f6eacb;
+  --color-vault: #123b28;
+  --color-vault-foreground: #f2f7ee;
+  --shadow-border:
+    0px 0px 0px 1px rgba(74, 60, 38, 0.07),
+    0px 10px 28px -20px rgba(96, 74, 44, 0.35);
+  --shadow-border-hover:
+    0px 0px 0px 1px rgba(74, 60, 38, 0.12),
+    0px 14px 32px -20px rgba(96, 74, 44, 0.45);
   --font-display: "Fraunces", ui-serif, Georgia, serif;
 }
 
-/* The child experience is brighter, rounder, and more playful while staying on the black shell. */
-.app-child {
-  --color-bg: #080b12;
-  --color-bg-deep: #05070b;
-  --color-surface: #101621;
-  --color-surface-2: #172131;
-  --color-ink: #f7f9ff;
-  --color-muted: #aab5c8;
-  --color-subtle: #7d8aa0;
-  --color-accent: #5ed4ff;
-  --color-accent-foreground: #06121a;
-  --color-accent-soft: #102b3b;
-  --color-border: #273448;
-  --color-vault: #272047;
-  --color-vault-foreground: #fff7cf;
-  --color-success: #8eea9f;
-  --color-success-soft: #183522;
-  --color-warn: #ffd36a;
-  --color-warn-soft: #35280f;
-  --font-sans: ui-rounded, "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
-  --font-display: ui-rounded, "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+/* Child — "playground": bright, chunky, sticker-joyful. */
+.theme-child {
+  --color-bg: #fff7ea;
+  --color-bg-deep: #fbeed7;
+  --color-surface: #ffffff;
+  --color-surface-2: #fff1da;
+  --color-ink: #2a2118;
+  --color-muted: #7c6b57;
+  --color-subtle: #ab9a82;
+  --color-accent: #2fa15e;
+  --color-accent-foreground: #062a18;
+  --color-accent-soft: #ddf2e4;
+  --color-border: #f0e2c8;
+  --color-danger: #e26d5a;
+  --color-danger-foreground: #fff7f2;
+  --color-danger-soft: #fbe2da;
+  --color-success: #1f8a4c;
+  --color-success-foreground: #ffffff;
+  --color-success-soft: #ddf2e4;
+  --color-warn: #9a6b1a;
+  --color-warn-soft: #faedcb;
+  --color-vault: #6c4ab0;
+  --color-vault-foreground: #fff6e9;
+  --font-display: "Baloo 2", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
+  --radius-sm: 1rem;
+  --radius-md: 1.375rem;
+  --radius-lg: 1.875rem;
+  --radius-xl: 2.375rem;
+  --shadow-border:
+    0px 0px 0px 2px rgba(42, 33, 24, 0.05),
+    0px 14px 30px -20px rgba(190, 130, 60, 0.45);
+  --shadow-border-hover:
+    0px 0px 0px 2px rgba(42, 33, 24, 0.09),
+    0px 18px 34px -20px rgba(190, 130, 60, 0.55);
+  background-image:
+    radial-gradient(circle at 85% -5%, color-mix(in oklab, var(--color-candy) 16%, transparent), transparent 42%),
+    radial-gradient(circle at 8% 6%, color-mix(in oklab, var(--color-coral) 10%, transparent), transparent 36%);
 }
 
-.app-child .screen-enter > header h1 {
-  letter-spacing: -0.035em;
+/* Teacher — "classroom": chalkboard green, chalk ink, amber highlighter. */
+.theme-teacher {
+  --color-bg: #142a1f;
+  --color-bg-deep: #0e1e15;
+  --color-surface: #1e3b2e;
+  --color-surface-2: #234434;
+  --color-ink: #f7f4ea;
+  --color-muted: #cfc8b2;
+  --color-subtle: #99917a;
+  --color-accent: #f2b84b;
+  --color-accent-foreground: #2a1f08;
+  --color-accent-soft: #4a3a17;
+  --color-border: #2e5040;
+  --color-danger: #e26d5a;
+  --color-danger-foreground: #fff6ef;
+  --color-danger-soft: #4e241b;
+  --color-success: #7bd88f;
+  --color-success-foreground: #0c2314;
+  --color-success-soft: #1c3a26;
+  --color-warn: #f2b84b;
+  --color-warn-soft: #4a3a17;
+  --color-vault: #0e2a1d;
+  --color-vault-foreground: #fff3d4;
+  --shadow-border:
+    0px 0px 0px 1px rgba(247, 244, 234, 0.09),
+    0px 10px 24px -18px rgba(0, 0, 0, 0.7);
+  --shadow-border-hover:
+    0px 0px 0px 1px rgba(247, 244, 234, 0.14),
+    0px 14px 28px -18px rgba(0, 0, 0, 0.75);
+  background-image:
+    radial-gradient(circle at 50% -12%, color-mix(in oklab, var(--color-accent) 7%, transparent), transparent 42%);
 }
 
-.app-child .screen-enter > header p:first-child {
+/* ---- Parent: calm editorial headers ---- */
+.theme-parent .screen-enter > header h1 {
+  letter-spacing: -0.025em;
+}
+
+.theme-parent .screen-enter > header p:first-child {
+  color: var(--color-accent);
+  font-weight: 700;
+  font-size: 0.8rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.theme-parent [role="tab"] {
+  letter-spacing: 0.01em;
+}
+
+/* ---- Child: playground details ---- */
+.theme-child .screen-enter > header {
+  position: relative;
+}
+
+.theme-child .screen-enter > header h1 {
+  letter-spacing: -0.01em;
+}
+
+.theme-child .screen-enter > header p:first-child {
   color: var(--color-accent);
   font-weight: 800;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
-.app-child .screen-enter .rounded-xl,
-.app-child .screen-enter .rounded-lg {
-  border-radius: 1.35rem;
+/* Sticker star on every child screen header */
+.theme-child .screen-enter > header::after {
+  content: "";
+  position: absolute;
+  top: -0.3rem;
+  right: 0.25rem;
+  width: 2rem;
+  height: 2rem;
+  background: var(--color-candy);
+  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
+  transform: rotate(14deg);
+  opacity: 0.95;
+  pointer-events: none;
 }
 
-.app-child .screen-enter button:not([role="tab"]) {
+.theme-child [data-slot="card"] {
+  border: 2px solid var(--color-border);
+}
+
+/* Sticker badges */
+.theme-child [data-slot="badge"] {
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  box-shadow: 0 2px 0 rgba(42, 33, 24, 0.16);
+  transform: rotate(-4deg);
+}
+
+.theme-child .screen-enter button:not([role="tab"]) {
+  font-weight: 800;
+}
+
+.theme-child .screen-enter .font-mono {
+  font-weight: 800;
+}
+
+.theme-child nav {
+  border-top-color: color-mix(in oklab, var(--color-accent) 25%, var(--color-border));
+}
+
+.theme-child.paper-grain {
+  background-color: var(--color-bg-deep);
+  background-image: none;
+}
+
+/* Slightly rotated sticker cards — opt in with .tilt-l / .tilt-r */
+.tilt-l {
+  transform: rotate(-1.4deg);
+}
+
+.tilt-r {
+  transform: rotate(1.4deg);
+}
+
+/* ---- Teacher: chalkboard worksheet details ---- */
+.theme-teacher [data-slot="card"] {
+  border: 1.5px dashed color-mix(in oklab, var(--color-ink) 26%, transparent);
+}
+
+.theme-teacher .hero-notebook {
+  position: relative;
+  overflow: hidden;
   border-radius: 1rem;
-  font-weight: 800;
+  padding: 1.1rem 1.25rem 1.1rem 3.25rem;
+  background-image: repeating-linear-gradient(
+    to bottom,
+    transparent 0,
+    transparent 1.65rem,
+    color-mix(in oklab, var(--color-ink) 16%, transparent) 1.65rem,
+    color-mix(in oklab, var(--color-ink) 16%, transparent) calc(1.65rem + 1px)
+  );
 }
 
-.app-child .screen-enter .bg-surface-2 {
-  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 9%, transparent);
-}
-
-.app-child .screen-enter .font-mono {
-  font-weight: 800;
-}
-
-.app-parent .screen-enter > header h1 {
-  letter-spacing: -0.025em;
-}
-
-.app-parent .screen-enter > header p:first-child {
-  color: var(--color-accent);
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  text-transform: uppercase;
-}
-
-.app-parent .screen-enter > .rounded-xl,
-.app-parent .screen-enter > .rounded-lg,
-.app-parent .screen-enter > [class*="shadow"] {
-  box-shadow: var(--shadow-border);
+.theme-teacher .hero-notebook::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 2.1rem;
+  width: 2px;
+  background: color-mix(in oklab, var(--color-danger) 55%, transparent);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -215,28 +356,28 @@
   }
 }
 
-.app-child nav {
-  border-top-color: color-mix(in oklab, var(--color-accent) 18%, var(--color-border));
+.theme-child nav {
+  border-top-color: color-mix(in oklab, var(--color-accent) 25%, var(--color-border));
 }
 
-.app-child nav button {
+.theme-child nav button {
   border-radius: 1rem;
 }
 
-.app-child [role="tablist"] {
-  border-radius: 1rem;
+.theme-child [role="tablist"] {
+  border-radius: 1.25rem;
 }
 
-.app-child [role="tab"] {
-  border-radius: 0.8rem;
+.theme-child [role="tab"] {
+  border-radius: 0.9rem;
   font-weight: 800;
 }
 
-.app-parent [role="tab"] {
+.theme-parent [role="tab"] {
   letter-spacing: 0.01em;
 }
 
-.app-parent nav button {
+.theme-parent nav button {
   letter-spacing: 0.01em;
 }
 
