@@ -349,7 +349,7 @@ function AnimationRoom() {
   return (
     <Card className="space-y-4 p-5">
       <CardTitle>Animation flipbook</CardTitle>
-      <div ref={wrapRef} className="overflow-hidden rounded-xl bg-ink">
+      <div ref={wrapRef} className="overflow-hidden rounded-xl art-surface">
         {play && frames.length ? (
           <img
             src={frames[tick % frames.length]}

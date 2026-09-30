@@ -366,7 +366,7 @@ export function PillarpathApp() {
         </div>
       </div>
 
-      <div className="fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-xl lg:hidden">
+      <div className="child-dock fixed inset-x-0 bottom-0 z-40 border-t border-border bg-surface/95 p-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-xl lg:hidden">
         <div className="mx-auto grid max-w-3xl grid-cols-5 gap-1">
           {(role === "parent"
             ? parentNav.slice(0, 4)

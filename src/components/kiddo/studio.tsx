@@ -454,7 +454,7 @@ export function StudioScreen() {
         <div
           ref={wrapRef}
           className={cn(
-            "relative overflow-hidden rounded-lg bg-ink text-bg shadow-[var(--shadow-border)]",
+            "relative overflow-hidden rounded-lg art-surface shadow-[var(--shadow-border)]",
             tools.has("grid") && "studio-grid",
           )}
         >

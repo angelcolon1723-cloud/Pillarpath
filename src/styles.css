@@ -29,6 +29,7 @@
   --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
   --font-playful: "Baloo 2", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
   --font-hand: "Caveat", "Segoe Script", cursive;
+  --font-hero: "Orbitron", "Baloo 2", ui-sans-serif, system-ui, sans-serif;
 
   --color-candy: #ffc93c;
   --color-coral: #ff7a59;
@@ -90,6 +91,71 @@
     );
 }
 
+/* ================================================================== */
+/* Cosmic design tokens (shared) — Phase 1 of the futuristic redesign.  */
+/* These live at :root so later phases can reuse them for the parent    */
+/* and teacher reskins. The child workspace consumes them through       */
+/* .theme-child below.                                                  */
+/* ================================================================== */
+:root {
+  --cosmic-cyan: #22d3ee;
+  --cosmic-violet: #a78bfa;
+  --cosmic-magenta: #f0abfc;
+  --cosmic-lime: #a3e635;
+  --cosmic-ink: #060614;
+  --cosmic-stars: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20width%3D%27320%27%20height%3D%27320%27%3E%3Ccircle%20cx%3D%27204.6%27%20cy%3D%278.0%27%20r%3D%270.83%27%20fill%3D%27%23ffffff%27%20opacity%3D%270.4%27%2F%3E%3Ccircle%20cx%3D%27216.5%27%20cy%3D%27285.5%27%20r%3D%270.6%27%20fill%3D%27%23ffffff%27%20opacity%3D%270.52%27%2F%3E%3Ccircle%20cx%3D%2730.0%27%20cy%3D%2774.5%27%20r%3D%271.22%27%20fill%3D%27%23fbcfe8%27%20opacity%3D%270.61%27%2F%3E%3Ccircle%20cx%3D%2770.5%27%20cy%3D%27188.6%27%20r%3D%271.47%27%20fill%3D%27%23a5f3fc%27%20opacity%3D%270.25%27%2F%3E%3Ccircle%20cx%3D%27223.4%27%20cy%3D%27108.9%27%20r%3D%270.69%27%20fill%3D%27%23ddd6fe%27%20opacity%3D%270.87%27%2F%3E%3Ccircle%20cx%3D%2732.7%27%20cy%3D%27121.6%27%20r%3D%270.93%27%20fill%3D%27%23ddd6fe%27%20opacity%3D%270.47%27%2F%3E%3Ccircle%20cx%3D%27258.3%27%20cy%3D%27233.5%27%20r%3D%271.14%27%20fill%3D%27%23fbcfe8%27%20opacity%3D%270.88%27%2F%3E%3Ccircle%20cx%3D%2725.2%27%20cy%3D%2793.8%27%20r%3D%271.25%27%20fill%3D%27%23ddd6fe%27%20opacity%3D%270.83%27%2F%3E%3Ccircle%20cx%3D%27184.8%27%20cy%3D%27225.5%27%20r%3D%270.55%27%20fill%3D%27%23ddd6fe%27%20opacity%3D%270.4%27%2F%3E%3Ccircle%20cx%3D%27315.3%27%20cy%3D%27273.7%27%20r%3D%271.54%27%20fill%3D%27%23fbcfe8%27%20opacity%3D%270.5%27%2F%3E%3Ccircle%20cx%3D%27203.4%27%20cy%3D%27116.7%27%20r%3D%270.94%27%20fill%3D%27%23ddd6fe%27%20opacity%3D%270.39%27%2F%3E%3Ccircle%20cx%3D%27224.6%27%20cy%3D%27218.7%27%20r%3D%270.59%27%20fill%3D%27%23a5f3fc%27%20opacity%3D%270.66%27%2F%3E%3Ccircle%20cx%3D%2752.3%27%20cy%3D%27121.4%27%20r%3D%271.69%27%20fill%3D%27%23a5f3fc%27%20opacity%3D%270.67%27%2F%3E%3Ccircle%20cx%3D%27219.1%27%20cy%3D%27269.7%27%20r%3D%271.43%27%20fill%3D%27%23ffffff%27%20opacity%3D%270.4%27%2F%3E%3Ccircle%20cx%3D%27257.6%27%20cy%3D%27128.4%27%20r%3D%270.58%27%20fill%3D%27%23ddd6fe%27%20opacity%3D%270.84%27%2F%3E%3Ccircle%20cx%3D%2768.0%27%20cy%3D%27159.8%27%20r%3D%271.56%27%20fill%3D%27%23a5f3fc%27%20opacity%3D%270.67%27%2F%3E%3Ccircle%20cx%3D%2784.8%27%20cy%3D%2778.9%27%20r%3D%271.17%27%20fill%3D%27%23fbcfe8%27%20opacity%3D%270.42%27%2F%3E%3Ccircle%20cx%3D%27287.3%27%20cy%3D%27127.8%27%20r%3D%270.76%27%20fill%3D%27%23fbcfe8%27%20opacity%3D%270.9%27%2F%3E%3Ccircle%20cx%3D%2729.1%27%20cy%3D%2715.1%27%20r%3D%270.63%27%20fill%3D%27%23fbcfe8%27%20opacity%3D%270.66%27%2F%3E%3Ccircle%20cx%3D%27190.9%27%20cy%3D%27123.1%27%20r%3D%271.22%27%20fill%3D%27%23ddd6fe%27%20opacity%3D%270.55%27%2F%3E%3Ccircle%20cx%3D%27310.7%27%20cy%3D%27275.4%27%20r%3D%270.51%27%20fill%3D%27%23ddd6fe%27%20opacity%3D%270.72%27%2F%3E%3Ccircle%20cx%3D%27246.0%27%20cy%3D%27108.9%27%20r%3D%270.85%27%20fill%3D%27%23ffffff%27%20opacity%3D%270.35%27%2F%3E%3Ccircle%20cx%3D%27305.2%27%20cy%3D%27280.3%27%20r%3D%270.82%27%20fill%3D%27%23a5f3fc%27%20opacity%3D%270.58%27%2F%3E%3Ccircle%20cx%3D%27162.5%27%20cy%3D%2734.1%27%20r%3D%271.25%27%20fill%3D%27%23a5f3fc%27%20opacity%3D%270.8%27%2F%3E%3Ccircle%20cx%3D%2748.9%27%20cy%3D%27244.0%27%20r%3D%271.15%27%20fill%3D%27%23ffffff%27%20opacity%3D%270.76%27%2F%3E%3Ccircle%20cx%3D%27191.7%27%20cy%3D%27156.4%27%20r%3D%270.63%27%20fill%3D%27%23ddd6fe%27%20opacity%3D%270.49%27%2F%3E%3Ccircle%20cx%3D%2776.6%27%20cy%3D%2777.1%27%20r%3D%271.18%27%20fill%3D%27%23fbcfe8%27%20opacity%3D%270.3%27%2F%3E%3Ccircle%20cx%3D%27261.1%27%20cy%3D%27313.0%27%20r%3D%271.14%27%20fill%3D%27%23fbcfe8%27%20opacity%3D%270.33%27%2F%3E%3Ccircle%20cx%3D%27303.0%27%20cy%3D%2752.8%27%20r%3D%271.13%27%20fill%3D%27%23a5f3fc%27%20opacity%3D%270.64%27%2F%3E%3Ccircle%20cx%3D%27297.3%27%20cy%3D%27241.7%27%20r%3D%271.33%27%20fill%3D%27%23fbcfe8%27%20opacity%3D%270.71%27%2F%3E%3Ccircle%20cx%3D%27318.4%27%20cy%3D%27208.0%27%20r%3D%271.03%27%20fill%3D%27%23ffffff%27%20opacity%3D%270.59%27%2F%3E%3Ccircle%20cx%3D%2779.3%27%20cy%3D%2720.5%27%20r%3D%270.53%27%20fill%3D%27%23a5f3fc%27%20opacity%3D%270.61%27%2F%3E%3Ccircle%20cx%3D%272.3%27%20cy%3D%27226.5%27%20r%3D%270.57%27%20fill%3D%27%23ffffff%27%20opacity%3D%270.29%27%2F%3E%3Ccircle%20cx%3D%27275.1%27%20cy%3D%2722.7%27%20r%3D%270.79%27%20fill%3D%27%23a5f3fc%27%20opacity%3D%270.68%27%2F%3E%3Ccircle%20cx%3D%27172.6%27%20cy%3D%27231.5%27%20r%3D%271.56%27%20fill%3D%27%23a5f3fc%27%20opacity%3D%270.62%27%2F%3E%3Ccircle%20cx%3D%27251.1%27%20cy%3D%27258.4%27%20r%3D%270.73%27%20fill%3D%27%23fbcfe8%27%20opacity%3D%270.31%27%2F%3E%3Ccircle%20cx%3D%27113.4%27%20cy%3D%27131.6%27%20r%3D%271.54%27%20fill%3D%27%23ffffff%27%20opacity%3D%270.29%27%2F%3E%3Ccircle%20cx%3D%2719.4%27%20cy%3D%27233.0%27%20r%3D%271.46%27%20fill%3D%27%23a5f3fc%27%20opacity%3D%270.32%27%2F%3E%3Ccircle%20cx%3D%2760.9%27%20cy%3D%27143.6%27%20r%3D%271.01%27%20fill%3D%27%23a5f3fc%27%20opacity%3D%270.43%27%2F%3E%3Ccircle%20cx%3D%27279.8%27%20cy%3D%2724.1%27%20r%3D%271.47%27%20fill%3D%27%23ffffff%27%20opacity%3D%270.81%27%2F%3E%3Ccircle%20cx%3D%2716.2%27%20cy%3D%27319.8%27%20r%3D%271.5%27%20fill%3D%27%23a5f3fc%27%20opacity%3D%270.88%27%2F%3E%3Ccircle%20cx%3D%2753.2%27%20cy%3D%27155.4%27%20r%3D%270.76%27%20fill%3D%27%23ffffff%27%20opacity%3D%270.51%27%2F%3E%3Ccircle%20cx%3D%2740%27%20cy%3D%2760%27%20r%3D%272.2%27%20fill%3D%27%23ffffff%27%20opacity%3D%270.95%27%2F%3E%3Ccircle%20cx%3D%27250%27%20cy%3D%27200%27%20r%3D%272.2%27%20fill%3D%27%23ffffff%27%20opacity%3D%270.95%27%2F%3E%3Ccircle%20cx%3D%27150%27%20cy%3D%27290%27%20r%3D%272.2%27%20fill%3D%27%23ffffff%27%20opacity%3D%270.95%27%2F%3E%3C%2Fsvg%3E");
+  --glow-cyan: 0 0 24px rgba(34, 211, 238, 0.45);
+  --glow-violet: 0 0 24px rgba(167, 139, 250, 0.45);
+  --glow-lime: 0 0 18px rgba(163, 230, 53, 0.4);
+}
+
+@keyframes shimmer-x {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+@keyframes float-y {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-7px); }
+}
+
+@keyframes pulse-glow {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+
+/* Animated neon gradient text — Units counters, hero numbers. */
+.units-shimmer {
+  background: linear-gradient(
+    110deg,
+    #ffffff 12%,
+    #67e8f9 36%,
+    #c4b5fd 54%,
+    #a3e635 68%,
+    #ffffff 88%
+  );
+  background-size: 220% auto;
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  animation: shimmer-x 4s linear infinite;
+}
+
+/* Glassmorphism surface — pair with a theme's surface color. */
+.glass {
+  background: color-mix(in oklab, var(--color-surface) 58%, transparent);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid color-mix(in oklab, var(--color-ink) 12%, transparent);
+}
+
+/* Drawing / art canvases keep a deep-space surface in every theme. */
+.art-surface {
+  background:
+    radial-gradient(ellipse 80% 60% at 50% 0%, rgba(124, 58, 237, 0.16), transparent 70%),
+    #0b0b1e;
+}
+
 /* ------------------------------------------------------------------ */
 /* Workspace themes — one world per role. Applied at the workspace     */
 /* root (pillarpath-app + demo AppShell). Marketing, landing, and      */
@@ -128,43 +194,48 @@
   --font-display: "Fraunces", ui-serif, Georgia, serif;
 }
 
-/* Child — "playground": bright, chunky, sticker-joyful. */
+/* Child — "cosmic playground": deep-space dark, neon glow, glass. */
 .theme-child {
-  --color-bg: #fff7ea;
-  --color-bg-deep: #fbeed7;
-  --color-surface: #ffffff;
-  --color-surface-2: #fff1da;
-  --color-ink: #2a2118;
-  --color-muted: #7c6b57;
-  --color-subtle: #ab9a82;
-  --color-accent: #2fa15e;
-  --color-accent-foreground: #062a18;
-  --color-accent-soft: #ddf2e4;
-  --color-border: #f0e2c8;
-  --color-danger: #e26d5a;
-  --color-danger-foreground: #fff7f2;
-  --color-danger-soft: #fbe2da;
-  --color-success: #1f8a4c;
-  --color-success-foreground: #ffffff;
-  --color-success-soft: #ddf2e4;
-  --color-warn: #9a6b1a;
-  --color-warn-soft: #faedcb;
-  --color-vault: #6c4ab0;
-  --color-vault-foreground: #fff6e9;
+  --color-bg: #060614;
+  --color-bg-deep: #0a0a1e;
+  --color-surface: #14142b;
+  --color-surface-2: #1d1d38;
+  --color-ink: #f1f3ff;
+  --color-muted: #a6abd0;
+  --color-subtle: #6f749e;
+  --color-accent: #22d3ee;
+  --color-accent-foreground: #04121a;
+  --color-accent-soft: rgba(34, 211, 238, 0.12);
+  --color-border: rgba(148, 163, 255, 0.16);
+  --color-danger: #ff7d9c;
+  --color-danger-foreground: #2b0a14;
+  --color-danger-soft: rgba(255, 125, 156, 0.14);
+  --color-success: #a3e635;
+  --color-success-foreground: #17230a;
+  --color-success-soft: rgba(163, 230, 53, 0.13);
+  --color-warn: #fcd34d;
+  --color-warn-soft: rgba(252, 211, 77, 0.13);
+  --color-vault: #221447;
+  --color-vault-foreground: #f0eaff;
+  --color-candy: #22d3ee;
+  --color-coral: #f0abfc;
   --font-display: "Baloo 2", ui-rounded, "Arial Rounded MT Bold", system-ui, sans-serif;
   --radius-sm: 1rem;
   --radius-md: 1.375rem;
   --radius-lg: 1.875rem;
   --radius-xl: 2.375rem;
   --shadow-border:
-    0px 0px 0px 2px rgba(42, 33, 24, 0.05),
-    0px 14px 30px -20px rgba(190, 130, 60, 0.45);
+    0px 0px 0px 1px rgba(148, 163, 255, 0.14),
+    0px 14px 34px -18px rgba(34, 211, 238, 0.28);
   --shadow-border-hover:
-    0px 0px 0px 2px rgba(42, 33, 24, 0.09),
-    0px 18px 34px -20px rgba(190, 130, 60, 0.55);
+    0px 0px 0px 1px rgba(148, 163, 255, 0.22),
+    0px 18px 40px -18px rgba(34, 211, 238, 0.4);
+  background-color: var(--color-bg);
   background-image:
-    radial-gradient(circle at 85% -5%, color-mix(in oklab, var(--color-candy) 16%, transparent), transparent 42%),
-    radial-gradient(circle at 8% 6%, color-mix(in oklab, var(--color-coral) 10%, transparent), transparent 36%);
+    var(--cosmic-stars),
+    radial-gradient(ellipse 75% 42% at 85% -5%, rgba(124, 58, 237, 0.32), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 4% 12%, rgba(34, 211, 238, 0.16), transparent 70%),
+    radial-gradient(ellipse 70% 55% at 50% 112%, rgba(240, 171, 252, 0.12), transparent 70%);
 }
 
 /* Teacher — "classroom": chalkboard green, chalk ink, amber highlighter. */
@@ -217,46 +288,181 @@
   letter-spacing: 0.01em;
 }
 
-/* ---- Child: playground details ---- */
+/* ---- Child: cosmic playground details ---- */
 .theme-child .screen-enter > header {
   position: relative;
 }
 
+/* Neon gradient headlines */
 .theme-child .screen-enter > header h1 {
   letter-spacing: -0.01em;
+  background: linear-gradient(100deg, #f4f6ff 15%, #67e8f9 52%, #c4b5fd 85%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 0 14px rgba(34, 211, 238, 0.35));
 }
 
 .theme-child .screen-enter > header p:first-child {
   color: var(--color-accent);
   font-weight: 800;
-  letter-spacing: 0.06em;
+  font-size: 0.72rem;
+  letter-spacing: 0.14em;
   text-transform: uppercase;
 }
 
-/* Sticker star on every child screen header */
+/* Floating glow orb on every child screen header */
 .theme-child .screen-enter > header::after {
   content: "";
   position: absolute;
-  top: -0.3rem;
+  top: -0.5rem;
   right: 0.25rem;
-  width: 2rem;
-  height: 2rem;
-  background: var(--color-candy);
-  clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%, 21% 91%, 32% 57%, 2% 35%, 39% 35%);
-  transform: rotate(14deg);
-  opacity: 0.95;
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 9999px;
+  background: radial-gradient(circle at 35% 32%, #cffafe 0%, #22d3ee 42%, #7c3aed 100%);
+  box-shadow:
+    0 0 18px rgba(34, 211, 238, 0.85),
+    0 0 46px rgba(124, 58, 237, 0.55);
+  animation: float-y 5.5s ease-in-out infinite;
   pointer-events: none;
 }
 
+/* Glassmorphism cards */
 .theme-child [data-slot="card"] {
-  border: 2px solid var(--color-border);
+  border: 1px solid rgba(148, 163, 255, 0.16);
+  background: linear-gradient(180deg, rgba(32, 32, 62, 0.66), rgba(18, 18, 40, 0.66));
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  box-shadow:
+    0 0 0 1px rgba(148, 163, 255, 0.05),
+    0 16px 40px -20px rgba(34, 211, 238, 0.3);
 }
 
-/* Sticker badges */
+/* Vault nebula card */
+.theme-child .bg-vault {
+  background: linear-gradient(150deg, #251659 0%, #2e1a5e 52%, #14264f 100%);
+  border: 1px solid rgba(167, 139, 250, 0.4);
+  box-shadow:
+    0 0 26px rgba(124, 58, 237, 0.4),
+    0 18px 44px -18px rgba(124, 58, 237, 0.55);
+}
+
+/* Spendable hero — deep nebula, neon rim, shimmering number */
+.theme-child .units-hero {
+  position: relative;
+  background: linear-gradient(135deg, #1c1145 0%, #2b1a5e 48%, #0d2b42 100%);
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  box-shadow:
+    0 0 0 1px rgba(167, 139, 250, 0.18),
+    0 0 34px rgba(34, 211, 238, 0.3),
+    0 20px 48px -18px rgba(124, 58, 237, 0.55);
+  overflow: hidden;
+}
+
+.theme-child .units-hero::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(circle at 88% 12%, rgba(34, 211, 238, 0.28), transparent 46%),
+    radial-gradient(circle at 8% 92%, rgba(240, 171, 252, 0.2), transparent 44%);
+  pointer-events: none;
+}
+
+.theme-child .units-hero > * {
+  position: relative;
+}
+
+/* Neon badges */
 .theme-child [data-slot="badge"] {
-  border: 2px solid rgba(255, 255, 255, 0.9);
-  box-shadow: 0 2px 0 rgba(42, 33, 24, 0.16);
-  transform: rotate(-4deg);
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow: 0 0 12px rgba(34, 211, 238, 0.4);
+  transform: none;
+}
+
+/* Neon primary buttons */
+.theme-child [data-slot="button"].bg-accent {
+  box-shadow:
+    0 0 16px rgba(34, 211, 238, 0.45),
+    0 6px 18px -8px rgba(34, 211, 238, 0.6);
+}
+
+.theme-child [data-slot="button"].bg-accent:active {
+  box-shadow: 0 0 28px rgba(34, 211, 238, 0.75);
+}
+
+/* No sticker tilt in the cosmic theme */
+.theme-child .tilt-l,
+.theme-child .tilt-r {
+  transform: none;
+}
+
+/* Glowing progress bars */
+.theme-child [role="progressbar"] > div {
+  box-shadow: 0 0 12px rgba(163, 230, 53, 0.55);
+}
+
+/* Marketplace cards */
+.theme-child .market-card {
+  border: 1px solid rgba(148, 163, 255, 0.16);
+  background: linear-gradient(180deg, rgba(32, 32, 62, 0.6), rgba(16, 16, 36, 0.6));
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  transition:
+    transform 160ms ease-out,
+    box-shadow 220ms ease-out,
+    border-color 220ms ease-out;
+}
+
+.theme-child .market-card:hover {
+  border-color: rgba(34, 211, 238, 0.55);
+  box-shadow:
+    0 0 22px rgba(34, 211, 238, 0.32),
+    0 14px 34px -18px rgba(34, 211, 238, 0.5);
+}
+
+.theme-child .market-card:active {
+  transform: scale(0.96);
+}
+
+/* Bottom dock — dark glass with a neon rim */
+.theme-child .child-dock {
+  background: rgba(8, 8, 24, 0.8);
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  border-top: 1px solid rgba(34, 211, 238, 0.3);
+  box-shadow: 0 -12px 40px rgba(34, 211, 238, 0.16);
+}
+
+.theme-child .child-dock .bg-accent-soft {
+  border: 1px solid rgba(34, 211, 238, 0.4);
+  box-shadow:
+    0 0 16px rgba(34, 211, 238, 0.35),
+    inset 0 0 12px rgba(34, 211, 238, 0.14);
+}
+
+/* Sticky top bar — dark glass with neon underline */
+.theme-child header.sticky {
+  background: rgba(6, 6, 20, 0.74);
+  border-bottom: 1px solid rgba(34, 211, 238, 0.24);
+  box-shadow: 0 10px 30px -12px rgba(34, 211, 238, 0.28);
+}
+
+/* Tab lists */
+.theme-child [role="tablist"] {
+  border-radius: 1.25rem;
+  border: 1px solid rgba(148, 163, 255, 0.14);
+  background: rgba(12, 12, 30, 0.6);
+}
+
+.theme-child [role="tab"] {
+  border-radius: 0.9rem;
+  font-weight: 800;
+}
+
+.theme-child [role="tab"][aria-selected="true"] {
+  box-shadow: 0 0 14px rgba(34, 211, 238, 0.3);
 }
 
 .theme-child .screen-enter button:not([role="tab"]) {
@@ -265,10 +471,6 @@
 
 .theme-child .screen-enter .font-mono {
   font-weight: 800;
-}
-
-.theme-child nav {
-  border-top-color: color-mix(in oklab, var(--color-accent) 25%, var(--color-border));
 }
 
 .theme-child.paper-grain {
@@ -354,23 +556,6 @@
     outline: 2px solid var(--color-accent);
     outline-offset: 2px;
   }
-}
-
-.theme-child nav {
-  border-top-color: color-mix(in oklab, var(--color-accent) 25%, var(--color-border));
-}
-
-.theme-child nav button {
-  border-radius: 1rem;
-}
-
-.theme-child [role="tablist"] {
-  border-radius: 1.25rem;
-}
-
-.theme-child [role="tab"] {
-  border-radius: 0.9rem;
-  font-weight: 800;
 }
 
 .theme-parent [role="tab"] {

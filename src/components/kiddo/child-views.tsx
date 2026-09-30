@@ -110,14 +110,14 @@ export function ChildHome() {
 
       <FrozenBanner />
 
-      <div className="tilt-r overflow-hidden rounded-xl bg-ink p-5 text-bg shadow-[var(--shadow-border)]">
-        <p className="text-xs font-medium uppercase tracking-wider text-bg/60">
+      <div className="units-hero tilt-r overflow-hidden rounded-xl p-5 shadow-[var(--shadow-border)]">
+        <p className="text-xs font-medium uppercase tracking-wider text-white/60">
           Spendable
         </p>
-        <p className="mt-1 font-display text-5xl font-semibold tracking-tight tabular-nums">
+        <p className="units-shimmer mt-1 font-hero text-5xl font-bold tracking-tight tabular-nums">
           {formatUnits(balance)}
         </p>
-        <p className="mt-1 text-sm text-bg/70">Pillar Units · {available} available</p>
+        <p className="mt-1 text-sm text-white/70">Pillar Units · {available} available</p>
       </div>
 
       <Card className="tilt-l bg-vault p-5 text-vault-foreground">
@@ -300,7 +300,7 @@ export function ChildMarket() {
             key={p.id}
             type="button"
             onClick={() => selectProduct(p.id)}
-            className="overflow-hidden rounded-xl bg-surface p-0 text-left shadow-[var(--shadow-border)] transition-[scale,box-shadow] duration-150 ease-out active:scale-[0.96]"
+            className="market-card overflow-hidden rounded-xl bg-surface p-0 text-left shadow-[var(--shadow-border)] transition-[scale,box-shadow] duration-150 ease-out active:scale-[0.96]"
           >
             <div className="flex h-24 items-center justify-center bg-surface-2 text-ink">
               <ProductIcon name={p.icon} className="size-9" />
