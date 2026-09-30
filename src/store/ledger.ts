@@ -1,0 +1,606 @@
+import { create } from "zustand";
+import { persist, createJSONStorage } from "zustand/middleware";
+import { PRODUCTS, type Product } from "@/lib/products";
+import { CHORE_SEED, type ChoreCategory, type ChoreTemplate } from "@/lib/chores";
+import { uid } from "@/lib/utils";
+
+export type Role = "parent" | "child";
+
+export type Screen =
+  | "home"
+  | "load"
+  | "award"
+  | "vault"
+  | "history"
+  | "market"
+  | "confirm"
+  | "studio"
+  | "learn"
+  | "classroom"
+  | "chores"
+  | "gallery"
+  | "give"
+  | "showcase";
+
+export type HistoryKind =
+  | "credit"
+  | "debit"
+  | "transfer"
+  | "event"
+  | "cashout";
+
+export type HistoryEvent = {
+  id: string;
+  kind: HistoryKind;
+  amount: number;
+  note: string;
+  at: string;
+};
+
+export type PendingPurchase = {
+  id: string;
+  productId: string;
+  name: string;
+  price: number;
+  icon: Product["icon"];
+};
+
+export type PendingChore = {
+  id: string;
+  choreId: string;
+  name: string;
+  amount: number;
+};
+
+export type SavedDrawing = {
+  id: string;
+  dataUrl: string;
+  at: string;
+  missionId?: string;
+  title?: string;
+};
+
+export type MatchRate = 0 | 0.5 | 1;
+
+const DAY_MS = 86_400_000;
+const MATURITY_DAYS = 28;
+const VAULT_TARGET = 70;
+const STORAGE_KEY = "kiddo-ledger-v2";
+
+function nowIso() {
+  return new Date().toISOString();
+}
+
+function openingState() {
+  const opened = Date.now() - 10 * DAY_MS;
+  return {
+    consent: false,
+    frozen: false,
+    childName: "Alex",
+    childAge: 10,
+    balance: 42,
+    vault: 25,
+    vaultTarget: VAULT_TARGET,
+    vaultGoal: "College Fund",
+    vaultOpenedAt: opened,
+    demoDaysAdvanced: 0,
+    matchRate: 0.5 as MatchRate,
+    pendingPurchases: [] as PendingPurchase[],
+    pendingChores: [] as PendingChore[],
+    completedChoreIds: [] as string[],
+    history: [
+      {
+        id: uid("evt"),
+        kind: "credit" as const,
+        amount: 42,
+        note: "Opening spendable balance",
+        at: nowIso(),
+      },
+      {
+        id: uid("evt"),
+        kind: "transfer" as const,
+        amount: 25,
+        note: "Opening vault · College Fund",
+        at: new Date(opened).toISOString(),
+      },
+    ] as HistoryEvent[],
+    drawings: [] as SavedDrawing[],
+    completedMissionIds: [] as string[],
+    studioXp: 0,
+    studioStreak: 1,
+    lastStudioDay: "",
+    gameWins: 0,
+    studioTeam: null as string | null,
+    ownedPacks: [] as string[],
+    choreCatalog: CHORE_SEED.map((c) => ({ ...c })),
+    disabledChoreIds: [] as string[],
+  };
+}
+
+type LedgerData = ReturnType<typeof openingState>;
+
+type LedgerState = LedgerData & {
+  role: Role;
+  screen: Screen;
+  selectedProductId: string | null;
+  setRole: (role: Role) => void;
+  setScreen: (screen: Screen) => void;
+  selectProduct: (id: string) => void;
+  verifyConsent: () => string | null;
+  toggleFreeze: () => string;
+  loadUnits: (amount: number) => string | null;
+  awardUnits: (amount: number, reason: string) => string | null;
+  debitUnits: (amount: number, note: string) => string | null;
+  creditUnits: (amount: number, note: string) => string | null;
+  requestPurchase: (productId: string) => string | null;
+  approvePurchase: (id: string) => string | null;
+  denyPurchase: (id: string) => string | null;
+  completeChore: (choreId: string) => string | null;
+  approveChore: (id: string) => string | null;
+  denyChore: (id: string) => string | null;
+  addChore: (input: {
+    name: string;
+    amount: number;
+    category: ChoreCategory;
+  }) => string | null;
+  updateChore: (
+    id: string,
+    input: { name: string; amount: number; category: ChoreCategory },
+  ) => string | null;
+  toggleChore: (id: string) => void;
+  removeChore: (id: string) => void;
+  lockUnits: (amount: number) => string | null;
+  setMatchRate: (rate: MatchRate) => string;
+  advanceVaultDays: (days: number) => string;
+  releaseVault: () => string | null;
+  saveDrawing: (dataUrl: string, meta?: { missionId?: string; title?: string }) => string;
+  clearDrawings: () => void;
+  setChildAge: (age: number) => void;
+  completeStudioMission: (missionId: string, xp: number) => string | null;
+  awardStudioWin: (xp: number, units: number, note: string) => string | null;
+  buyStudioPack: (packId: string, cost: number) => string | null;
+  joinStudioTeam: (team: string) => void;
+  touchStudioStreak: () => void;
+  resetDemo: () => void;
+  daysRemaining: () => number;
+  pendingCount: () => number;
+};
+
+function record(
+  history: HistoryEvent[],
+  kind: HistoryKind,
+  amount: number,
+  note: string,
+): HistoryEvent[] {
+  return [
+    { id: uid("evt"), kind, amount, note, at: nowIso() },
+    ...history,
+  ].slice(0, 40);
+}
+
+export const useLedger = create<LedgerState>()(
+  persist(
+    (set, get) => ({
+      ...openingState(),
+      role: "parent",
+      screen: "home",
+      selectedProductId: null,
+      setRole: (role) => {
+        const { consent, frozen } = get();
+        if (role === "child" && !consent) {
+          set({ role: "parent", screen: "home" });
+          return;
+        }
+        set({
+          role,
+          screen: "home",
+          selectedProductId: null,
+        });
+        if (role === "child" && frozen) {
+          /* still allow viewing */
+        }
+      },
+      setScreen: (screen) => set({ screen }),
+      selectProduct: (id) =>
+        set({ selectedProductId: id, screen: "confirm" }),
+      verifyConsent: () => {
+        if (get().consent) return "Consent is already verified";
+        set((s) => ({
+          consent: true,
+          history: record(
+            s.history,
+            "event",
+            0,
+            "Verifiable parental consent completed",
+          ),
+        }));
+        return null;
+      },
+      toggleFreeze: () => {
+        const next = !get().frozen;
+        set((s) => ({
+          frozen: next,
+          history: record(
+            s.history,
+            "event",
+            0,
+            next ? "Child access frozen" : "Child access restored",
+          ),
+        }));
+        return next ? "Alex is frozen" : "Alex is unfrozen";
+      },
+      loadUnits: (amount) => {
+        if (!get().consent) return "Verify parental consent first";
+        const amt = Math.max(1, Math.floor(amount));
+        set((s) => ({
+          balance: s.balance + amt,
+          history: record(
+            s.history,
+            "credit",
+            amt,
+            "Parent loaded Units (non-refundable)",
+          ),
+          screen: "home",
+        }));
+        return null;
+      },
+      awardUnits: (amount, reason) => {
+        if (!get().consent) return "Verify parental consent first";
+        const amt = Math.max(1, Math.floor(amount));
+        set((s) => ({
+          balance: s.balance + amt,
+          history: record(s.history, "credit", amt, `Awarded · ${reason}`),
+          screen: "home",
+        }));
+        return null;
+      },
+      debitUnits: (amount, note) => {
+        const s = get();
+        const amt = Math.max(1, Math.floor(amount));
+        if (amt > s.balance) return "Not enough Units";
+        set({
+          balance: s.balance - amt,
+          history: record(s.history, "debit", amt, note),
+        });
+        return null;
+      },
+      creditUnits: (amount, note) => {
+        const amt = Math.max(1, Math.floor(amount));
+        set((s) => ({
+          balance: s.balance + amt,
+          history: record(s.history, "credit", amt, note),
+        }));
+        return null;
+      },
+      requestPurchase: (productId) => {
+        const s = get();
+        if (s.frozen) return "Access is frozen by your parent";
+        const product = PRODUCTS.find((p) => p.id === productId);
+        if (!product) return "Item not found";
+        const reserved = s.pendingPurchases.reduce((sum, p) => sum + p.price, 0);
+        const available = s.balance - reserved;
+        if (product.price > available) {
+          return available > 0
+            ? `Only ${available} Units are available after pending requests`
+            : "Your available Units are already reserved";
+        }
+        if (s.pendingPurchases.some((p) => p.productId === productId)) {
+          return "This request is already waiting";
+        }
+        set({
+          pendingPurchases: [
+            {
+              id: uid("buy"),
+              productId: product.id,
+              name: product.name,
+              price: product.price,
+              icon: product.icon,
+            },
+            ...s.pendingPurchases,
+          ],
+          screen: "home",
+          selectedProductId: null,
+        });
+        return null;
+      },
+      approvePurchase: (id) => {
+        const s = get();
+        const item = s.pendingPurchases.find((p) => p.id === id);
+        if (!item) return "Request not found";
+        if (item.price > s.balance) return "Insufficient Units";
+        set({
+          balance: s.balance - item.price,
+          pendingPurchases: s.pendingPurchases.filter((p) => p.id !== id),
+          history: record(
+            s.history,
+            "debit",
+            item.price,
+            `Marketplace · ${item.name}`,
+          ),
+        });
+        return null;
+      },
+      denyPurchase: (id) => {
+        const s = get();
+        const item = s.pendingPurchases.find((p) => p.id === id);
+        set({
+          pendingPurchases: s.pendingPurchases.filter((p) => p.id !== id),
+          history: record(
+            s.history,
+            "event",
+            0,
+            item ? `Denied · ${item.name}` : "Purchase denied",
+          ),
+        });
+        return null;
+      },
+      completeChore: (choreId) => {
+        const s = get();
+        if (s.frozen) return "Access is frozen by your parent";
+        const chore = s.choreCatalog.find((c) => c.id === choreId);
+        if (!chore) return "Goal not found";
+        if (s.disabledChoreIds.includes(choreId)) return "This goal is turned off";
+        if (s.completedChoreIds.includes(choreId)) return "Already completed";
+        if (s.pendingChores.some((c) => c.choreId === choreId)) {
+          return "Waiting on parent";
+        }
+        set({
+          pendingChores: [
+            {
+              id: uid("chore"),
+              choreId,
+              name: chore.name,
+              amount: chore.amount,
+            },
+            ...s.pendingChores,
+          ],
+        });
+        return null;
+      },
+      approveChore: (id) => {
+        const s = get();
+        const item = s.pendingChores.find((c) => c.id === id);
+        if (!item) return "Request not found";
+        if (!s.consent) return "Verify parental consent first";
+        set({
+          balance: s.balance + item.amount,
+          pendingChores: s.pendingChores.filter((c) => c.id !== id),
+          completedChoreIds: [...s.completedChoreIds, item.choreId],
+          history: record(
+            s.history,
+            "credit",
+            item.amount,
+            `Chore approved · ${item.name}`,
+          ),
+        });
+        return null;
+      },
+      denyChore: (id) => {
+        const s = get();
+        const item = s.pendingChores.find((c) => c.id === id);
+        set({
+          pendingChores: s.pendingChores.filter((c) => c.id !== id),
+          history: record(
+            s.history,
+            "event",
+            0,
+            item ? `Chore not approved · ${item.name}` : "Chore denied",
+          ),
+        });
+        return null;
+      },
+      addChore: (input) => {
+        const name = input.name.trim();
+        if (!name) return "Give the chore a name";
+        const amount = Math.max(1, Math.floor(input.amount) || 1);
+        const chore: ChoreTemplate = {
+          id: uid("chore-tpl"),
+          name,
+          amount,
+          category: input.category,
+        };
+        set((s) => ({ choreCatalog: [...s.choreCatalog, chore] }));
+        return null;
+      },
+      updateChore: (id, input) => {
+        const name = input.name.trim();
+        if (!name) return "Give the chore a name";
+        const amount = Math.max(1, Math.floor(input.amount) || 1);
+        set((s) => ({
+          choreCatalog: s.choreCatalog.map((c) =>
+            c.id === id ? { ...c, name, amount, category: input.category } : c,
+          ),
+        }));
+        return null;
+      },
+      toggleChore: (id) => {
+        set((s) => ({
+          disabledChoreIds: s.disabledChoreIds.includes(id)
+            ? s.disabledChoreIds.filter((c) => c !== id)
+            : [...s.disabledChoreIds, id],
+        }));
+      },
+      removeChore: (id) => {
+        set((s) => ({
+          choreCatalog: s.choreCatalog.filter((c) => c.id !== id),
+          disabledChoreIds: s.disabledChoreIds.filter((c) => c !== id),
+          pendingChores: s.pendingChores.filter((c) => c.choreId !== id),
+        }));
+      },
+      lockUnits: (amount) => {
+        const s = get();
+        if (s.frozen) return "Access is frozen by your parent";
+        const amt = Math.max(1, Math.floor(amount));
+        if (amt > s.balance) return "Not enough Units";
+        const match = Math.floor(amt * s.matchRate);
+        set({
+          balance: s.balance - amt,
+          vault: s.vault + amt + match,
+          history: record(
+            s.history,
+            "transfer",
+            amt,
+            match
+              ? `Locked in Vault · parent matched ${match}`
+              : "Locked in Vault",
+          ),
+          screen: "home",
+        });
+        return null;
+      },
+      setMatchRate: (rate) => {
+        set({ matchRate: rate });
+        return "Matching preference saved";
+      },
+      advanceVaultDays: (days) => {
+        set((s) => ({ demoDaysAdvanced: s.demoDaysAdvanced + days }));
+        return `Advanced ${days} days`;
+      },
+      releaseVault: () => {
+        const s = get();
+        if (get().daysRemaining() > 0) return "Vault has not matured yet";
+        if (s.vault <= 0) return "Vault is empty";
+        const amt = s.vault;
+        set({
+          vault: 0,
+          vaultOpenedAt: Date.now(),
+          demoDaysAdvanced: 0,
+          history: record(
+            s.history,
+            "cashout",
+            amt,
+            "Vault matured · cash payout marked for Alex",
+          ),
+        });
+        return null;
+      },
+      saveDrawing: (dataUrl, meta) => {
+        set((s) => ({
+          drawings: [
+            {
+              id: uid("draw"),
+              dataUrl,
+              at: nowIso(),
+              missionId: meta?.missionId,
+              title: meta?.title,
+            },
+            ...s.drawings,
+          ].slice(0, 12),
+        }));
+        return "Design saved";
+      },
+      clearDrawings: () => set({ drawings: [] }),
+      setChildAge: (age) => {
+        const next = Math.min(17, Math.max(5, Math.floor(age) || 10));
+        set({ childAge: next });
+      },
+      completeStudioMission: (missionId, xp) => {
+        const s = get();
+        const done = s.completedMissionIds ?? [];
+        if (done.includes(missionId)) return "Mission already complete";
+        set({
+          completedMissionIds: [missionId, ...done],
+          studioXp: (s.studioXp ?? 0) + Math.max(0, Math.floor(xp)),
+          history: record(s.history, "event", 0, `Studio mission · ${missionId}`),
+        });
+        return null;
+      },
+      awardStudioWin: (xp, units, note) => {
+        const s = get();
+        if (s.frozen) return "Account is frozen";
+        const credit = Math.max(0, Math.floor(units));
+        set({
+          studioXp: (s.studioXp ?? 0) + Math.max(0, Math.floor(xp)),
+          gameWins: (s.gameWins ?? 0) + 1,
+          balance: s.balance + credit,
+          history: record(s.history, "credit", credit, note),
+        });
+        return null;
+      },
+      buyStudioPack: (packId, cost) => {
+        const s = get();
+        const owned = s.ownedPacks ?? [];
+        if (owned.includes(packId)) return "Already owned";
+        if (s.balance < cost) return "Not enough Units";
+        set({
+          balance: s.balance - cost,
+          ownedPacks: [...owned, packId],
+          history: record(s.history, "debit", cost, `Studio pack · ${packId}`),
+        });
+        return null;
+      },
+      joinStudioTeam: (team) => set({ studioTeam: team }),
+      touchStudioStreak: () => {
+        const today = new Date().toISOString().slice(0, 10);
+        const s = get();
+        if (s.lastStudioDay === today) return;
+        const yesterday = new Date(Date.now() - DAY_MS).toISOString().slice(0, 10);
+        set({
+          lastStudioDay: today,
+          studioStreak: s.lastStudioDay === yesterday ? (s.studioStreak ?? 0) + 1 : 1,
+        });
+      },
+      resetDemo: () => {
+        const next = openingState();
+        set({
+          ...next,
+          role: "parent",
+          screen: "home",
+          selectedProductId: null,
+        });
+      },
+      daysRemaining: () => {
+        const s = get();
+        const elapsed = Math.floor(
+          (Date.now() - s.vaultOpenedAt) / DAY_MS + s.demoDaysAdvanced,
+        );
+        return Math.max(0, MATURITY_DAYS - elapsed);
+      },
+      pendingCount: () => {
+        const s = get();
+        return s.pendingPurchases.length + s.pendingChores.length;
+      },
+    }),
+    {
+      name: STORAGE_KEY,
+      storage: createJSONStorage(() => {
+        if (typeof window === "undefined") {
+          return {
+            getItem: () => null,
+            setItem: () => {},
+            removeItem: () => {},
+          };
+        }
+        return localStorage;
+      }),
+      skipHydration: true,
+      partialize: (state) => ({
+        consent: state.consent,
+        frozen: state.frozen,
+        childName: state.childName,
+        childAge: state.childAge,
+        balance: state.balance,
+        vault: state.vault,
+        vaultTarget: state.vaultTarget,
+        vaultGoal: state.vaultGoal,
+        vaultOpenedAt: state.vaultOpenedAt,
+        demoDaysAdvanced: state.demoDaysAdvanced,
+        matchRate: state.matchRate,
+        pendingPurchases: state.pendingPurchases,
+        pendingChores: state.pendingChores,
+        completedChoreIds: state.completedChoreIds,
+        history: state.history,
+        drawings: state.drawings,
+        completedMissionIds: state.completedMissionIds,
+        studioXp: state.studioXp,
+        studioStreak: state.studioStreak,
+        lastStudioDay: state.lastStudioDay,
+        gameWins: state.gameWins,
+        studioTeam: state.studioTeam,
+        ownedPacks: state.ownedPacks,
+      }),
+    },
+  ),
+);
+
+export { MATURITY_DAYS };

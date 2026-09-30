@@ -1,0 +1,253 @@
+@import "tailwindcss";
+
+@theme {
+  --color-bg: #050505;
+  --color-bg-deep: #090909;
+  --color-surface: #111111;
+  --color-surface-2: #181818;
+  --color-ink: #f4f4f1;
+  --color-muted: #a5a5a0;
+  --color-subtle: #777772;
+  --color-accent: #45c58a;
+  --color-accent-foreground: #06100b;
+  --color-accent-soft: #10291d;
+  --color-border: #292929;
+  --color-danger: #f06b6b;
+  --color-danger-foreground: #190606;
+  --color-danger-soft: #321515;
+  --color-success: #55d394;
+  --color-success-foreground: #06100b;
+  --color-success-soft: #10291d;
+  --color-warn: #f1bd59;
+  --color-warn-soft: #30240f;
+  --color-vault: #0e2820;
+  --color-vault-foreground: #e4fff1;
+  --color-paper: #000000;
+
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, "Times New Roman", serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+
+  --radius-sm: 0.625rem;
+  --radius-md: 0.875rem;
+  --radius-lg: 1.25rem;
+  --radius-xl: 1.75rem;
+
+  --shadow-border:
+    0px 0px 0px 1px rgba(255, 255, 255, 0.07),
+    0px 8px 24px -16px rgba(0, 0, 0, 0.9);
+  --shadow-border-hover:
+    0px 0px 0px 1px rgba(255, 255, 255, 0.12),
+    0px 12px 28px -18px rgba(0, 0, 0, 0.95);
+}
+
+@layer base {
+  html {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    background: #000;
+  }
+
+  button:not(:disabled),
+  [role="button"]:not(:disabled) {
+    cursor: pointer;
+  }
+
+  body {
+    margin: 0;
+    background: #000;
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    line-height: 1.5;
+  }
+
+  h1,
+  h2,
+  h3 {
+    text-wrap: balance;
+  }
+
+  p {
+    text-wrap: pretty;
+  }
+}
+
+.paper-grain {
+  background-color: #000;
+  background-image:
+    radial-gradient(circle at 50% -10%, color-mix(in oklab, var(--color-accent) 12%, transparent), transparent 34%),
+    repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      color-mix(in oklab, white 1.5%, transparent) 3px,
+      color-mix(in oklab, white 1.5%, transparent) 4px
+    );
+}
+
+/* The parent experience is calm, compact, and dashboard-like. */
+.app-parent {
+  --color-bg: #090909;
+  --color-bg-deep: #050505;
+  --color-surface: #111111;
+  --color-surface-2: #191919;
+  --color-ink: #f4f4f1;
+  --color-muted: #a4a49e;
+  --color-subtle: #777771;
+  --color-accent: #45c58a;
+  --color-accent-foreground: #06100b;
+  --color-accent-soft: #10291d;
+  --color-border: #2b2b2b;
+  --color-vault: #0e2820;
+  --color-vault-foreground: #e4fff1;
+  --font-sans: "Outfit", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Fraunces", ui-serif, Georgia, serif;
+}
+
+/* The child experience is brighter, rounder, and more playful while staying on the black shell. */
+.app-child {
+  --color-bg: #080b12;
+  --color-bg-deep: #05070b;
+  --color-surface: #101621;
+  --color-surface-2: #172131;
+  --color-ink: #f7f9ff;
+  --color-muted: #aab5c8;
+  --color-subtle: #7d8aa0;
+  --color-accent: #5ed4ff;
+  --color-accent-foreground: #06121a;
+  --color-accent-soft: #102b3b;
+  --color-border: #273448;
+  --color-vault: #272047;
+  --color-vault-foreground: #fff7cf;
+  --color-success: #8eea9f;
+  --color-success-soft: #183522;
+  --color-warn: #ffd36a;
+  --color-warn-soft: #35280f;
+  --font-sans: ui-rounded, "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+  --font-display: ui-rounded, "Arial Rounded MT Bold", "Trebuchet MS", system-ui, sans-serif;
+}
+
+.app-child .screen-enter > header h1 {
+  letter-spacing: -0.035em;
+}
+
+.app-child .screen-enter > header p:first-child {
+  color: var(--color-accent);
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.app-child .screen-enter .rounded-xl,
+.app-child .screen-enter .rounded-lg {
+  border-radius: 1.35rem;
+}
+
+.app-child .screen-enter button:not([role="tab"]) {
+  border-radius: 1rem;
+  font-weight: 800;
+}
+
+.app-child .screen-enter .bg-surface-2 {
+  box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--color-accent) 9%, transparent);
+}
+
+.app-child .screen-enter .font-mono {
+  font-weight: 800;
+}
+
+.app-parent .screen-enter > header h1 {
+  letter-spacing: -0.025em;
+}
+
+.app-parent .screen-enter > header p:first-child {
+  color: var(--color-accent);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.app-parent .screen-enter > .rounded-xl,
+.app-parent .screen-enter > .rounded-lg,
+.app-parent .screen-enter > [class*="shadow"] {
+  box-shadow: var(--shadow-border);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+.screen-enter {
+  animation: rise-in 250ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.stagger-1 { animation-delay: 40ms; }
+.stagger-2 { animation-delay: 80ms; }
+.stagger-3 { animation-delay: 120ms; }
+.stagger-4 { animation-delay: 160ms; }
+
+@layer base {
+  button:focus-visible,
+  [role="button"]:focus-visible,
+  input:focus-visible,
+  select:focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+.app-child nav {
+  border-top-color: color-mix(in oklab, var(--color-accent) 18%, var(--color-border));
+}
+
+.app-child nav button {
+  border-radius: 1rem;
+}
+
+.app-child [role="tablist"] {
+  border-radius: 1rem;
+}
+
+.app-child [role="tab"] {
+  border-radius: 0.8rem;
+  font-weight: 800;
+}
+
+.app-parent [role="tab"] {
+  letter-spacing: 0.01em;
+}
+
+.app-parent nav button {
+  letter-spacing: 0.01em;
+}
+
+.studio-grid::after {
+  content: "";
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--color-ink) 12%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--color-ink) 12%, transparent) 1px, transparent 1px);
+  background-size: 32px 32px;
+  mix-blend-mode: multiply;
+}

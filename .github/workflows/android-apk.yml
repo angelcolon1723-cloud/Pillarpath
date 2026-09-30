@@ -1,0 +1,52 @@
+name: Android APK (beta)
+
+on:
+  workflow_dispatch:
+    inputs:
+      web_url:
+        description: "Production web app URL the APK should load (e.g. https://pillarpath.vercel.app)"
+        required: true
+        type: string
+
+jobs:
+  build-apk:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build web app (production)
+        run: npm run build
+
+      - name: Sync Capacitor with production URL
+        run: |
+          PILLARPATH_WEB_URL="${{ inputs.web_url }}" npx cap sync android
+
+      - name: Build debug APK
+        working-directory: android
+        run: ./gradlew assembleDebug
+
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: PillarPath-beta
+          path: android/app/build/outputs/apk/debug/app-debug.apk
+          retention-days: 30

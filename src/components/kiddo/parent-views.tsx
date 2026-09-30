@@ -1,0 +1,950 @@
+import { useState } from "react";
+import {
+  ArrowDownToLine,
+  Award,
+  Check,
+  Landmark,
+  ListChecks,
+  Pencil,
+  Plus,
+  Power,
+  ShieldCheck,
+  Snowflake,
+  Sun,
+  History as HistoryIcon,
+  Ban,
+  FastForward,
+  RotateCcw,
+  Trash2,
+  HeartHandshake,
+  Images,
+} from "lucide-react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Card, CardHint, CardTitle } from "@/components/ui/card";
+import { Badge } from "@/components/ui/badge";
+import { Input, FieldLabel, NativeSelect } from "@/components/ui/input";
+import { Progress } from "@/components/ui/progress";
+import { ProductIcon } from "@/components/kiddo/product-icon";
+import { AWARD_REASONS } from "@/lib/products";
+import { CHORE_CATEGORIES, type ChoreCategory } from "@/lib/chores";
+import { formatUnits, formatWhen } from "@/lib/utils";
+import { useLedger, type MatchRate } from "@/store/ledger";
+import { useSocial } from "@/store/social";
+import { PendingGiftRows } from "@/components/kiddo/give";
+import { PendingShopRows } from "@/components/kiddo/creator-shop";
+import { PendingGalleryRows } from "@/components/kiddo/showcase";
+
+function BackButton() {
+  const setScreen = useLedger((s) => s.setScreen);
+  return (
+    <Button variant="outline" className="w-full" onClick={() => setScreen("home")}>
+      Back
+    </Button>
+  );
+}
+
+export function ParentHome() {
+  const childName = useLedger((s) => s.childName);
+  const consent = useLedger((s) => s.consent);
+  const frozen = useLedger((s) => s.frozen);
+  const balance = useLedger((s) => s.balance);
+  const vault = useLedger((s) => s.vault);
+  const vaultTarget = useLedger((s) => s.vaultTarget);
+  const vaultGoal = useLedger((s) => s.vaultGoal);
+  const pendingPurchases = useLedger((s) => s.pendingPurchases);
+  const pendingChores = useLedger((s) => s.pendingChores);
+  const reservedUnits = pendingPurchases.reduce((sum, p) => sum + p.price, 0);
+  const availableUnits = Math.max(0, balance - reservedUnits);
+  const pendingCount = useLedger((s) => s.pendingCount());
+  const gifts = useSocial((s) => s.gifts);
+  const shopOrders = useSocial((s) => s.shopOrders);
+  const posts = useSocial((s) => s.posts);
+  const contacts = useSocial((s) => s.contacts);
+  const socialPending =
+    gifts.filter((g) => g.status === "pending").length +
+    shopOrders.filter((o) => o.status === "pending").length +
+    posts.filter((p) => p.status === "pending").length +
+    contacts.filter((c) => c.status === "pending").length;
+  const allPending = pendingCount + socialPending;
+  const daysRemaining = useLedger((s) => s.daysRemaining());
+  const setScreen = useLedger((s) => s.setScreen);
+  const verifyConsent = useLedger((s) => s.verifyConsent);
+  const toggleFreeze = useLedger((s) => s.toggleFreeze);
+  const approvePurchase = useLedger((s) => s.approvePurchase);
+  const denyPurchase = useLedger((s) => s.denyPurchase);
+  const approveChore = useLedger((s) => s.approveChore);
+  const denyChore = useLedger((s) => s.denyChore);
+
+  const vaultPct = (vault / vaultTarget) * 100;
+
+  return (
+    <div className="screen-enter space-y-4">
+      <header className="stagger-1 screen-enter">
+        <p className="text-sm font-medium text-muted">Parent</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          {childName}'s ledger
+        </h1>
+        <p className="mt-1 text-sm text-muted">
+          Units load in, never cash out — until a vault matures.
+        </p>
+      </header>
+
+      <Card className="stagger-2 screen-enter space-y-0 p-2">
+        <div className="flex items-center justify-between gap-3 rounded-lg px-3 py-3">
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 items-center justify-center rounded-md bg-accent-soft text-accent">
+              <ShieldCheck className="size-5" strokeWidth={1.8} />
+            </span>
+            <div>
+              <div className="text-sm font-medium">Parental consent</div>
+              <div className="text-xs text-muted">
+                {consent ? "Verified" : "Required before loading Units"}
+              </div>
+            </div>
+          </div>
+          <Button
+            variant={consent ? "secondary" : "default"}
+            size="sm"
+            disabled={consent}
+            onClick={() => {
+              const err = verifyConsent();
+              if (err) toast.message(err);
+              else toast.success("Consent verified");
+            }}
+          >
+            {consent ? "Verified" : "Verify"}
+          </Button>
+        </div>
+        <div className="mx-3 h-px bg-border" />
+        <div className="flex items-center justify-between gap-3 rounded-lg px-3 py-3">
+          <div className="flex items-center gap-3">
+            <span className="flex size-10 items-center justify-center rounded-md bg-surface-2 text-ink">
+              {frozen ? (
+                <Snowflake className="size-5" strokeWidth={1.8} />
+              ) : (
+                <Sun className="size-5" strokeWidth={1.8} />
+              )}
+            </span>
+            <div>
+              <div className="text-sm font-medium">Child access</div>
+              <div className="text-xs text-muted">
+                {frozen ? "Frozen — spend and chores paused" : "Active"}
+              </div>
+            </div>
+          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => toast.message(toggleFreeze())}
+          >
+            {frozen ? "Unfreeze" : "Freeze"}
+          </Button>
+        </div>
+      </Card>
+
+      <div className="stagger-3 screen-enter overflow-hidden rounded-xl bg-ink p-5 text-bg shadow-[var(--shadow-border)]">
+        <p className="text-xs font-medium uppercase tracking-wider text-bg/60">
+          Spendable balance
+        </p>
+        <p className="mt-1 font-display text-5xl font-semibold tracking-tight tabular-nums">
+          {formatUnits(balance)}
+        </p>
+        <p className="mt-1 text-sm text-bg/70">
+          Pillar Units · {availableUnits} available to approve or spend
+        </p>
+      </div>
+
+      <Card className="stagger-4 screen-enter bg-vault p-5 text-vault-foreground">
+        <div className="flex items-start justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-wider text-vault-foreground/60">
+              Savings vault
+            </p>
+            <p className="mt-1 font-display text-3xl font-semibold tabular-nums">
+              {formatUnits(vault)}
+            </p>
+            <p className="mt-1 text-sm text-vault-foreground/75">
+              {vaultGoal} ·{" "}
+              {daysRemaining === 0
+                ? "Matured"
+                : `Matures in ${daysRemaining} days`}
+            </p>
+          </div>
+          <Landmark className="size-5 opacity-70" strokeWidth={1.6} />
+        </div>
+        <Progress
+          value={vaultPct}
+          className="mt-4 bg-white/15"
+          barClassName="bg-vault-foreground"
+        />
+      </Card>
+
+      <Card className="p-4">
+        <div className="mb-3 flex items-center justify-between">
+          <div>
+            <CardTitle className="text-base">Pending</CardTitle>
+            {reservedUnits > 0 ? (
+              <p className="mt-0.5 text-xs text-muted">{reservedUnits} Units reserved by purchase requests</p>
+            ) : null}
+          </div>
+          {allPending > 0 ? <Badge tone="danger">{allPending}</Badge> : null}
+        </div>
+        {allPending === 0 ? (
+          <p className="py-4 text-center text-sm text-muted">
+            No requests right now.
+          </p>
+        ) : (
+          <div className="divide-y divide-border">
+            {pendingPurchases.map((p) => (
+              <div key={p.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-surface-2 text-ink">
+                  <ProductIcon name={p.icon} className="size-5" />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{p.name}</div>
+                  <div className="text-xs text-muted">
+                    {p.price} Units · Marketplace
+                  </div>
+                </div>
+                <div className="flex gap-1.5">
+                  <Button
+                    variant="success"
+                    size="icon-sm"
+                    aria-label="Approve"
+                    onClick={() => {
+                      const err = approvePurchase(p.id);
+                      if (err) toast.error(err);
+                      else toast.success("Purchase approved");
+                    }}
+                  >
+                    <Check className="size-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label="Deny"
+                    onClick={() => {
+                      denyPurchase(p.id);
+                      toast.message("Purchase denied");
+                    }}
+                  >
+                    <Ban className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            {pendingChores.map((c) => (
+              <div key={c.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
+                  <Award className="size-5" strokeWidth={1.7} />
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="truncate text-sm font-medium">{c.name}</div>
+                  <div className="text-xs text-muted">
+                    +{c.amount} Units · Goal
+                  </div>
+                </div>
+                <div className="flex gap-1.5">
+                  <Button
+                    variant="success"
+                    size="icon-sm"
+                    aria-label="Award"
+                    onClick={() => {
+                      const err = approveChore(c.id);
+                      if (err) toast.error(err);
+                      else toast.success(`+${c.amount} Units awarded`);
+                    }}
+                  >
+                    <Check className="size-4" />
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="icon-sm"
+                    aria-label="Deny"
+                    onClick={() => {
+                      denyChore(c.id);
+                      toast.message("Goal not awarded");
+                    }}
+                  >
+                    <Ban className="size-4" />
+                  </Button>
+                </div>
+              </div>
+            ))}
+            <PendingGiftRows />
+            <PendingShopRows />
+            <PendingGalleryRows />
+          </div>
+        )}
+      </Card>
+
+      <div className="grid grid-cols-2 gap-2">
+        <Button
+          className="h-12"
+          disabled={!consent}
+          onClick={() => setScreen("load")}
+        >
+          <ArrowDownToLine className="size-4" />
+          Load Units
+        </Button>
+        <Button
+          variant="secondary"
+          className="h-12"
+          disabled={!consent}
+          onClick={() => setScreen("award")}
+        >
+          <Award className="size-4" />
+          Award
+        </Button>
+        <Button
+          variant="outline"
+          className="h-12"
+          onClick={() => setScreen("chores")}
+        >
+          <ListChecks className="size-4" />
+          Chores
+        </Button>
+        <Button variant="outline" className="h-12" onClick={() => setScreen("vault")}>
+          <Landmark className="size-4" />
+          Vault
+        </Button>
+        <Button
+          variant="outline"
+          className="h-12 col-span-2"
+          onClick={() => setScreen("history")}
+        >
+          <HistoryIcon className="size-4" />
+          History
+        </Button>
+        <Button variant="outline" className="h-12" onClick={() => setScreen("give")}>
+          <HeartHandshake className="size-4" />
+          Give & contacts
+        </Button>
+        <Button variant="outline" className="h-12" onClick={() => setScreen("showcase")}>
+          <Images className="size-4" />
+          Showcase & shop
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+export function ParentChores() {
+  const choreCatalog = useLedger((s) => s.choreCatalog);
+  const disabledChoreIds = useLedger((s) => s.disabledChoreIds);
+  const addChore = useLedger((s) => s.addChore);
+  const updateChore = useLedger((s) => s.updateChore);
+  const toggleChore = useLedger((s) => s.toggleChore);
+  const removeChore = useLedger((s) => s.removeChore);
+  const awardUnits = useLedger((s) => s.awardUnits);
+  const setScreen = useLedger((s) => s.setScreen);
+
+  const [category, setCategory] = useState<ChoreCategory | "All">("All");
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editName, setEditName] = useState("");
+  const [editAmount, setEditAmount] = useState(5);
+  const [editCategory, setEditCategory] = useState<ChoreCategory>("Household");
+  const [newName, setNewName] = useState("");
+  const [newAmount, setNewAmount] = useState(8);
+  const [newCategory, setNewCategory] = useState<ChoreCategory>("Household");
+  const [showAdd, setShowAdd] = useState(false);
+
+  const enabled = choreCatalog.filter((c) => !disabledChoreIds.includes(c.id));
+  const visible =
+    category === "All"
+      ? choreCatalog
+      : choreCatalog.filter((c) => c.category === category);
+
+  return (
+    <div className="screen-enter space-y-4">
+      <header>
+        <p className="text-sm font-medium text-muted">Earning</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          Chore catalog
+        </h1>
+        <p className="mt-1 text-sm text-muted">
+          {enabled.length} of {choreCatalog.length} earning opportunities turned
+          on. Everything your child completes flows into the Units ledger.
+        </p>
+      </header>
+
+      <div className="flex flex-wrap gap-1.5">
+        {(["All", ...CHORE_CATEGORIES] as const).map((c) => (
+          <Button
+            key={c}
+            type="button"
+            size="sm"
+            variant={category === c ? "default" : "outline"}
+            onClick={() => setCategory(c)}
+          >
+            {c}
+          </Button>
+        ))}
+      </div>
+
+      <Button onClick={() => setShowAdd((v) => !v)}>
+        <Plus className="size-4" /> {showAdd ? "Close" : "Add a chore"}
+      </Button>
+
+      {showAdd ? (
+        <Card className="space-y-3 p-4">
+          <CardTitle className="text-base">New earning opportunity</CardTitle>
+          <div className="grid gap-3 sm:grid-cols-3">
+            <div className="sm:col-span-2">
+              <FieldLabel>Name</FieldLabel>
+              <Input
+                value={newName}
+                onChange={(e) => setNewName(e.target.value)}
+                placeholder="e.g. Walk the neighbor's dog"
+              />
+            </div>
+            <div>
+              <FieldLabel>Units</FieldLabel>
+              <Input
+                type="number"
+                min={1}
+                value={newAmount}
+                onChange={(e) => setNewAmount(Number(e.target.value))}
+              />
+            </div>
+          </div>
+          <div>
+            <FieldLabel>Category</FieldLabel>
+            <NativeSelect
+              value={newCategory}
+              onChange={(e) => setNewCategory(e.target.value as ChoreCategory)}
+            >
+              {CHORE_CATEGORIES.map((c) => (
+                <option key={c} value={c}>
+                  {c}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+          <Button
+            onClick={() => {
+              const err = addChore({
+                name: newName,
+                amount: newAmount,
+                category: newCategory,
+              });
+              if (err) toast.error(err);
+              else {
+                setNewName("");
+                setNewAmount(8);
+                setShowAdd(false);
+                toast.success("Chore added to the catalog");
+              }
+            }}
+          >
+            Add chore
+          </Button>
+        </Card>
+      ) : null}
+
+      <div className="space-y-2">
+        {visible.map((c) => {
+          const disabled = disabledChoreIds.includes(c.id);
+          const editing = editingId === c.id;
+          return (
+            <Card key={c.id} className="p-3">
+              {editing ? (
+                <div className="space-y-2">
+                  <div className="grid gap-2 sm:grid-cols-2">
+                    <div>
+                      <FieldLabel>Name</FieldLabel>
+                      <Input
+                        value={editName}
+                        onChange={(e) => setEditName(e.target.value)}
+                      />
+                    </div>
+                    <div>
+                      <FieldLabel>Units</FieldLabel>
+                      <Input
+                        type="number"
+                        min={1}
+                        value={editAmount}
+                        onChange={(e) => setEditAmount(Number(e.target.value))}
+                      />
+                    </div>
+                  </div>
+                  <div>
+                    <FieldLabel>Category</FieldLabel>
+                    <NativeSelect
+                      value={editCategory}
+                      onChange={(e) =>
+                        setEditCategory(e.target.value as ChoreCategory)
+                      }
+                    >
+                      {CHORE_CATEGORIES.map((cat) => (
+                        <option key={cat} value={cat}>
+                          {cat}
+                        </option>
+                      ))}
+                    </NativeSelect>
+                  </div>
+                  <div className="flex gap-2">
+                    <Button
+                      size="sm"
+                      onClick={() => {
+                        const err = updateChore(c.id, {
+                          name: editName,
+                          amount: editAmount,
+                          category: editCategory,
+                        });
+                        if (err) toast.error(err);
+                        else {
+                          setEditingId(null);
+                          toast.success("Chore updated");
+                        }
+                      }}
+                    >
+                      <Check className="size-4" /> Save
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setEditingId(null)}
+                    >
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    aria-label={disabled ? "Turn on" : "Turn off"}
+                    onClick={() => toggleChore(c.id)}
+                    className={
+                      disabled
+                        ? "grid size-9 shrink-0 place-items-center rounded-lg border border-border text-muted"
+                        : "grid size-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent"
+                    }
+                  >
+                    <Power className="size-4" />
+                  </button>
+                  <div className="min-w-0 flex-1">
+                    <p
+                      className={
+                        disabled
+                          ? "truncate text-sm font-medium text-muted line-through"
+                          : "truncate text-sm font-medium"
+                      }
+                    >
+                      {c.name}
+                    </p>
+                    <p className="text-xs text-muted">
+                      {c.category} · {c.amount} Units
+                      {disabled ? " · off" : ""}
+                    </p>
+                  </div>
+                  {!disabled ? (
+                    <Button
+                      size="sm"
+                      variant="success"
+                      onClick={() => {
+                        const err = awardUnits(c.amount, `Chore · ${c.name}`);
+                        if (err) toast.error(err);
+                        else toast.success(`+${c.amount} Units awarded`);
+                      }}
+                    >
+                      Award
+                    </Button>
+                  ) : null}
+                  <Button
+                    size="icon-sm"
+                    variant="outline"
+                    aria-label="Edit"
+                    onClick={() => {
+                      setEditingId(c.id);
+                      setEditName(c.name);
+                      setEditAmount(c.amount);
+                      setEditCategory(c.category);
+                    }}
+                  >
+                    <Pencil className="size-4" />
+                  </Button>
+                  <Button
+                    size="icon-sm"
+                    variant="outline"
+                    aria-label="Delete"
+                    onClick={() => {
+                      removeChore(c.id);
+                      toast.message("Chore removed");
+                    }}
+                  >
+                    <Trash2 className="size-4" />
+                  </Button>
+                </div>
+              )}
+            </Card>
+          );
+        })}
+      </div>
+
+      {visible.length === 0 ? (
+        <p className="py-6 text-center text-sm text-muted">
+          No chores in this category.
+        </p>
+      ) : null}
+
+      <Button variant="outline" className="w-full" onClick={() => setScreen("home")}>
+        Back
+      </Button>
+    </div>
+  );
+}
+
+export function ParentLoad() {
+  const [amount, setAmount] = useState(20);
+  const [ack, setAck] = useState(false);
+  const loadUnits = useLedger((s) => s.loadUnits);
+
+  return (
+    <div className="screen-enter space-y-4">
+      <header>
+        <p className="text-sm font-medium text-muted">Load</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          Add Units
+        </h1>
+        <p className="mt-1 text-sm text-muted">
+          Units are for spending in the Pillarpath Marketplace or locking in the vault.
+        </p>
+      </header>
+
+      <div className="rounded-lg bg-warn-soft p-4 text-sm text-warn">
+        Once loaded, Units are not refundable as cash. Cash is only available
+        to the child when a vault reaches maturity.
+      </div>
+
+      <Card className="space-y-3">
+        <FieldLabel htmlFor="load-amount">Amount</FieldLabel>
+        <Input
+          id="load-amount"
+          type="number"
+          min={1}
+          value={amount}
+          onChange={(e) => setAmount(Number(e.target.value))}
+        />
+        <div className="flex gap-2">
+          {[10, 20, 50].map((n) => (
+            <Button
+              key={n}
+              type="button"
+              variant={amount === n ? "default" : "outline"}
+              size="sm"
+              className="flex-1"
+              onClick={() => setAmount(n)}
+            >
+              {n}
+            </Button>
+          ))}
+        </div>
+        <label className="flex items-start gap-3 rounded-md bg-surface-2 p-3 text-sm">
+          <input
+            type="checkbox"
+            checked={ack}
+            onChange={(e) => setAck(e.target.checked)}
+            className="mt-0.5 size-4 accent-accent"
+          />
+          <span>
+            I understand these Units cannot be withdrawn as cash until a vault
+            matures.
+          </span>
+        </label>
+        <Button
+          className="w-full"
+          disabled={!ack || amount < 1}
+          onClick={() => {
+            const err = loadUnits(amount);
+            if (err) toast.error(err);
+            else toast.success(`${amount} Units loaded — non-refundable`);
+          }}
+        >
+          Confirm and load
+        </Button>
+      </Card>
+      <BackButton />
+    </div>
+  );
+}
+
+export function ParentAward() {
+  const [reason, setReason] = useState<string>(AWARD_REASONS[0]);
+  const [amount, setAmount] = useState(5);
+  const awardUnits = useLedger((s) => s.awardUnits);
+
+  return (
+    <div className="screen-enter space-y-4">
+      <header>
+        <p className="text-sm font-medium text-muted">Award</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          Reward a goal
+        </h1>
+        <p className="mt-1 text-sm text-muted">
+          Direct awards skip the child's request queue.
+        </p>
+      </header>
+      <Card className="space-y-3">
+        <FieldLabel htmlFor="award-reason">Reason</FieldLabel>
+        <NativeSelect
+          id="award-reason"
+          value={reason}
+          onChange={(e) => setReason(e.target.value)}
+        >
+          {AWARD_REASONS.map((r) => (
+            <option key={r} value={r}>
+              {r}
+            </option>
+          ))}
+        </NativeSelect>
+        <FieldLabel htmlFor="award-amount">Units</FieldLabel>
+        <Input
+          id="award-amount"
+          type="number"
+          min={1}
+          value={amount}
+          onChange={(e) => setAmount(Number(e.target.value))}
+        />
+        <Button
+          className="w-full"
+          onClick={() => {
+            const err = awardUnits(amount, reason);
+            if (err) toast.error(err);
+            else toast.success(`+${amount} Units awarded`);
+          }}
+        >
+          Award Units
+        </Button>
+      </Card>
+      <BackButton />
+    </div>
+  );
+}
+
+export function ParentVault() {
+  const vault = useLedger((s) => s.vault);
+  const vaultTarget = useLedger((s) => s.vaultTarget);
+  const vaultGoal = useLedger((s) => s.vaultGoal);
+  const matchRate = useLedger((s) => s.matchRate);
+  const daysRemaining = useLedger((s) => s.daysRemaining());
+  const setMatchRate = useLedger((s) => s.setMatchRate);
+  const advanceVaultDays = useLedger((s) => s.advanceVaultDays);
+  const releaseVault = useLedger((s) => s.releaseVault);
+  const setScreen = useLedger((s) => s.setScreen);
+
+  return (
+    <div className="screen-enter space-y-4">
+      <header>
+        <p className="text-sm font-medium text-muted">Vault</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          Long-term savings
+        </h1>
+        <p className="mt-1 text-sm text-muted">
+          Locked Units become cash only at maturity.
+        </p>
+      </header>
+
+      <Card className="bg-vault p-5 text-vault-foreground">
+        <p className="text-xs font-medium uppercase tracking-wider text-vault-foreground/60">
+          Currently locked
+        </p>
+        <p className="mt-1 font-display text-4xl font-semibold tabular-nums">
+          {formatUnits(vault)}
+        </p>
+        <p className="mt-1 text-sm text-vault-foreground/75">
+          Goal: {vaultGoal}
+        </p>
+        <Progress
+          value={(vault / vaultTarget) * 100}
+          className="mt-4 bg-white/15"
+          barClassName="bg-vault-foreground"
+        />
+        <p className="mt-3 text-sm text-vault-foreground/80">
+          {daysRemaining === 0
+            ? "Ready to release as cash for Alex."
+            : `${daysRemaining} days until cash can be released.`}
+        </p>
+        {daysRemaining > 0 ? (
+          <p className="mt-1 text-xs text-vault-foreground/60">
+            Unlocks on{" "}
+            {new Date(Date.now() + daysRemaining * 86_400_000).toLocaleDateString(
+              undefined,
+              { year: "numeric", month: "long", day: "numeric" },
+            )}{" "}
+            · locked until the goal date
+          </p>
+        ) : null}
+      </Card>
+
+      <Card className="space-y-3">
+        <CardTitle className="text-base">Parent matching</CardTitle>
+        <CardHint>
+          Optionally match what Alex locks. Matched Units go straight into the
+          vault.
+        </CardHint>
+        <NativeSelect
+          value={String(matchRate)}
+          onChange={(e) => {
+            const v = Number(e.target.value) as MatchRate;
+            toast.success(setMatchRate(v));
+          }}
+        >
+          <option value="0">No matching</option>
+          <option value="0.5">Match 50%</option>
+          <option value="1">Match 100%</option>
+        </NativeSelect>
+      </Card>
+
+      <Card className="space-y-3">
+        <CardTitle className="text-base">Demo clock</CardTitle>
+        <CardHint>
+          Fast-forward maturity so you can try a cash release without waiting
+          28 days.
+        </CardHint>
+        <div className="flex gap-2">
+          <Button
+            variant="outline"
+            className="flex-1"
+            onClick={() => toast.message(advanceVaultDays(7))}
+          >
+            <FastForward className="size-4" />
+            +7 days
+          </Button>
+          <Button
+            variant="vault"
+            className="flex-1"
+            disabled={daysRemaining > 0 || vault <= 0}
+            onClick={() => {
+              const err = releaseVault();
+              if (err) toast.error(err);
+              else {
+                toast.success("Cash payout marked for Alex");
+                setScreen("home");
+              }
+            }}
+          >
+            Release cash
+          </Button>
+        </div>
+      </Card>
+      <BackButton />
+    </div>
+  );
+}
+
+export function ParentHistory() {
+  const history = useLedger((s) => s.history);
+  const resetDemo = useLedger((s) => s.resetDemo);
+  const [filter, setFilter] = useState<
+    "all" | "chores" | "marketplace" | "vault" | "awards"
+  >("all");
+
+  const categorized = history.map((e) => {
+    const note = e.note.toLowerCase();
+    const category =
+      note.includes("chore")
+        ? "chores"
+        : note.includes("marketplace")
+          ? "marketplace"
+          : note.includes("vault") || e.kind === "transfer" || e.kind === "cashout"
+            ? "vault"
+            : note.includes("award") || note.includes("loaded")
+              ? "awards"
+              : "other";
+    return { event: e, category };
+  });
+  const visible =
+    filter === "all"
+      ? categorized
+      : categorized.filter((c) => c.category === filter);
+
+  const filters = [
+    ["all", "All"],
+    ["chores", "Chores"],
+    ["marketplace", "Marketplace"],
+    ["vault", "Vault"],
+    ["awards", "Awards"],
+  ] as const;
+
+  return (
+    <div className="screen-enter space-y-4">
+      <header>
+        <p className="text-sm font-medium text-muted">Ledger</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          History
+        </h1>
+        <p className="mt-1 text-sm text-muted">
+          Every load, award, lock, and spend — kept on this device.
+        </p>
+      </header>
+
+      <div className="flex flex-wrap gap-1.5">
+        {filters.map(([id, label]) => (
+          <Button
+            key={id}
+            type="button"
+            size="sm"
+            variant={filter === id ? "default" : "outline"}
+            onClick={() => setFilter(id)}
+          >
+            {label}
+          </Button>
+        ))}
+      </div>
+
+      <Card className="ledger-ruled p-0">
+        {visible.length === 0 ? (
+          <p className="p-6 text-center text-sm text-muted">No events yet.</p>
+        ) : (
+          <ul>
+            {visible.map(({ event: e }) => {
+              const signed =
+                e.kind === "debit" || e.kind === "transfer" || e.kind === "cashout"
+                  ? "out"
+                  : e.kind === "event"
+                    ? "none"
+                    : "in";
+              return (
+                <li
+                  key={e.id}
+                  className="flex items-start justify-between gap-3 px-4 py-3.5"
+                >
+                  <div className="min-w-0">
+                    <div className="text-sm font-medium">{e.note}</div>
+                    <div className="text-xs text-muted">{formatWhen(e.at)}</div>
+                  </div>
+                  {signed !== "none" ? (
+                    <span
+                      className={`shrink-0 font-mono text-sm tabular-nums ${
+                        signed === "in" ? "text-success" : "text-ink"
+                      }`}
+                    >
+                      {signed === "in" ? "+" : "−"}
+                      {e.amount}
+                    </span>
+                  ) : null}
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </Card>
+
+      <Button
+        variant="outline"
+        className="w-full"
+        onClick={() => {
+          resetDemo();
+          toast.message("Demo reset");
+        }}
+      >
+        <RotateCcw className="size-4" />
+        Reset demo
+      </Button>
+      <BackButton />
+    </div>
+  );
+}

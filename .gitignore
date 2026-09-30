@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.*
+
+# Build outputs
+dist/
+.vercel/
+.output/
+.tanstack/
+
+# Android build artifacts (keep native source, ignore generated binaries)
+android/build/
+android/.gradle/
+android/app/build/
+android/local.properties
+*.apk
+*.aab
+*.keystore
+
+# Env files (never commit real secrets — only .env.example is tracked)
+.env
+.env.local
+.env.*.local
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# OS / editors
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Grok builder internals (large media / cache, not needed for deploy)
+.grok/og-inspect/
+.grok/og-html/
+.grok/card-raw.jpg
+.grok/preview.log
+.grok/og-pending
+
+# Misc
+screenshots/
+attachments/
+docs-rc6/

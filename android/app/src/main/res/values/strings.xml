@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">Pillarpath</string>
+    <string name="title_activity_main">Pillarpath</string>
+    <string name="package_name">com.pillarpath.app</string>
+    <string name="custom_url_scheme">com.pillarpath.app</string>
+</resources>
