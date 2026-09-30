@@ -28,7 +28,7 @@ import { ProductIcon } from "@/components/kiddo/product-icon";
 import { PRODUCTS } from "@/lib/products";
 import { CHORE_CATEGORIES, type ChoreCategory } from "@/lib/chores";
 import { formatUnits } from "@/lib/utils";
-import { useLedger } from "@/store/ledger";
+import { useLedger, formatDollars } from "@/store/ledger";
 import { bandForAge, missionProgress } from "@/lib/studio-path";
 
 const CHORE_ICON: Record<string, typeof Home> = {
@@ -386,6 +386,12 @@ export function ChildVault() {
   const daysRemaining = useLedger((s) => s.daysRemaining());
   const lockUnits = useLedger((s) => s.lockUnits);
   const frozen = useLedger((s) => s.frozen);
+  const vaultCds = useLedger((s) => s.vaultCds);
+
+  // Read-only: child sees growth, no actions.
+  const cdTotal = vaultCds
+    .filter((cd) => cd.status === "active" || cd.status === "matured")
+    .reduce((sum, cd) => sum + cd.principal + cd.bonusAccrued, 0);
 
   const match = Math.floor(amount * matchRate);
 
@@ -420,6 +426,20 @@ export function ChildVault() {
             : `${daysRemaining} days until maturity.`}
         </p>
       </Card>
+      {cdTotal > 0 ? (
+        <Card className="tilt-r bg-vault p-5 text-vault-foreground">
+          <p className="text-xs font-medium uppercase tracking-wider text-vault-foreground/60">
+            College fund growing
+          </p>
+          <p className="mt-1 font-display text-3xl font-semibold tabular-nums">
+            {formatUnits(cdTotal)}
+          </p>
+          <p className="mt-1 text-sm text-vault-foreground/75">
+            ≈ {formatDollars(cdTotal)} saved for your education · growing at 5%
+            APY until maturity
+          </p>
+        </Card>
+      ) : null}
       <Card className="space-y-3">
         <CardTitle className="text-base">Lock more Units</CardTitle>
         <FieldLabel htmlFor="lock-amount">Amount</FieldLabel>

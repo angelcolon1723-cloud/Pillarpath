@@ -62,6 +62,73 @@ export type SavedDrawing = {
 
 export type MatchRate = 0 | 0.5 | 1;
 
+/* ---------------- Vault CDs (education savings) ---------------- */
+/** Units per US dollar for matured Vault CD redemptions. */
+export const UNITS_PER_DOLLAR = 100;
+/** Simple annual interest on locked CD principal, credited monthly in Units. */
+export const CD_APY = 0.05;
+
+export type CdTerm = "1yr" | "3yr" | "5yr" | "age18";
+
+export const CD_TERMS: { value: CdTerm; label: string; years: number }[] = [
+  { value: "1yr", label: "1 year", years: 1 },
+  { value: "3yr", label: "3 years", years: 3 },
+  { value: "5yr", label: "5 years", years: 5 },
+  { value: "age18", label: "Until age 18", years: 0 },
+];
+
+export function cdTermYears(term: CdTerm, childAge: number): number {
+  if (term === "age18") return Math.max(1, 18 - childAge);
+  return CD_TERMS.find((t) => t.value === term)?.years ?? 1;
+}
+
+export type CdStatus = "active" | "matured" | "cashed-out" | "withdrawn";
+export type PayoutRecipient = "parent-bank" | "school";
+export type PayoutStatus = "pending";
+
+export type VaultCd = {
+  id: string;
+  goal: string;
+  principal: number;
+  openedAt: string;
+  maturityAt: string;
+  term: CdTerm;
+  bonusAccrued: number;
+  lastBonusAt: string;
+  status: CdStatus;
+  unitsCashedOut: number;
+  /** Where the principal came from, e.g. "Family balance". */
+  source: string;
+};
+
+export type CdPayout = {
+  id: string;
+  cdId: string;
+  goal: string;
+  units: number;
+  dollars: number;
+  recipient: PayoutRecipient;
+  status: PayoutStatus;
+  requestedAt: string;
+};
+
+export function cdDollars(units: number): number {
+  return units / UNITS_PER_DOLLAR;
+}
+
+export function formatDollars(units: number): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(cdDollars(units));
+}
+
+export function payoutRecipientLabel(r: PayoutRecipient): string {
+  return r === "school"
+    ? "Educational institution"
+    : "Parent bank account on file";
+}
+
 const DAY_MS = 86_400_000;
 const MATURITY_DAYS = 28;
 const VAULT_TARGET = 70;
@@ -83,6 +150,8 @@ function openingState() {
     vaultTarget: VAULT_TARGET,
     vaultGoal: "College Fund",
     vaultOpenedAt: opened,
+    vaultCds: [] as VaultCd[],
+    cdPayouts: [] as CdPayout[],
     demoDaysAdvanced: 0,
     matchRate: 0.5 as MatchRate,
     pendingPurchases: [] as PendingPurchase[],
@@ -153,6 +222,20 @@ type LedgerState = LedgerData & {
   setMatchRate: (rate: MatchRate) => string;
   advanceVaultDays: (days: number) => string;
   releaseVault: () => string | null;
+  openCd: (input: { goal: string; principal: number; term: CdTerm }) => string | null;
+  /** Accrue monthly CD bonus and flip matured CDs. Safe to call on every vault render. */
+  refreshCds: () => void;
+  cdDaysRemaining: (id: string) => number;
+  requestCdCashOut: (
+    cdId: string,
+    input: { recipient: PayoutRecipient; units: number; attested: boolean },
+  ) => string | null;
+  /**
+   * Early withdrawal: allowed, but the parent forfeits 100% of accrued
+   * bonus Units. Principal returns to the family Units balance as Units —
+   * never as cash. Cash-out is only available at maturity.
+   */
+  withdrawCdEarly: (cdId: string) => string | null;
   saveDrawing: (dataUrl: string, meta?: { missionId?: string; title?: string }) => string;
   clearDrawings: () => void;
   setChildAge: (age: number) => void;
@@ -474,6 +557,171 @@ export const useLedger = create<LedgerState>()(
         });
         return null;
       },
+      openCd: (input) => {
+        const s = get();
+        if (!s.consent) return "Verify parental consent first";
+        const goal = input.goal.trim() || "College Fund";
+        const amt = Math.max(1, Math.floor(input.principal));
+        if (amt > s.balance) return "Not enough Units in the family balance";
+        const years = cdTermYears(input.term, s.childAge);
+        const openedAt = Date.now();
+        const maturityAt = openedAt + years * 365 * DAY_MS;
+        const maturityLabel = new Date(maturityAt).toLocaleDateString(undefined, {
+          year: "numeric",
+          month: "long",
+          day: "numeric",
+        });
+        const cd: VaultCd = {
+          id: uid("cd"),
+          goal,
+          principal: amt,
+          openedAt: new Date(openedAt).toISOString(),
+          maturityAt: new Date(maturityAt).toISOString(),
+          term: input.term,
+          bonusAccrued: 0,
+          lastBonusAt: new Date(openedAt).toISOString(),
+          status: "active",
+          unitsCashedOut: 0,
+          source: "Family balance",
+        };
+        set({
+          balance: s.balance - amt,
+          vaultCds: [cd, ...s.vaultCds],
+          history: record(
+            s.history,
+            "transfer",
+            amt,
+            `Vault CD opened · ${goal} · ${amt} Units locked until ${maturityLabel} · 5% APY · source: family balance`,
+          ),
+        });
+        return null;
+      },
+      refreshCds: () => {
+        const s = get();
+        if (s.vaultCds.length === 0) return;
+        const now = Date.now() + s.demoDaysAdvanced * DAY_MS;
+        let changed = false;
+        let history = s.history;
+        const vaultCds = s.vaultCds.map((cd) => {
+          if (cd.status === "cashed-out" || cd.status === "withdrawn") return cd;
+          const next = { ...cd };
+          // Monthly bonus: 5% APY simple interest on principal, Units only.
+          const lastBonus = new Date(cd.lastBonusAt).getTime();
+          const months = Math.floor((now - lastBonus) / (30 * DAY_MS));
+          if (months > 0 && next.status === "active") {
+            const bonus = Math.floor((cd.principal * CD_APY * months) / 12);
+            if (bonus > 0) {
+              next.bonusAccrued = cd.bonusAccrued + bonus;
+              history = record(
+                history,
+                "credit",
+                bonus,
+                `CD bonus · ${cd.goal} +${bonus} Units (5% APY)`,
+              );
+              changed = true;
+            }
+            next.lastBonusAt = new Date(now).toISOString();
+            changed = true;
+          }
+          if (
+            next.status === "active" &&
+            now >= new Date(cd.maturityAt).getTime()
+          ) {
+            next.status = "matured";
+            history = record(
+              history,
+              "event",
+              0,
+              `Vault CD matured · ${cd.goal} · ${next.principal + next.bonusAccrued} Units ready for education cash-out`,
+            );
+            changed = true;
+          }
+          return next;
+        });
+        if (changed) set({ vaultCds, history });
+      },
+      cdDaysRemaining: (id) => {
+        const s = get();
+        const cd = s.vaultCds.find((c) => c.id === id);
+        if (!cd) return 0;
+        const now = Date.now() + s.demoDaysAdvanced * DAY_MS;
+        return Math.max(
+          0,
+          Math.ceil((new Date(cd.maturityAt).getTime() - now) / DAY_MS),
+        );
+      },
+      requestCdCashOut: (cdId, input) => {
+        const s = get();
+        if (!s.consent) return "Verify parental consent first";
+        if (!input.attested)
+          return "Please confirm the education-use attestation";
+        const cd = s.vaultCds.find((c) => c.id === cdId);
+        if (!cd) return "CD not found";
+        if (cd.status === "cashed-out" || cd.status === "withdrawn")
+          return "This CD is already closed";
+        const now = Date.now() + s.demoDaysAdvanced * DAY_MS;
+        if (now < new Date(cd.maturityAt).getTime())
+          return "This CD has not matured yet — cash-out is only available at maturity";
+        const available = cd.principal + cd.bonusAccrued - cd.unitsCashedOut;
+        const amt = Math.max(1, Math.floor(input.units));
+        if (amt > available)
+          return `Only ${available} Units are available in this CD`;
+        const payout: CdPayout = {
+          id: uid("payout"),
+          cdId,
+          goal: cd.goal,
+          units: amt,
+          dollars: cdDollars(amt),
+          recipient: input.recipient,
+          status: "pending",
+          requestedAt: nowIso(),
+        };
+        const unitsCashedOut = cd.unitsCashedOut + amt;
+        const fullyPaid = unitsCashedOut >= cd.principal + cd.bonusAccrued;
+        set({
+          cdPayouts: [payout, ...s.cdPayouts],
+          vaultCds: s.vaultCds.map((c) =>
+            c.id === cdId
+              ? {
+                  ...c,
+                  unitsCashedOut,
+                  status: (fullyPaid ? "cashed-out" : "matured") as CdStatus,
+                }
+              : c,
+          ),
+          history: record(
+            s.history,
+            "cashout",
+            amt,
+            `CD cash-out requested · ${cd.goal} · ${amt} Units ≈ ${formatDollars(amt)} · no fee · queued with banking partner for education expenses`,
+          ),
+        });
+        return null;
+      },
+      withdrawCdEarly: (cdId) => {
+        const s = get();
+        const cd = s.vaultCds.find((c) => c.id === cdId);
+        if (!cd) return "CD not found";
+        if (cd.status === "matured")
+          return "This CD has matured — request a cash-out instead";
+        if (cd.status !== "active") return "This CD is already closed";
+        const forfeited = cd.bonusAccrued;
+        set({
+          balance: s.balance + cd.principal,
+          vaultCds: s.vaultCds.map((c) =>
+            c.id === cdId
+              ? { ...c, bonusAccrued: 0, status: "withdrawn" as CdStatus }
+              : c,
+          ),
+          history: record(
+            s.history,
+            "transfer",
+            cd.principal,
+            `Vault CD withdrawn early · ${cd.goal} · ${cd.principal} Units returned to family balance · ${forfeited} bonus Units forfeited (never cash)`,
+          ),
+        });
+        return null;
+      },
       saveDrawing: (dataUrl, meta) => {
         set((s) => ({
           drawings: [
@@ -584,6 +832,8 @@ export const useLedger = create<LedgerState>()(
         vaultTarget: state.vaultTarget,
         vaultGoal: state.vaultGoal,
         vaultOpenedAt: state.vaultOpenedAt,
+        vaultCds: state.vaultCds,
+        cdPayouts: state.cdPayouts,
         demoDaysAdvanced: state.demoDaysAdvanced,
         matchRate: state.matchRate,
         pendingPurchases: state.pendingPurchases,

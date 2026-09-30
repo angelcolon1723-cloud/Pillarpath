@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   ArrowDownToLine,
   Award,
@@ -18,6 +18,9 @@ import {
   Trash2,
   HeartHandshake,
   Images,
+  PiggyBank,
+  GraduationCap,
+  Lock,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -29,7 +32,19 @@ import { ProductIcon } from "@/components/kiddo/product-icon";
 import { AWARD_REASONS } from "@/lib/products";
 import { CHORE_CATEGORIES, type ChoreCategory } from "@/lib/chores";
 import { formatUnits, formatWhen } from "@/lib/utils";
-import { useLedger, type MatchRate } from "@/store/ledger";
+import {
+  useLedger,
+  type MatchRate,
+  type CdTerm,
+  type PayoutRecipient,
+  type VaultCd,
+  CD_TERMS,
+  CD_APY,
+  UNITS_PER_DOLLAR,
+  cdTermYears,
+  formatDollars,
+  payoutRecipientLabel,
+} from "@/store/ledger";
 import { useSocial } from "@/store/social";
 import { PendingGiftRows } from "@/components/kiddo/give";
 import { PendingShopRows } from "@/components/kiddo/creator-shop";
@@ -724,6 +739,414 @@ export function ParentAward() {
   );
 }
 
+/* ---------------- Vault CDs (education savings) ---------------- */
+
+function CdStatusBadge({ cd }: { cd: VaultCd }) {
+  if (cd.status === "matured") return <Badge tone="accent">Matured</Badge>;
+  if (cd.status === "cashed-out") return <Badge tone="muted">Cashed out</Badge>;
+  if (cd.status === "withdrawn")
+    return <Badge tone="muted">Withdrawn early</Badge>;
+  return <Badge tone="warn">Growing · {Math.round(CD_APY * 100)}% APY</Badge>;
+}
+
+function CdOpenForm() {
+  const balance = useLedger((s) => s.balance);
+  const childAge = useLedger((s) => s.childAge);
+  const openCd = useLedger((s) => s.openCd);
+  const [goal, setGoal] = useState("College Fund");
+  const [amount, setAmount] = useState(100);
+  const [term, setTerm] = useState<CdTerm>("5yr");
+  const [confirmed, setConfirmed] = useState(false);
+
+  const years = cdTermYears(term, childAge);
+  const maturityLabel = new Date(
+    Date.now() + years * 365 * 86_400_000,
+  ).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+  const units = Math.max(0, Math.floor(amount) || 0);
+  const valid = units >= 1 && units <= balance;
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center gap-2">
+        <PiggyBank className="size-5 text-accent" />
+        <CardTitle className="text-base">Open a Vault CD</CardTitle>
+      </div>
+      <CardHint>
+        Lock Units until maturity, like a certificate of deposit. They grow at{" "}
+        {Math.round(CD_APY * 100)}% APY in bonus Units. Cash-out is only
+        available at maturity, and only for education expenses — with no fees,
+        ever. {UNITS_PER_DOLLAR} Units = $1.00.
+      </CardHint>
+      <div>
+        <FieldLabel htmlFor="cd-goal">Education goal</FieldLabel>
+        <Input
+          id="cd-goal"
+          value={goal}
+          onChange={(e) => setGoal(e.target.value)}
+          placeholder="College Fund"
+        />
+      </div>
+      <div>
+        <FieldLabel htmlFor="cd-amount">
+          Units to lock (family balance: {formatUnits(balance)})
+        </FieldLabel>
+        <Input
+          id="cd-amount"
+          type="number"
+          min={1}
+          max={balance}
+          value={amount}
+          onChange={(e) => setAmount(Number(e.target.value))}
+        />
+        <p className="mt-1 text-sm text-muted">
+          ≈ {formatDollars(units)} cash value at {UNITS_PER_DOLLAR} Units/$1
+        </p>
+      </div>
+      <div>
+        <FieldLabel htmlFor="cd-term">Term</FieldLabel>
+        <NativeSelect
+          id="cd-term"
+          value={term}
+          onChange={(e) => setTerm(e.target.value as CdTerm)}
+        >
+          {CD_TERMS.map((t) => (
+            <option key={t.value} value={t.value}>
+              {t.value === "age18"
+                ? `Until age 18 (≈${cdTermYears("age18", childAge)} yrs)`
+                : t.label}
+            </option>
+          ))}
+        </NativeSelect>
+        <p className="mt-1 text-sm text-muted">Matures {maturityLabel}</p>
+      </div>
+      <label className="flex items-start gap-3 rounded-md bg-surface-2 p-3 text-sm">
+        <input
+          type="checkbox"
+          checked={confirmed}
+          onChange={(e) => setConfirmed(e.target.checked)}
+          className="mt-0.5 size-4 accent-accent"
+        />
+        <span>
+          I understand these Units are locked until {maturityLabel}. I may
+          withdraw early, but I will forfeit 100% of the bonus Units — the
+          principal returns to the family balance as Units, never as cash.
+        </span>
+      </label>
+      <Button
+        className="w-full"
+        disabled={!confirmed || !valid}
+        onClick={() => {
+          const err = openCd({ goal, principal: units, term });
+          if (err) toast.error(err);
+          else {
+            toast.success(`Vault CD opened · ${goal.trim() || "College Fund"}`);
+            setConfirmed(false);
+          }
+        }}
+      >
+        <Lock className="size-4" />
+        Open Vault CD
+      </Button>
+    </div>
+  );
+}
+
+function CdCashOutForm({
+  cdId,
+  maxUnits,
+  onDone,
+}: {
+  cdId: string;
+  maxUnits: number;
+  onDone: () => void;
+}) {
+  const requestCdCashOut = useLedger((s) => s.requestCdCashOut);
+  const [recipient, setRecipient] = useState<PayoutRecipient>("parent-bank");
+  const [amount, setAmount] = useState(maxUnits);
+  const [attested, setAttested] = useState(false);
+
+  const units = Math.max(0, Math.floor(amount) || 0);
+  const valid = units >= 1 && units <= maxUnits;
+
+  return (
+    <div className="space-y-3 rounded-md bg-surface-2 p-3">
+      <div>
+        <FieldLabel htmlFor={`payout-recipient-${cdId}`}>
+          Send payout to
+        </FieldLabel>
+        <NativeSelect
+          id={`payout-recipient-${cdId}`}
+          value={recipient}
+          onChange={(e) => setRecipient(e.target.value as PayoutRecipient)}
+        >
+          <option value="parent-bank">Parent bank account on file</option>
+          <option value="school">Educational institution</option>
+        </NativeSelect>
+      </div>
+      <div>
+        <FieldLabel htmlFor={`payout-amount-${cdId}`}>
+          Units to redeem (max {formatUnits(maxUnits)})
+        </FieldLabel>
+        <Input
+          id={`payout-amount-${cdId}`}
+          type="number"
+          min={1}
+          max={maxUnits}
+          value={amount}
+          onChange={(e) => setAmount(Number(e.target.value))}
+        />
+        <p className="mt-1 text-sm text-muted">
+          ≈ {formatDollars(units)} · no fees
+        </p>
+      </div>
+      <label className="flex items-start gap-3 text-sm">
+        <input
+          type="checkbox"
+          checked={attested}
+          onChange={(e) => setAttested(e.target.checked)}
+          className="mt-0.5 size-4 accent-accent"
+        />
+        <span>
+          I attest these funds will be used only for qualified education
+          expenses (tuition, books, school fees) for my child.
+        </span>
+      </label>
+      <p className="text-xs text-muted">
+        Payouts are processed by our banking partner. Your request is queued —
+        no money moves until the banking partner completes review.
+      </p>
+      <div className="flex gap-2">
+        <Button variant="outline" className="flex-1" onClick={onDone}>
+          Cancel
+        </Button>
+        <Button
+          className="flex-1"
+          disabled={!attested || !valid}
+          onClick={() => {
+            const err = requestCdCashOut(cdId, {
+              recipient,
+              units,
+              attested,
+            });
+            if (err) toast.error(err);
+            else {
+              toast.success("Cash-out requested — queued with banking partner");
+              onDone();
+            }
+          }}
+        >
+          Request payout
+        </Button>
+      </div>
+    </div>
+  );
+}
+
+function CdCard({ cd }: { cd: VaultCd }) {
+  const daysRemaining = useLedger((s) => s.cdDaysRemaining(cd.id));
+  const demoDaysAdvanced = useLedger((s) => s.demoDaysAdvanced);
+  const withdrawCdEarly = useLedger((s) => s.withdrawCdEarly);
+  const [showCashOut, setShowCashOut] = useState(false);
+  const [confirmingEarly, setConfirmingEarly] = useState(false);
+  const [earlyAck, setEarlyAck] = useState(false);
+
+  const total = cd.principal + cd.bonusAccrued;
+  const available = total - cd.unitsCashedOut;
+  const openedMs = new Date(cd.openedAt).getTime();
+  const maturityMs = new Date(cd.maturityAt).getTime();
+  const effectiveNow = Date.now() + demoDaysAdvanced * 86_400_000;
+  const progress = Math.min(
+    100,
+    Math.max(
+      0,
+      ((effectiveNow - openedMs) / Math.max(1, maturityMs - openedMs)) * 100,
+    ),
+  );
+  const maturityLabel = new Date(cd.maturityAt).toLocaleDateString(undefined, {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
+  return (
+    <Card className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <GraduationCap className="size-5 text-accent" />
+          <CardTitle className="text-base">{cd.goal}</CardTitle>
+        </div>
+        <CdStatusBadge cd={cd} />
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 text-center">
+        <div className="rounded-md bg-surface-2 p-2">
+          <p className="text-xs text-muted">Principal</p>
+          <p className="font-display text-lg font-semibold tabular-nums">
+            {formatUnits(cd.principal)}
+          </p>
+        </div>
+        <div className="rounded-md bg-surface-2 p-2">
+          <p className="text-xs text-muted">Bonus earned</p>
+          <p className="font-display text-lg font-semibold tabular-nums text-accent">
+            +{formatUnits(cd.bonusAccrued)}
+          </p>
+        </div>
+        <div className="rounded-md bg-surface-2 p-2">
+          <p className="text-xs text-muted">≈ Cash value</p>
+          <p className="font-display text-lg font-semibold tabular-nums">
+            {formatDollars(available)}
+          </p>
+        </div>
+      </div>
+
+      {cd.status === "active" ? (
+        <>
+          <Progress value={progress} />
+          <p className="text-sm text-muted">
+            {daysRemaining} days to maturity · {maturityLabel}
+          </p>
+          {!confirmingEarly ? (
+            <Button
+              variant="outline"
+              className="w-full"
+              onClick={() => {
+                setConfirmingEarly(true);
+                setEarlyAck(false);
+              }}
+            >
+              Withdraw early
+            </Button>
+          ) : (
+            <div className="space-y-3 rounded-md bg-surface-2 p-3">
+              <p className="text-sm font-semibold">
+                Withdraw &ldquo;{cd.goal}&rdquo; early?
+              </p>
+              <p className="text-sm text-muted">
+                You will forfeit{" "}
+                <strong className="text-ink">
+                  {formatUnits(cd.bonusAccrued)} bonus Units
+                </strong>
+                . The{" "}
+                <strong className="text-ink">
+                  {formatUnits(cd.principal)} Unit principal
+                </strong>{" "}
+                returns to the family balance as Units — never as cash.
+              </p>
+              <label className="flex items-start gap-3 text-sm">
+                <input
+                  type="checkbox"
+                  checked={earlyAck}
+                  onChange={(e) => setEarlyAck(e.target.checked)}
+                  className="mt-0.5 size-4 accent-accent"
+                />
+                <span>
+                  I understand I lose all {formatUnits(cd.bonusAccrued)} bonus
+                  Units and receive no cash.
+                </span>
+              </label>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  className="flex-1"
+                  onClick={() => setConfirmingEarly(false)}
+                >
+                  Keep locked
+                </Button>
+                <Button
+                  variant="danger"
+                  className="flex-1"
+                  disabled={!earlyAck}
+                  onClick={() => {
+                    const err = withdrawCdEarly(cd.id);
+                    if (err) toast.error(err);
+                    else {
+                      toast.success(
+                        `Withdrawn early · ${formatUnits(cd.bonusAccrued)} bonus Units forfeited`,
+                      );
+                      setConfirmingEarly(false);
+                    }
+                  }}
+                >
+                  Confirm withdrawal
+                </Button>
+              </div>
+            </div>
+          )}
+        </>
+      ) : null}
+
+      {cd.status === "matured" && available > 0 ? (
+        <>
+          <p className="text-sm font-medium text-accent">
+            Matured — cash-out is available for education expenses. No fees.
+          </p>
+          {!showCashOut ? (
+            <Button className="w-full" onClick={() => setShowCashOut(true)}>
+              Request cash-out
+            </Button>
+          ) : (
+            <CdCashOutForm
+              cdId={cd.id}
+              maxUnits={available}
+              onDone={() => setShowCashOut(false)}
+            />
+          )}
+        </>
+      ) : null}
+
+      {cd.status === "withdrawn" ? (
+        <p className="text-sm text-muted">
+          Withdrawn early — the principal returned to the family balance as
+          Units. All bonus Units were forfeited. No cash was paid out.
+        </p>
+      ) : null}
+      {cd.status === "cashed-out" ? (
+        <p className="text-sm text-muted">
+          Fully redeemed for education expenses. Thank you for saving for the
+          future.
+        </p>
+      ) : null}
+    </Card>
+  );
+}
+
+function CdPayoutList() {
+  const cdPayouts = useLedger((s) => s.cdPayouts);
+  if (cdPayouts.length === 0) return null;
+  return (
+    <Card className="space-y-3">
+      <CardTitle className="text-base">Payout requests</CardTitle>
+      <CardHint>
+        Pending payouts are processed by our banking partner — no money moves
+        until their review completes.
+      </CardHint>
+      <div className="space-y-2">
+        {cdPayouts.map((p) => (
+          <div
+            key={p.id}
+            className="flex items-center justify-between gap-2 rounded-md bg-surface-2 p-3"
+          >
+            <div>
+              <p className="text-sm font-semibold">
+                {formatUnits(p.units)} Units ≈ {formatDollars(p.units)}
+              </p>
+              <p className="text-xs text-muted">
+                {p.goal} · {payoutRecipientLabel(p.recipient)} ·{" "}
+                {formatWhen(p.requestedAt)}
+              </p>
+            </div>
+            <Badge tone="warn">Pending</Badge>
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 export function ParentVault() {
   const vault = useLedger((s) => s.vault);
   const vaultTarget = useLedger((s) => s.vaultTarget);
@@ -734,6 +1157,12 @@ export function ParentVault() {
   const advanceVaultDays = useLedger((s) => s.advanceVaultDays);
   const releaseVault = useLedger((s) => s.releaseVault);
   const setScreen = useLedger((s) => s.setScreen);
+  const vaultCds = useLedger((s) => s.vaultCds);
+  const refreshCds = useLedger((s) => s.refreshCds);
+
+  useEffect(() => {
+    refreshCds();
+  }, [refreshCds]);
 
   return (
     <div className="screen-enter space-y-4">
@@ -778,6 +1207,23 @@ export function ParentVault() {
           </p>
         ) : null}
       </Card>
+
+      <div className="space-y-3">
+        <div>
+          <h2 className="font-display text-xl font-semibold">Vault CDs</h2>
+          <p className="text-sm text-muted">
+            CD-style education savings · {Math.round(CD_APY * 100)}% APY ·
+            cash-out only at maturity, for education
+          </p>
+        </div>
+        <Card>
+          <CdOpenForm />
+        </Card>
+        {vaultCds.map((cd) => (
+          <CdCard key={cd.id} cd={cd} />
+        ))}
+        <CdPayoutList />
+      </div>
 
       <Card className="space-y-3">
         <CardTitle className="text-base">Parent matching</CardTitle>
