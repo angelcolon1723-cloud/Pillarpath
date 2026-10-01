@@ -499,7 +499,6 @@ function Landing() {
           <div className="flex gap-4">
             <Link to="/privacy">Privacy</Link>
             <Link to="/terms">Terms</Link>
-            <Link to="/affiliate-disclosure">Affiliate disclosure</Link>
           </div>
         </div>
       </footer>

@@ -42,6 +42,15 @@ const config: CapacitorConfig = {
     // WebView never flashes pure black while the site loads.
     backgroundColor: '#060614',
   },
+  plugins: {
+    SplashScreen: {
+      // Keep the branded native splash up until the web app signals it's
+      // painted (see HideNativeSplash in src/routes/__root.tsx) — the user
+      // never stares at a black gap during load.
+      launchAutoHide: false,
+      backgroundColor: '#060614',
+    },
+  },
 };
 
 export default config;

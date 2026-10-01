@@ -1,10 +1,33 @@
 import { createRootRoute, HeadContent, Outlet, Scripts } from "@tanstack/react-router";
+import { useEffect } from "react";
+import { Capacitor } from "@capacitor/core";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/lib/auth/provider";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
 const APP_NAME = "Pillarpath";
+
+/**
+ * Dismisses the native launch splash once the web app has painted.
+ * The native shell is configured with launchAutoHide: false so the branded
+ * splash stays up through the whole load — no black gap.
+ */
+function HideNativeSplash() {
+  useEffect(() => {
+    if (!Capacitor.isNativePlatform()) return;
+    let cancelled = false;
+    import("@capacitor/splash-screen")
+      .then(({ SplashScreen }) => {
+        if (!cancelled) SplashScreen.hide().catch(() => {});
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  return null;
+}
 
 export const Route = createRootRoute({
   head: () => ({
@@ -51,6 +74,7 @@ export const Route = createRootRoute({
       </head>
       <body className="bg-bg text-ink">
         <PreviewHostBridge />
+        <HideNativeSplash />
         <AuthProvider>
           <Outlet />
         </AuthProvider>
