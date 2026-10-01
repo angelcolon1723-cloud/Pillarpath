@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { SignedIn, SignedOut } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
+import { RoleGate } from "@/components/role-gate";
 import { PillarpathApp } from "@/components/pillarpath-app";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -34,7 +35,9 @@ function Home() {
         <Landing />
       </SignedOut>
       <SignedIn>
-        <PillarpathApp />
+        <RoleGate>
+          <PillarpathApp />
+        </RoleGate>
       </SignedIn>
     </>
   );

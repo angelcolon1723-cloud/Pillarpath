@@ -8,6 +8,12 @@ export type AppUser = {
   profileImageUrl: string | null;
   /** True when this is the sandbox/dev fallback (auth not configured). */
   isDevFallback: boolean;
+  /**
+   * Server-assigned account role, mirrored from the session for UI routing
+   * ONLY. Never use this for authorization — every server function resolves
+   * the role fresh from the database via `requireIdentity()`.
+   */
+  role: "parent" | "teacher" | "admin";
 };
 
 /**
@@ -23,6 +29,7 @@ export const DEV_USER: AppUser = {
   primaryEmail: "dev@example.com",
   profileImageUrl: null,
   isDevFallback: true,
+  role: "parent",
 };
 
 /** `useCurrentUserState()` result: the user plus the session-loading flag. */
@@ -59,6 +66,9 @@ export function useCurrentUserState(): CurrentUserState {
   // eslint-disable-next-line react-hooks/rules-of-hooks -- authEnabled is constant for the app's lifetime
   const { data, isPending } = authClient.useSession();
   const user = data?.user;
+  const sessionRole = (user as { role?: string } | undefined)?.role;
+  const role: AppUser["role"] =
+    sessionRole === "teacher" || sessionRole === "admin" ? sessionRole : "parent";
   return {
     user: user
       ? {
@@ -67,6 +77,7 @@ export function useCurrentUserState(): CurrentUserState {
           primaryEmail: user.email ?? null,
           profileImageUrl: user.image ?? null,
           isDevFallback: false,
+          role,
         }
       : null,
     isPending,

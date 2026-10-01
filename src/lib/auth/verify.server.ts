@@ -45,6 +45,85 @@ export class UnauthorizedError extends Error {
 export type VerifiedUser = { id: string; email: string | null };
 
 /**
+ * Four-sided account identity, resolved server-side on every request.
+ *
+ * The `kind` NEVER comes from the client — it is read from the `"user".role`
+ * column (written only by the signup hook, the role picker, or admin flows).
+ * Children are not users at all: a kid session resolves to `{ kind: "child" }`
+ * with the parent's userId + the child profile id (Phase 2 wires the kid
+ * cookie; until then only parent/teacher/admin kinds exist).
+ */
+export type Identity =
+  | { kind: "parent"; userId: string }
+  | { kind: "child"; userId: string; childId: number }
+  | { kind: "teacher"; userId: string; teacherStatus: string }
+  | { kind: "admin"; userId: string };
+
+export type AccountRole = "parent" | "teacher" | "admin";
+
+const VALID_ROLES: AccountRole[] = ["parent", "teacher", "admin"];
+
+type UserRoleRow = {
+  role: string | null;
+  teacher_status: string | null;
+  role_set_at: string | null;
+};
+
+/**
+ * Read the account's server-side role facts. Returns safe defaults when the
+ * column is missing (migration not yet applied) so deploys never hard-crash
+ * mid-rollout — but every row will have real values after 0005 runs.
+ */
+async function readRoleFacts(userId: string): Promise<UserRoleRow> {
+  if (userId === DEV_USER_ID) {
+    return { role: "parent", teacher_status: "unverified", role_set_at: new Date().toISOString() };
+  }
+  const { getSql } = await import("@/lib/db");
+  const sql = await getSql();
+  try {
+    const rows = await sql<UserRoleRow>`
+      select role, teacher_status, role_set_at from "user" where id = ${userId}
+    `;
+    return rows[0] ?? { role: "parent", teacher_status: "unverified", role_set_at: null };
+  } catch {
+    // Column missing (pre-0005 database): treat as a legacy parent account
+    // that still needs the role picker.
+    return { role: "parent", teacher_status: "unverified", role_set_at: null };
+  }
+}
+
+/**
+ * Resolve the caller's full four-sided identity: verified session user +
+ * server-side role facts. Throws `UnauthorizedError` when signed out (same
+ * contract as `requireUserId`).
+ *
+ * Phase 2 extends this to check the kid-session cookie FIRST and return
+ * `{ kind: "child", … }` — a device is either in kid mode or full-session
+ * mode, never both.
+ */
+export async function requireIdentity(bearerToken?: string): Promise<Identity> {
+  const userId = await requireUserId(bearerToken);
+  const facts = await readRoleFacts(userId);
+  const role: AccountRole = VALID_ROLES.includes(facts.role as AccountRole)
+    ? (facts.role as AccountRole)
+    : "parent";
+  if (role === "teacher") {
+    return { kind: "teacher", userId, teacherStatus: facts.teacher_status ?? "unverified" };
+  }
+  if (role === "admin") {
+    return { kind: "admin", userId };
+  }
+  return { kind: "parent", userId };
+}
+
+/** True when the account still needs the one-time post-signup role picker. */
+export async function needsRoleChoice(bearerToken?: string): Promise<boolean> {
+  const userId = await requireUserId(bearerToken);
+  const facts = await readRoleFacts(userId);
+  return facts.role_set_at == null;
+}
+
+/**
  * Resolve the signed-in user from the current request, or `null` when auth isn't
  * configured / nobody is signed in. Safe to call from server functions and SSR
  * loaders.

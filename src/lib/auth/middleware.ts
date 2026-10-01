@@ -1,4 +1,19 @@
 import { createMiddleware } from "@tanstack/react-start";
+import type { Identity } from "./verify.server";
+
+type IdentityKind = Identity["kind"];
+
+/**
+ * Thrown by `roleMiddleware` when the caller's verified role is not allowed.
+ * Carries `status: 403`.
+ */
+export class ForbiddenError extends Error {
+  readonly status = 403;
+  constructor(kind: string) {
+    super(`Forbidden for role: ${kind}`);
+    this.name = "ForbiddenError";
+  }
+}
 
 /**
  * Auth middleware for server functions — the standard way to get the caller's
@@ -45,3 +60,38 @@ export const authMiddleware = createMiddleware({ type: "function" })
     const userId = await requireUserId(context.bearerToken);
     return next({ context: { userId } });
   });
+
+/**
+ * Role middleware for server functions — the standard way to enforce the
+ * four-sided account model. Resolves the caller's server-side `Identity`
+ * (never from client input) and rejects with 403 unless the identity's kind
+ * is one of the allowed roles.
+ *
+ *   import { roleMiddleware } from "@/lib/auth/middleware";
+ *
+ *   export const createClassroom = createServerFn({ method: "POST" })
+ *     .middleware([roleMiddleware("teacher")])
+ *     .handler(async ({ context }) => {
+ *       const teacherId = context.identity.userId; // verified teacher
+ *     });
+ *
+ * Child identities additionally carry `context.identity.childId` (Phase 2).
+ */
+export function roleMiddleware(...allowed: IdentityKind[]) {
+  return createMiddleware({ type: "function" })
+    .client(async ({ next }) => {
+      // Same live-preview bearer forwarding as authMiddleware.
+      const { getBearerToken } = await import("./client");
+      return next({ sendContext: { bearerToken: getBearerToken() ?? undefined } });
+    })
+    .server(async ({ next, context }) => {
+      const { assertSameSiteRequest } = await import("./isolation.server");
+      const { requireIdentity } = await import("./verify.server");
+      assertSameSiteRequest();
+      const identity = await requireIdentity(context.bearerToken);
+      if (!allowed.includes(identity.kind)) {
+        throw new ForbiddenError(identity.kind);
+      }
+      return next({ context: { identity, userId: identity.userId } });
+    });
+}

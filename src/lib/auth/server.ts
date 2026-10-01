@@ -222,6 +222,32 @@ export const auth = betterAuth({
   // flicker-prevention guidance (gate on `isPending`; SSR the session).
   session: { cookieCache: { enabled: true, maxAge: 300 } },
 
+  // Four-sided accounts (Phase 1): the server owns every account's role.
+  // `role` is readable (so the client can route to the right workspace) but
+  // `input: false` means no client request — signup form, OAuth callback,
+  // profile update — can ever write it. The DB is the only writer.
+  user: {
+    additionalFields: {
+      role: { type: "string", required: false, input: false },
+      teacher_status: { type: "string", required: false, input: false },
+      role_set_at: { type: "date", required: false, input: false },
+    },
+  },
+
+  // Every self-signup (email, Google, Apple, …) is born a 'parent'. Teacher
+  // accounts come only from the post-signup picker + verification flow;
+  // admin accounts only from single-use invites (Phase 4). Privilege can
+  // never be self-granted.
+  databaseHooks: {
+    user: {
+      create: {
+        before: async (user) => ({
+          data: { ...user, role: "parent", teacher_status: "unverified" },
+        }),
+      },
+    },
+  },
+
   // Local email/password — toggled only via `./email-password` (not a plugin).
   ...(emailAndPasswordEnabled ? { emailAndPassword: { enabled: true } } : {}),
 
