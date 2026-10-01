@@ -38,7 +38,9 @@ const config: CapacitorConfig = {
         },
       }),
   android: {
-    backgroundColor: '#000000',
+    // Deep-space brand color (matches the web app's cosmic theme) so the
+    // WebView never flashes pure black while the site loads.
+    backgroundColor: '#060614',
   },
 };
 
