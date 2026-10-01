@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
 import { Input, FieldLabel, NativeSelect } from "@/components/ui/input";
 import { useSocial, type ShowcasePost } from "@/store/social";
-import { CHORE_SEED } from "@/lib/chores";
+import { PriceTag, PriceTagShort } from "@/components/kiddo/value-tag";
 
 /* ------------------------------------------------------------------ */
 /* Creator Shop — Units only, no real money                             */
@@ -14,15 +14,11 @@ import { CHORE_SEED } from "@/lib/chores";
 /* buys the work (parent approves every sale), and the creator earns    */
 /* the price in family Units. The entrepreneurship lesson, with zero    */
 /* legal risk: no payments, no payouts, no shipping.                    */
+/*                                                                      */
+/* Pricing speaks the app-wide value-system language: Units, dollar      */
+/* equivalent, and chore-effort ("about N chores"). See                 */
+/* src/lib/value-system.ts.                                             */
 /* ------------------------------------------------------------------ */
-
-const AVG_CHORE_REWARD =
-  CHORE_SEED.reduce((sum, c) => sum + c.amount, 0) / Math.max(1, CHORE_SEED.length);
-
-/** Pricing guidance: "this costs about N chores". */
-export function choresFor(price: number): number {
-  return Math.max(1, Math.round(price / AVG_CHORE_REWARD));
-}
 
 /* ------------------------- child: sell controls ------------------------- */
 
@@ -56,7 +52,7 @@ export function SellControls({ post }: { post: ShowcasePost }) {
       </div>
       {Number(price) > 0 ? (
         <p className="text-xs text-muted">
-          ≈ {choresFor(Number(price))} chores of work — buyers see this too.
+          Buyers see <PriceTag units={Number(price)} /> — the value of your work.
         </p>
       ) : null}
       <Button
@@ -121,7 +117,7 @@ export function ParentCreatorShop() {
                 <p className="truncate text-sm font-semibold">{p.title}</p>
                 <p className="text-xs text-muted">by {p.creatorName}</p>
                 <p className="mt-1 text-xs font-semibold text-accent">
-                  {p.price} Units · ≈{choresFor(p.price)} chores
+                  <PriceTag units={p.price} />
                 </p>
                 <Button
                   size="sm"
@@ -163,7 +159,7 @@ export function PendingShopRows() {
           <div className="min-w-0 flex-1">
             <div className="truncate text-sm font-medium">{o.title}</div>
             <div className="text-xs text-muted">
-              {o.price} Units (≈{choresFor(o.price)} chores) · {o.sellerName} earns it · Creator shop
+              <PriceTagShort units={o.price} /> · {o.sellerName} earns it · Creator shop
             </div>
           </div>
           <div className="flex gap-1.5">

@@ -8,7 +8,8 @@ import { Input, FieldLabel } from "@/components/ui/input";
 import { useLedger } from "@/store/ledger";
 import { useSocial, type ShowcasePost } from "@/store/social";
 import { useTeacher, type TeacherClassroom } from "@/store/teacher";
-import { SellControls, choresFor } from "@/components/kiddo/creator-shop";
+import { SellControls } from "@/components/kiddo/creator-shop";
+import { choresFor, unitsToDollars } from "@/lib/value-system";
 import { cn } from "@/lib/utils";
 
 /* ------------------------------------------------------------------ */
@@ -445,7 +446,7 @@ export function ParentShowcase() {
                     <Heart className="size-3" /> {p.cheers} cheers
                     {p.featured ? " · Featured by teacher" : null}
                     {p.forSale
-                      ? ` · For sale: ${p.price} Units (≈${choresFor(p.price)} chores)`
+                      ? ` · For sale: ${p.price} Units (≈$${unitsToDollars(p.price).toFixed(2)} · ≈${choresFor(p.price)} chores)`
                       : null}
                   </p>
                 </div>
