@@ -48,7 +48,6 @@ export type ParentSection =
   | "teachers"
   | "future-units"
   | "unit-market"
-  | "partners"
   | "settings";
 
 export function money(cents: number) {

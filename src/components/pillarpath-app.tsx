@@ -4,7 +4,6 @@ import {
   CreditCard,
   Gift,
   GraduationCap,
-  Handshake,
   Home,
   LayoutDashboard,
   LineChart,
@@ -47,7 +46,6 @@ import { ParentChores } from "@/components/kiddo/parent-views";
 import { StudioScreen } from "@/components/kiddo/studio";
 import { FutureUnitsMarket } from "@/components/kiddo/future-market";
 import { UnitMarketView } from "@/components/kiddo/unit-market";
-import { PartnerHubView } from "@/components/kiddo/partner-hub";
 import {
   ChildClassroom,
   ParentTeachers,
@@ -85,7 +83,6 @@ const parentNav: Array<[ParentSection, string, typeof Home]> = [
   ["teachers", "Teachers", GraduationCap],
   ["future-units", "Future Units", BarChart3],
   ["unit-market", "Unit Market", LineChart],
-  ["partners", "Partners", Handshake],
   ["settings", "Settings", Settings],
 ];
 
@@ -388,7 +385,6 @@ export function PillarpathApp() {
                           "teachers",
                           "future-units",
                           "unit-market",
-                          "partners",
                           "settings",
                         ] as string[]
                       ).includes(parentSection)
@@ -525,7 +521,6 @@ function ParentWorkspace({
   if (section === "settings") return <SettingsView data={data} onRefresh={onRefresh} />;
   if (section === "future-units") return <FutureUnitsMarket data={data} onRefresh={onRefresh} />;
   if (section === "unit-market") return <UnitMarketView data={data} onRefresh={onRefresh} />;
-  if (section === "partners") return <PartnerHubView />;
   if (section === "teachers") {
     return (
       <section className="mx-auto max-w-3xl">
