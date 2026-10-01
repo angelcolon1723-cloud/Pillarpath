@@ -358,48 +358,69 @@ export function StoreGrid({
       <SectionIntro
         eyebrow="Pillarpath Marketplace"
         title="Curated family store"
-        text="Buy with secure checkout, or let kids request items with Units."
+        text="Every product is kid-safety screened and hand-picked for PillarPath families. Buy with secure checkout, or let kids request items with Units."
       />
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        {products.map((product) => (
-          <Card key={product.id} className="flex flex-col overflow-hidden p-0">
-            <ProductArt productId={product.id} />
-            <div className="flex flex-1 flex-col p-5">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <Badge tone="muted">{product.category}</Badge>
-                  <h3 className="mt-3 font-display text-xl font-semibold">
-                    {product.name}
-                  </h3>
+      {products.length === 0 ? (
+        <EmptyState
+          icon={Store}
+          title="Stocking the shelves"
+          text="We're curating kid-safe products for the store. Check back soon — new arrivals are on the way."
+        />
+      ) : (
+        <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+          {products.map((product) => (
+            <Card key={product.id} className="flex flex-col overflow-hidden p-0">
+              {product.image_url ? (
+                // eslint-disable-next-line @next/next/no-img-element
+                <img
+                  src={product.image_url}
+                  alt={product.name}
+                  loading="lazy"
+                  className="aspect-[1.4] w-full object-cover"
+                />
+              ) : (
+                <ProductArt productId={product.id} />
+              )}
+              <div className="flex flex-1 flex-col p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      <Badge tone="muted">{product.category}</Badge>
+                      <Badge tone="accent">Kid-safe screened</Badge>
+                    </div>
+                    <h3 className="mt-3 font-display text-xl font-semibold">
+                      {product.name}
+                    </h3>
+                  </div>
+                  <p className="font-mono text-sm text-accent tabular-nums">
+                    {product.unit_price} U
+                  </p>
                 </div>
-                <p className="font-mono text-sm text-accent tabular-nums">
-                  {product.unit_price} U
+                <p className="mt-2 flex-1 text-sm text-muted">
+                  {product.description}
+                </p>
+                <div className="mt-5 flex items-center justify-between gap-3">
+                  <span className="text-sm font-semibold tabular-nums">
+                    {money(product.retail_price_cents)}
+                  </span>
+                  <Button
+                    onClick={async () => {
+                      await addToCart({ data: { productId: product.id, quantity: 1 } });
+                      await onAdded();
+                      toast.success("Added to basket");
+                    }}
+                  >
+                    Add to basket
+                  </Button>
+                </div>
+                <p className="mt-2 text-xs text-subtle">
+                  {product.inventory} available
                 </p>
               </div>
-              <p className="mt-2 flex-1 text-sm text-muted">
-                {product.description}
-              </p>
-              <div className="mt-5 flex items-center justify-between gap-3">
-                <span className="text-sm font-semibold tabular-nums">
-                  {money(product.retail_price_cents)}
-                </span>
-                <Button
-                  onClick={async () => {
-                    await addToCart({ data: { productId: product.id, quantity: 1 } });
-                    await onAdded();
-                    toast.success("Added to basket");
-                  }}
-                >
-                  Add to basket
-                </Button>
-              </div>
-              <p className="mt-2 text-xs text-subtle">
-                Supplier: {product.supplier_name} · {product.inventory} available
-              </p>
-            </div>
-          </Card>
-        ))}
-      </div>
+            </Card>
+          ))}
+        </div>
+      )}
     </section>
   );
 }
