@@ -4,10 +4,12 @@ import {
   Eraser,
   Grid3x3,
   Home,
+  Lock,
   Redo2,
   Sailboat,
   Save,
   Smile,
+  Sparkles,
   Star,
   Sun,
   Trash2,
@@ -35,6 +37,7 @@ import {
 } from "@/lib/studio-path";
 import { cn } from "@/lib/utils";
 import { StudioHub, StudioRoomView } from "@/components/kiddo/studio-rooms";
+import { StudioProScreen, type ProTool } from "@/components/kiddo/studio-pro";
 
 type Tool = "brush" | StudioToolId;
 
@@ -132,6 +135,38 @@ const STAMP_BUTTONS: Array<[StudioToolId, typeof Sun, string]> = [
   ["stamp-boat", Sailboat, "Boat"],
 ];
 
+function StudioProBanner({ onOpen }: { onOpen: () => void }) {
+  const proUnlocked = useLedger((s) => s.studioProUnlocked ?? false);
+  const role = useLedger((s) => s.role);
+  const locked = !proUnlocked && role !== "parent";
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      className="w-full rounded-2xl border border-accent/40 bg-gradient-to-r from-accent/15 via-accent/5 to-transparent p-5 text-left hover:border-accent/70"
+    >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span className="flex size-11 shrink-0 items-center justify-center rounded-xl bg-accent text-white">
+            {locked ? <Lock className="size-5" /> : <Sparkles className="size-5" />}
+          </span>
+          <div>
+            <p className="font-display text-lg font-semibold">Creative Studio Pro</p>
+            <p className="text-sm text-muted">
+              {locked
+                ? "Locked — a parent can unlock the advanced workshop"
+                : "Pro Canvas · Story Studio · Beat Sequencer"}
+            </p>
+          </div>
+        </div>
+        <span className="shrink-0 text-xs font-semibold uppercase tracking-wider text-accent">
+          {locked ? "Locked" : "Open"}
+        </span>
+      </div>
+    </button>
+  );
+}
+
 export function StudioScreen() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -141,6 +176,7 @@ export function StudioScreen() {
   const [tool, setTool] = useState<Tool>("brush");
   const [missionId, setMissionId] = useState<string | null>(null);
   const [room, setRoom] = useState<StudioRoomId>("hub");
+  const [proTool, setProTool] = useState<ProTool | "hub" | null>(null);
 
   const role = useLedger((s) => s.role);
   const childAge = useLedger((s) => s.childAge);
@@ -336,7 +372,18 @@ export function StudioScreen() {
           </div>
         </header>
         {room === "hub" ? (
-          <StudioHub bandId={band.id} role={role} onOpen={setRoom} />
+          proTool ? (
+            <StudioProScreen
+              tool={proTool}
+              onNavigate={setProTool}
+              onExit={() => setProTool(null)}
+            />
+          ) : (
+            <>
+              <StudioProBanner onOpen={() => setProTool("hub")} />
+              <StudioHub bandId={band.id} role={role} onOpen={setRoom} />
+            </>
+          )
         ) : (
           <StudioRoomView
             room={room as Exclude<StudioRoomId, "hub" | "color">}

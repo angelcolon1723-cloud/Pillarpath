@@ -97,6 +97,28 @@ export type TeacherMessage = {
   at: string;
 };
 
+/* Teacher <-> parent two-way messaging. Threads are keyed to one family   */
+/* (parent + child) inside a classroom. The data model is server-ready:   */
+/* when real accounts land, threads sync by family id.                    */
+export type ThreadSender = "teacher" | "parent";
+
+export type TeacherThreadMessage = {
+  id: string;
+  from: ThreadSender;
+  text: string;
+  at: string;
+};
+
+export type TeacherThread = {
+  id: string;
+  classroomId: string;
+  classroomName: string;
+  parentName: string;
+  childName: string;
+  messages: TeacherThreadMessage[];
+  updatedAt: string;
+};
+
 export type ClassroomUnitEvent = {
   id: string;
   studentId: string;
@@ -302,6 +324,7 @@ type TeacherData = {
   submissions: TeacherSubmission[];
   connections: TeacherConnection[];
   messages: TeacherMessage[];
+  threads: TeacherThread[];
   classroomUnitBalances: Record<string, number>;
   unitEvents: ClassroomUnitEvent[];
   resources: TeacherResource[];
@@ -348,6 +371,20 @@ type TeacherState = TeacherData & {
     input: { educationalPermissions: boolean; unitPermissions: boolean },
   ) => void;
   sendMessage: (audience: string, text: string) => string | null;
+  startThread: (
+    classroomId: string,
+    parentName: string,
+    childName: string,
+  ) => string | null;
+  sendThreadMessage: (
+    threadId: string,
+    from: ThreadSender,
+    text: string,
+  ) => string | null;
+  importRoster: (
+    classroomId: string,
+    names: string[],
+  ) => { imported: number; skipped: number };
   classroomUnitBalance: (studentId: string) => number;
   addEarningActivity: (input: {
     name: string;
@@ -373,6 +410,7 @@ export const useTeacher = create<TeacherState>()(
       submissions: [],
       connections: [],
       messages: [],
+      threads: [],
       classroomUnitBalances: {},
       unitEvents: [],
       resources: RESOURCES,
@@ -675,6 +713,96 @@ export const useTeacher = create<TeacherState>()(
 
       classroomUnitBalance: (studentId) => get().classroomUnitBalances[studentId] ?? 0,
 
+      startThread: (classroomId, parentName, childName) => {
+        const parent = parentName.trim();
+        const child = childName.trim();
+        if (!parent || !child) return "Enter the parent and child names";
+        const classroom = get().classrooms.find((c) => c.id === classroomId);
+        if (!classroom) return "Choose a classroom first";
+        const existing = get().threads.find(
+          (t) =>
+            t.classroomId === classroomId &&
+            t.parentName.toLowerCase() === parent.toLowerCase() &&
+            t.childName.toLowerCase() === child.toLowerCase(),
+        );
+        if (existing) return existing.id;
+        const thread: TeacherThread = {
+          id: uid("thread"),
+          classroomId,
+          classroomName: classroom.name,
+          parentName: parent,
+          childName: child,
+          messages: [],
+          updatedAt: nowIso(),
+        };
+        set((s) => ({ threads: [thread, ...s.threads] }));
+        return thread.id;
+      },
+
+      sendThreadMessage: (threadId, from, text) => {
+        const trimmed = text.trim();
+        if (!trimmed) return "Write a message first";
+        if (trimmed.length > 2000) return "Keep messages under 2000 characters";
+        const thread = get().threads.find((t) => t.id === threadId);
+        if (!thread) return "Conversation not found";
+        const msg: TeacherThreadMessage = {
+          id: uid("tmsg"),
+          from,
+          text: trimmed,
+          at: nowIso(),
+        };
+        set((s) => ({
+          threads: s.threads
+            .map((t) =>
+              t.id === threadId
+                ? { ...t, messages: [...t.messages, msg].slice(-200), updatedAt: nowIso() }
+                : t,
+            )
+            .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
+        }));
+        return null;
+      },
+
+      importRoster: (classroomId, names) => {
+        const classroom = get().classrooms.find((c) => c.id === classroomId);
+        if (!classroom) return { imported: 0, skipped: names.length };
+        const seen = new Set(
+          get()
+            .students.filter((s) => s.classroomId === classroomId)
+            .map((s) => s.name.toLowerCase()),
+        );
+        let imported = 0;
+        let skipped = 0;
+        const fresh: TeacherStudent[] = [];
+        for (const raw of names) {
+          const name = raw.trim().replace(/^["']|["']$/g, "").trim();
+          if (!name || seen.has(name.toLowerCase())) {
+            skipped += 1;
+            continue;
+          }
+          seen.add(name.toLowerCase());
+          fresh.push({
+            id: uid("student"),
+            name,
+            classroomId,
+            joinedAt: nowIso(),
+          });
+          imported += 1;
+        }
+        if (fresh.length > 0) {
+          const ids = fresh.map((s) => s.id);
+          set((s) => ({
+            students: [...fresh, ...s.students],
+            classrooms: s.classrooms.map((c) =>
+              c.id === classroomId
+                ? { ...c, studentIds: [...ids, ...c.studentIds] }
+                : c,
+            ),
+          }));
+        }
+        return { imported, skipped };
+      },
+
       addEarningActivity: (input) => {
         const name = input.name.trim();
         if (!name) return "Give the activity a name";
@@ -720,6 +848,7 @@ export const useTeacher = create<TeacherState>()(
           submissions: [],
           connections: [],
           messages: [],
+          threads: [],
           classroomUnitBalances: {},
           unitEvents: [],
           lessons: seedLessons(),

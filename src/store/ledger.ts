@@ -177,6 +177,7 @@ function openingState() {
     completedMissionIds: [] as string[],
     studioXp: 0,
     studioStreak: 1,
+    studioProUnlocked: false,
     lastStudioDay: "",
     gameWins: 0,
     studioTeam: null as string | null,
@@ -239,6 +240,7 @@ type LedgerState = LedgerData & {
   saveDrawing: (dataUrl: string, meta?: { missionId?: string; title?: string }) => string;
   clearDrawings: () => void;
   setChildAge: (age: number) => void;
+  setStudioProUnlocked: (on: boolean) => void;
   completeStudioMission: (missionId: string, xp: number) => string | null;
   awardStudioWin: (xp: number, units: number, note: string) => string | null;
   buyStudioPack: (packId: string, cost: number) => string | null;
@@ -742,6 +744,9 @@ export const useLedger = create<LedgerState>()(
         const next = Math.min(17, Math.max(5, Math.floor(age) || 10));
         set({ childAge: next });
       },
+      setStudioProUnlocked: (on) => {
+        set({ studioProUnlocked: on });
+      },
       completeStudioMission: (missionId, xp) => {
         const s = get();
         const done = s.completedMissionIds ?? [];
@@ -844,6 +849,7 @@ export const useLedger = create<LedgerState>()(
         completedMissionIds: state.completedMissionIds,
         studioXp: state.studioXp,
         studioStreak: state.studioStreak,
+        studioProUnlocked: state.studioProUnlocked,
         lastStudioDay: state.lastStudioDay,
         gameWins: state.gameWins,
         studioTeam: state.studioTeam,

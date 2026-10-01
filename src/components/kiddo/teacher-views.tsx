@@ -5,6 +5,8 @@ import {
   Check,
   ClipboardList,
   Coins,
+  Download,
+  FileSpreadsheet,
   GraduationCap,
   LayoutDashboard,
   Library,
@@ -18,6 +20,7 @@ import {
   Settings as SettingsIcon,
   Trash2,
   Trophy,
+  Upload,
   Users,
   X,
 } from "lucide-react";
@@ -57,6 +60,7 @@ export type TeacherSection =
   | "leaderboard"
   | "studio"
   | "resources"
+  | "records"
   | "messages"
   | "settings";
 
@@ -104,6 +108,9 @@ export function TeacherWorkspace({ section }: { section: TeacherSection }) {
         </>
       ) : null}
       {section === "resources" ? <TeacherResources /> : null}
+      {section === "records" ? (
+        <TeacherRecords activeClassroom={activeClassroom} />
+      ) : null}
       {section === "messages" ? (
         <TeacherMessages activeClassroom={activeClassroom} />
       ) : null}
@@ -1561,10 +1568,268 @@ function TeacherResources() {
 }
 
 /* ------------------------------------------------------------------ */
+/* Records — classroom-level import/export. Company-wide records live   */
+/* on the PillarPath Society Network admin dashboard (corporate side).  */
+/* ------------------------------------------------------------------ */
+
+function downloadCsv(filename: string, rows: string[][]) {
+  const esc = (v: string) =>
+    /[",\n]/.test(v) ? `"${v.replace(/"/g, '""')}"` : v;
+  const csv = rows.map((r) => r.map(esc).join(",")).join("\n");
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+function TeacherRecords({
+  activeClassroom,
+}: {
+  activeClassroom: TeacherClassroom | null;
+}) {
+  const students = useTeacher((s) => s.students);
+  const assignments = useTeacher((s) => s.assignments);
+  const submissions = useTeacher((s) => s.submissions);
+  const importRoster = useTeacher((s) => s.importRoster);
+  const [preview, setPreview] = useState<string[]>([]);
+  const [fileName, setFileName] = useState("");
+
+  const roster = useMemo(
+    () =>
+      activeClassroom
+        ? students.filter((s) => s.classroomId === activeClassroom.id)
+        : [],
+    [students, activeClassroom],
+  );
+
+  function onPickFile(file: File | undefined) {
+    if (!file) return;
+    setFileName(file.name);
+    const reader = new FileReader();
+    reader.onload = () => {
+      const text = String(reader.result ?? "");
+      const names = text
+        .split(/\r?\n/)
+        .map((line) => {
+          // take the first column (name) if the row has commas
+          const first = line.split(",")[0] ?? "";
+          return first.replace(/^["'\s]+|["'\s]+$/g, "");
+        })
+        .filter((n) => n.length > 0);
+      // drop a header row if it looks like one
+      const cleaned =
+        names.length > 0 && /^(name|student|full name)$/i.test(names[0])
+          ? names.slice(1)
+          : names;
+      setPreview(cleaned.slice(0, 500));
+    };
+    reader.readAsText(file);
+  }
+
+  function doImport() {
+    if (!activeClassroom) {
+      toast.error("Choose a classroom first");
+      return;
+    }
+    if (preview.length === 0) {
+      toast.error("No names to import");
+      return;
+    }
+    const { imported, skipped } = importRoster(activeClassroom.id, preview);
+    setPreview([]);
+    setFileName("");
+    toast.success(
+      `Imported ${imported} student${imported === 1 ? "" : "s"}${
+        skipped > 0 ? ` · ${skipped} skipped (blank or duplicate)` : ""
+      }`,
+    );
+  }
+
+  const stamp = new Date().toISOString().slice(0, 10);
+
+  function exportRoster() {
+    if (!activeClassroom) return toast.error("Choose a classroom first");
+    downloadCsv(`roster-${activeClassroom.name}-${stamp}.csv`, [
+      ["Name", "Joined"],
+      ...roster.map((s) => [s.name, s.joinedAt.slice(0, 10)]),
+    ]);
+    toast.success("Roster downloaded");
+  }
+
+  function exportAssignments() {
+    if (!activeClassroom) return toast.error("Choose a classroom first");
+    const list = assignments.filter(
+      (a) => a.classroomId === activeClassroom.id,
+    );
+    downloadCsv(`assignments-${activeClassroom.name}-${stamp}.csv`, [
+      ["Title", "Status", "Unit reward", "Due date", "Created"],
+      ...list.map((a) => [
+        a.title,
+        a.status,
+        String(a.unitReward),
+        a.dueDate,
+        a.createdAt.slice(0, 10),
+      ]),
+    ]);
+    toast.success("Assignments downloaded");
+  }
+
+  function exportGradebook() {
+    if (!activeClassroom) return toast.error("Choose a classroom first");
+    const classAssignIds = new Set(
+      assignments
+        .filter((a) => a.classroomId === activeClassroom.id)
+        .map((a) => a.id),
+    );
+    const titleById = new Map(assignments.map((a) => [a.id, a.title]));
+    const list = submissions.filter((s) => classAssignIds.has(s.assignmentId));
+    downloadCsv(`gradebook-${activeClassroom.name}-${stamp}.csv`, [
+      ["Student", "Assignment", "Status", "Units awarded", "Submitted", "Feedback"],
+      ...list.map((s) => [
+        s.studentName,
+        titleById.get(s.assignmentId) ?? "",
+        s.status,
+        String(s.unitsAwarded),
+        s.submittedAt.slice(0, 10),
+        s.feedback,
+      ]),
+    ]);
+    toast.success("Gradebook downloaded");
+  }
+
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        eyebrow="Records"
+        title="Classroom records"
+        text="Import your class roster from a spreadsheet and export classroom data. Company-wide records live on the Society Network admin dashboard."
+      />
+      <Card className="space-y-4 p-5">
+        <div className="flex items-center gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
+            <Upload className="size-5" />
+          </span>
+          <div>
+            <CardTitle className="text-base">Import roster</CardTitle>
+            <CardHint>
+              Upload a CSV with one student name per line (first column). Duplicates are skipped.
+            </CardHint>
+          </div>
+        </div>
+        <label className="block cursor-pointer rounded-xl border border-dashed border-border bg-surface p-4 text-center text-sm text-muted hover:border-accent/50">
+          <input
+            type="file"
+            accept=".csv,text/csv,text/plain"
+            className="hidden"
+            onChange={(e) => onPickFile(e.target.files?.[0])}
+          />
+          {fileName ? `Selected: ${fileName}` : "Tap to choose a CSV file"}
+        </label>
+        {preview.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium">
+              {preview.length} name{preview.length === 1 ? "" : "s"} ready to import
+              {activeClassroom ? ` into ${activeClassroom.name}` : ""}
+            </p>
+            <div className="max-h-40 overflow-auto rounded-xl border border-border bg-surface p-3 text-sm">
+              {preview.slice(0, 20).map((n, i) => (
+                <p key={i} className="py-0.5">{n}</p>
+              ))}
+              {preview.length > 20 ? (
+                <p className="text-xs text-muted">…and {preview.length - 20} more</p>
+              ) : null}
+            </div>
+            <div className="flex gap-2">
+              <Button onClick={doImport}>
+                <Upload className="size-4" /> Import {preview.length} students
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => {
+                  setPreview([]);
+                  setFileName("");
+                }}
+              >
+                Clear
+              </Button>
+            </div>
+          </div>
+        ) : null}
+      </Card>
+      <Card className="space-y-3 p-5">
+        <div className="flex items-center gap-3">
+          <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
+            <Download className="size-5" />
+          </span>
+          <div>
+            <CardTitle className="text-base">Export data</CardTitle>
+            <CardHint>Download this classroom's data as CSV files.</CardHint>
+          </div>
+        </div>
+        <div className="grid gap-2 sm:grid-cols-3">
+          <Button variant="outline" onClick={exportRoster}>
+            <Download className="size-4" /> Roster
+          </Button>
+          <Button variant="outline" onClick={exportAssignments}>
+            <Download className="size-4" /> Assignments
+          </Button>
+          <Button variant="outline" onClick={exportGradebook}>
+            <Download className="size-4" /> Gradebook
+          </Button>
+        </div>
+      </Card>
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
 /* Messages                                                            */
 /* ------------------------------------------------------------------ */
 
 function TeacherMessages({
+  activeClassroom,
+}: {
+  activeClassroom: TeacherClassroom | null;
+}) {
+  const [tab, setTab] = useState<"announcements" | "families">("announcements");
+  return (
+    <div className="space-y-5">
+      <SectionHeader
+        eyebrow="Messages"
+        title="Classroom messages"
+        text="Announcements for your classes, plus private two-way conversations with families."
+      />
+      <div className="flex gap-2">
+        <Button
+          size="sm"
+          variant={tab === "announcements" ? "default" : "outline"}
+          onClick={() => setTab("announcements")}
+        >
+          <Megaphone className="size-4" /> Announcements
+        </Button>
+        <Button
+          size="sm"
+          variant={tab === "families" ? "default" : "outline"}
+          onClick={() => setTab("families")}
+        >
+          <MessageSquare className="size-4" /> Family messages
+        </Button>
+      </div>
+      {tab === "announcements" ? (
+        <TeacherAnnouncements activeClassroom={activeClassroom} />
+      ) : (
+        <TeacherFamilyThreads activeClassroom={activeClassroom} />
+      )}
+    </div>
+  );
+}
+
+function TeacherAnnouncements({
   activeClassroom,
 }: {
   activeClassroom: TeacherClassroom | null;
@@ -1634,6 +1899,166 @@ function TeacherMessages({
               <p className="mt-2 text-sm">{m.text}</p>
             </Card>
           ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function TeacherFamilyThreads({
+  activeClassroom,
+}: {
+  activeClassroom: TeacherClassroom | null;
+}) {
+  const threads = useTeacher((s) => s.threads);
+  const startThread = useTeacher((s) => s.startThread);
+  const sendThreadMessage = useTeacher((s) => s.sendThreadMessage);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [parentName, setParentName] = useState("");
+  const [childName, setChildName] = useState("");
+  const [reply, setReply] = useState("");
+
+  const visible = useMemo(
+    () =>
+      activeClassroom
+        ? threads.filter((t) => t.classroomId === activeClassroom.id)
+        : threads,
+    [threads, activeClassroom],
+  );
+  const open = visible.find((t) => t.id === openId) ?? null;
+
+  function newThread() {
+    if (!activeClassroom) {
+      toast.error("Choose a classroom first");
+      return;
+    }
+    const id = startThread(activeClassroom.id, parentName, childName);
+    if (!id) {
+      toast.error("Enter the parent and child names");
+      return;
+    }
+    setParentName("");
+    setChildName("");
+    setOpenId(id);
+    toast.success("Conversation started");
+  }
+
+  function send() {
+    if (!open) return;
+    const err = sendThreadMessage(open.id, "teacher", reply);
+    if (err) toast.error(err);
+    else setReply("");
+  }
+
+  return (
+    <div className="space-y-4">
+      <Card className="space-y-3 p-4">
+        <CardTitle className="text-base">Start a conversation</CardTitle>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <div>
+            <FieldLabel>Parent name</FieldLabel>
+            <Input
+              value={parentName}
+              onChange={(e) => setParentName(e.target.value)}
+              placeholder="e.g. Jordan Lee"
+            />
+          </div>
+          <div>
+            <FieldLabel>Child name</FieldLabel>
+            <Input
+              value={childName}
+              onChange={(e) => setChildName(e.target.value)}
+              placeholder="e.g. Maya"
+            />
+          </div>
+        </div>
+        <Button onClick={newThread}>
+          <Plus className="size-4" /> New conversation
+        </Button>
+      </Card>
+
+      {open ? (
+        <Card className="space-y-3 p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">
+                {open.parentName} · {open.childName}
+              </CardTitle>
+              <CardHint>{open.classroomName}</CardHint>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setOpenId(null)}>
+              <X className="size-4" /> Close
+            </Button>
+          </div>
+          <div className="max-h-72 space-y-2 overflow-auto rounded-xl border border-border bg-surface p-3">
+            {open.messages.length === 0 ? (
+              <p className="text-sm text-muted">
+                No messages yet — say hello to start the conversation.
+              </p>
+            ) : (
+              open.messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={cn(
+                    "max-w-[85%] rounded-xl px-3 py-2 text-sm",
+                    m.from === "teacher"
+                      ? "ml-auto bg-accent text-white"
+                      : "bg-ink/5",
+                  )}
+                >
+                  <p>{m.text}</p>
+                  <p
+                    className={cn(
+                      "mt-1 text-[11px]",
+                      m.from === "teacher" ? "text-white/70" : "text-muted",
+                    )}
+                  >
+                    {m.from === "teacher" ? "You" : open.parentName} ·{" "}
+                    {formatWhen(m.at)}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={reply}
+              onChange={(e) => setReply(e.target.value)}
+              placeholder="Write a message…"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") send();
+              }}
+            />
+            <Button onClick={send}>Send</Button>
+          </div>
+        </Card>
+      ) : visible.length === 0 ? (
+        <EmptyHint text="No family conversations yet." />
+      ) : (
+        <div className="space-y-2">
+          {visible.map((t) => {
+            const last = t.messages[t.messages.length - 1];
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setOpenId(t.id)}
+                className="w-full rounded-xl border border-border bg-card p-4 text-left hover:border-accent/40"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold">
+                    {t.parentName} · {t.childName}
+                  </p>
+                  <span className="text-xs text-muted">{formatWhen(t.updatedAt)}</span>
+                </div>
+                <p className="mt-1 truncate text-sm text-muted">
+                  {last
+                    ? `${last.from === "teacher" ? "You" : t.parentName}: ${last.text}`
+                    : "No messages yet"}
+                </p>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -2030,6 +2455,119 @@ export function ParentTeachers() {
       )}
 
       <ParentLeaderboardOptIn childName={childName} />
+      <ParentTeacherMessages childName={childName} />
+    </div>
+  );
+}
+
+function ParentTeacherMessages({ childName }: { childName: string }) {
+  const threads = useTeacher((s) => s.threads);
+  const sendThreadMessage = useTeacher((s) => s.sendThreadMessage);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [reply, setReply] = useState("");
+
+  const mine = useMemo(
+    () =>
+      threads.filter(
+        (t) => t.childName.toLowerCase() === childName.trim().toLowerCase(),
+      ),
+    [threads, childName],
+  );
+  const open = mine.find((t) => t.id === openId) ?? null;
+
+  function send() {
+    if (!open) return;
+    const err = sendThreadMessage(open.id, "parent", reply);
+    if (err) toast.error(err);
+    else setReply("");
+  }
+
+  return (
+    <div className="space-y-3">
+      <SectionHeader
+        eyebrow="Messages"
+        title="Messages with teachers"
+        text="Private two-way conversations with your child's teachers."
+      />
+      {open ? (
+        <Card className="space-y-3 p-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">{open.classroomName}</CardTitle>
+              <CardHint>
+                {open.childName} · started {formatWhen(open.updatedAt)}
+              </CardHint>
+            </div>
+            <Button size="sm" variant="outline" onClick={() => setOpenId(null)}>
+              <X className="size-4" /> Close
+            </Button>
+          </div>
+          <div className="max-h-72 space-y-2 overflow-auto rounded-xl border border-border bg-surface p-3">
+            {open.messages.length === 0 ? (
+              <p className="text-sm text-muted">No messages yet.</p>
+            ) : (
+              open.messages.map((m) => (
+                <div
+                  key={m.id}
+                  className={cn(
+                    "max-w-[85%] rounded-xl px-3 py-2 text-sm",
+                    m.from === "parent"
+                      ? "ml-auto bg-accent text-white"
+                      : "bg-ink/5",
+                  )}
+                >
+                  <p>{m.text}</p>
+                  <p
+                    className={cn(
+                      "mt-1 text-[11px]",
+                      m.from === "parent" ? "text-white/70" : "text-muted",
+                    )}
+                  >
+                    {m.from === "parent" ? "You" : "Teacher"} · {formatWhen(m.at)}
+                  </p>
+                </div>
+              ))
+            )}
+          </div>
+          <div className="flex gap-2">
+            <Input
+              value={reply}
+              onChange={(e) => setReply(e.target.value)}
+              placeholder="Write a message…"
+              onKeyDown={(e) => {
+                if (e.key === "Enter") send();
+              }}
+            />
+            <Button onClick={send}>Send</Button>
+          </div>
+        </Card>
+      ) : mine.length === 0 ? (
+        <EmptyHint text="No teacher conversations yet. Your child's teacher can start one from their Messages tab." />
+      ) : (
+        <div className="space-y-2">
+          {mine.map((t) => {
+            const last = t.messages[t.messages.length - 1];
+            return (
+              <button
+                key={t.id}
+                type="button"
+                onClick={() => setOpenId(t.id)}
+                className="w-full rounded-xl border border-border bg-card p-4 text-left hover:border-accent/40"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold">{t.classroomName}</p>
+                  <span className="text-xs text-muted">{formatWhen(t.updatedAt)}</span>
+                </div>
+                <p className="mt-1 truncate text-sm text-muted">
+                  {last
+                    ? `${last.from === "parent" ? "You" : "Teacher"}: ${last.text}`
+                    : "No messages yet"}
+                </p>
+              </button>
+            );
+          })}
+        </div>
+      )}
     </div>
   );
 }
@@ -2046,6 +2584,7 @@ export const teacherNavIcons = {
   leaderboard: Trophy,
   studio: Palette,
   resources: Library,
+  records: FileSpreadsheet,
   messages: MessageSquare,
   settings: SettingsIcon,
 };
@@ -2061,6 +2600,7 @@ export const teacherNavLabels: Record<TeacherSection, string> = {
   leaderboard: "Leaderboard",
   studio: "Creative Studio",
   resources: "Resources",
+  records: "Records",
   messages: "Messages",
   settings: "Settings",
 };
