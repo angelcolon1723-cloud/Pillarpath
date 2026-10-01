@@ -14,6 +14,7 @@ import {
   publishStockItem,
   rejectStockItem,
   searchPrintifyBlueprints,
+  syncPrintifyCosts,
   unpublishStockItem,
   type BlueprintChoice,
   type SocietyStatus,
@@ -235,6 +236,25 @@ function ImportPanel({
     }
   }
 
+  async function syncCosts() {
+    setWorking(true);
+    try {
+      const res = await syncPrintifyCosts();
+      if (res.missing.length) {
+        toast(
+          `Costs synced for ${res.updated} of ${res.checked}. ${res.missing.length} still missing pricing — those need a print provider with published costs.`,
+        );
+      } else {
+        toast.success(`Fulfillment costs synced for ${res.updated} products.`);
+      }
+      onImported();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Cost sync failed.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
   return (
     <Card className="p-5">
       <h2 className="font-display text-lg font-semibold">Import from Printify</h2>
@@ -291,12 +311,21 @@ function ImportPanel({
               </span>
             </button>
           ))}
-          <Button
-            onClick={() => void importSelected()}
-            disabled={working || busy || !selected.size}
-          >
-            Import {selected.size} selected
-          </Button>
+          <div className="flex flex-wrap gap-2">
+            <Button
+              onClick={() => void importSelected()}
+              disabled={working || busy || !selected.size}
+            >
+              Import {selected.size} selected
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void syncCosts()}
+              disabled={working || busy}
+            >
+              Sync fulfillment costs
+            </Button>
+          </div>
         </div>
       )}
     </Card>

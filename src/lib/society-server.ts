@@ -152,6 +152,54 @@ export const importPrintifySelection = createServerFn({ method: "POST" })
     return result;
   });
 
+/**
+ * Backfill real fulfillment costs for imported Printify blueprints.
+ *
+ * The catalog variants endpoint sometimes omits pricing on the first pass;
+ * this re-checks each cost-less Printify row and records the cheapest
+ * available variant cost so retail pricing can be cost-plus instead of blind.
+ * Admin only; read-only against Printify, updates our own DB.
+ */
+export const syncPrintifyCosts = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("admin")])
+  .handler(async () => {
+    const client = createPrintifyClientFromEnv();
+    if (!client) throw new Error("Printify is not connected (PRINTIFY_API_KEY missing).");
+    const sql = await getSql();
+    const rows = await sql<{ id: number; title: string; supplier_product_id: string; supplier_sku: string | null }>`
+      select id, title, supplier_product_id, supplier_sku
+      from supplier_products
+      where supplier = 'printify' and cost_cents is null
+      limit 50`;
+    let updated = 0;
+    const missing: string[] = [];
+    for (const row of rows) {
+      const m =
+        row.supplier_product_id.match(/blueprint:(\d+):provider:(\d+)/) ??
+        row.supplier_sku?.match(/printify-(\d+)-(\d+)/);
+      if (!m) {
+        missing.push(row.title);
+        continue;
+      }
+      try {
+        const variants = await client.listVariants(Number(m[1]), Number(m[2]));
+        const costs = variants
+          .filter((v) => v.isAvailable && v.priceCents != null)
+          .map((v) => v.priceCents as number);
+        if (!costs.length) {
+          missing.push(row.title);
+          continue;
+        }
+        const minCost = Math.round(Math.min(...costs));
+        await sql`update supplier_products set cost_cents = ${minCost}, updated_at = now() where id = ${row.id}`;
+        updated += 1;
+      } catch {
+        missing.push(row.title);
+      }
+    }
+    return { checked: rows.length, updated, missing };
+  });
+
 export const unpublishStockItem = createServerFn({ method: "POST" })
   .middleware([roleMiddleware("admin")])
   .validator((input: { storeProductId: string }) => input)
