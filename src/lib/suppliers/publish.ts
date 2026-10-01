@@ -189,7 +189,16 @@ export async function getStockOverview(): Promise<StockItem[]> {
     inventory: r.inventory,
     screening_status: r.screening_status,
     screening_reasons: Array.isArray(r.screening_reasons)
-      ? r.screening_reasons.map(String)
+      ? r.screening_reasons.map((reason) => {
+          if (typeof reason === "string") return reason;
+          if (reason && typeof reason === "object") {
+            const rec = reason as Record<string, unknown>;
+            const message = typeof rec.message === "string" ? rec.message : "";
+            const code = typeof rec.code === "string" ? rec.code : "";
+            return message || code || "flagged";
+          }
+          return String(reason);
+        })
       : [],
     store_product_id: r.store_product_id,
     store_active: r.store_active,

@@ -360,7 +360,9 @@ function StockCard({
             </p>
           )}
           <p className="mt-1 text-xs text-subtle">
-            Supplier cost {money(item.cost_cents)}
+            {item.cost_cents != null
+              ? `Supplier cost ${money(item.cost_cents)}`
+              : "Set a retail price below to publish"}
             {item.ship_from_country ? ` · ships from ${item.ship_from_country}` : ""}
             {item.inventory != null ? ` · ${item.inventory} in stock` : ""}
           </p>
