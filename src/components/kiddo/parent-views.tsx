@@ -612,10 +612,22 @@ export function ParentChores() {
   );
 }
 
+const UNIT_PACKS = [
+  { id: "starter", name: "Starter Pack", units: 500, price: 5, bonus: 0, blurb: "A first taste of the marketplace" },
+  { id: "growth", name: "Growth Pack", units: 1200, price: 10, bonus: 200, tag: "Most popular", blurb: "Room to spend and save" },
+  { id: "family", name: "Family Pack", units: 3000, price: 25, bonus: 500, tag: "Best value", blurb: "Stock up for the whole crew" },
+];
+
+const MONTHLY_PLAN = { name: "PillarPath Monthly", price: 6.99, unitsPerMonth: 1000 };
+
 export function ParentLoad() {
-  const [amount, setAmount] = useState(20);
+  const [packId, setPackId] = useState<string | null>("growth");
+  const [custom, setCustom] = useState("20");
   const [ack, setAck] = useState(false);
   const loadUnits = useLedger((s) => s.loadUnits);
+
+  const pack = UNIT_PACKS.find((x) => x.id === packId) ?? null;
+  const amount = pack ? pack.units : Math.max(0, Math.floor(Number(custom) || 0));
 
   return (
     <div className="screen-enter space-y-4">
@@ -625,7 +637,9 @@ export function ParentLoad() {
           Add Units
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Units are for spending in the Pillarpath Marketplace or locking in the vault.
+          Affordable packs for spending in the Pillarpath Marketplace or locking
+          in the vault. Kids earn Units first through chores — packs are a
+          top-up, never a replacement.
         </p>
       </header>
 
@@ -634,24 +648,82 @@ export function ParentLoad() {
         to the child when a vault reaches maturity.
       </div>
 
+      <div className="space-y-2">
+        <p className="text-sm font-medium">Unit packs</p>
+        <div className="grid grid-cols-3 gap-2">
+          {UNIT_PACKS.map((p) => {
+            const selected = p.id === packId;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => setPackId(p.id)}
+                className={`relative rounded-lg border p-3 text-left transition ${
+                  selected
+                    ? "border-accent bg-accent/10"
+                    : "border-border bg-surface"
+                }`}
+              >
+                {p.tag && (
+                  <span className="absolute -top-2 left-2 rounded-full bg-accent px-2 py-0.5 text-[10px] font-semibold text-white">
+                    {p.tag}
+                  </span>
+                )}
+                <p className="text-xs font-medium text-muted">{p.name}</p>
+                <p className="font-display text-xl font-semibold">
+                  {p.units.toLocaleString()}
+                </p>
+                <p className="text-sm text-muted">Units</p>
+                <p className="mt-1 text-sm font-semibold">${p.price.toFixed(2)}</p>
+                {p.bonus > 0 && (
+                  <p className="text-[11px] text-accent">+{p.bonus} bonus Units</p>
+                )}
+              </button>
+            );
+          })}
+        </div>
+        <p className="text-xs text-muted">
+          Beta preview — real checkout activates at launch.
+        </p>
+      </div>
+
       <Card className="space-y-3">
-        <FieldLabel htmlFor="load-amount">Amount</FieldLabel>
+        <div className="flex items-center justify-between gap-2">
+          <div>
+            <p className="text-sm font-semibold">{MONTHLY_PLAN.name}</p>
+            <p className="text-xs text-muted">
+              {MONTHLY_PLAN.unitsPerMonth.toLocaleString()} Units every month —
+              ${MONTHLY_PLAN.price.toFixed(2)}/mo, pause anytime.
+            </p>
+          </div>
+          <Badge>Coming soon</Badge>
+        </div>
+      </Card>
+
+      <Card className="space-y-3">
+        <FieldLabel htmlFor="load-amount">Or load a custom amount</FieldLabel>
         <Input
           id="load-amount"
           type="number"
           min={1}
-          value={amount}
-          onChange={(e) => setAmount(Number(e.target.value))}
+          value={custom}
+          onChange={(e) => {
+            setCustom(e.target.value);
+            setPackId(null);
+          }}
         />
         <div className="flex gap-2">
           {[10, 20, 50].map((n) => (
             <Button
               key={n}
               type="button"
-              variant={amount === n ? "default" : "outline"}
+              variant={!pack && Number(custom) === n ? "default" : "outline"}
               size="sm"
               className="flex-1"
-              onClick={() => setAmount(n)}
+              onClick={() => {
+                setCustom(String(n));
+                setPackId(null);
+              }}
             >
               {n}
             </Button>
@@ -675,16 +747,19 @@ export function ParentLoad() {
           onClick={() => {
             const err = loadUnits(amount);
             if (err) toast.error(err);
-            else toast.success(`${amount} Units loaded — non-refundable`);
+            else toast.success(`${amount.toLocaleString()} Units loaded — non-refundable`);
           }}
         >
-          Confirm and load
+          {amount >= 1
+            ? `Confirm and load ${amount.toLocaleString()} Units`
+            : "Confirm and load"}
         </Button>
       </Card>
       <BackButton />
     </div>
   );
 }
+
 
 export function ParentAward() {
   const [reason, setReason] = useState<string>(AWARD_REASONS[0]);
