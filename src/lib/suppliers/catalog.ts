@@ -6,6 +6,9 @@
  *
  *   CJ API → upsertSupplierProduct() → screenProduct() →
  *   recordScreening() → (admin approves quarantined rows) → storefront.
+ *
+ *   Printify: importPrintifyBlueprints() runs the same pipeline over
+ *   curated blueprint IDs (blueprint + US-preferred print provider).
  */
 
 import { getSql } from "@/lib/db";
@@ -14,7 +17,14 @@ import type {
   CjVariant,
   CjWarehouseStock,
 } from "@/lib/suppliers/cjdropshipping";
+import type { PrintifyClient } from "@/lib/suppliers/printify";
+import type {
+  PrintifyBlueprint,
+  PrintifyPrintProvider,
+  PrintifyVariant,
+} from "@/lib/suppliers/printify";
 import type { ScreeningResult, ScreeningVerdict } from "@/lib/suppliers/screening";
+import { screenProduct } from "@/lib/suppliers/screening";
 
 if (typeof window !== "undefined") {
   throw new Error(
@@ -144,6 +154,54 @@ export function cjDetailToImport(
   };
 }
 
+/** Build an import payload from a Printify blueprint + chosen print provider. */
+export function printifyBlueprintToImport(
+  blueprint: PrintifyBlueprint,
+  provider: PrintifyPrintProvider,
+  variants: PrintifyVariant[],
+  opts: { priceCents?: number | null } = {},
+): ImportProductInput {
+  const available = variants.filter((v) => v.isAvailable);
+  const priceCents =
+    opts.priceCents ??
+    (available.length
+      ? Math.min(
+          ...available.map((v) => v.priceCents ?? Number.POSITIVE_INFINITY),
+        )
+      : null);
+  return {
+    supplier: "printify",
+    // Blueprint + provider uniquely identify the fulfillable product.
+    supplierProductId: `blueprint:${blueprint.id}:provider:${provider.id}`,
+    supplierSku: `printify-${blueprint.id}-${provider.id}`,
+    title: blueprint.title,
+    description: blueprint.description || null,
+    images: blueprint.images,
+    costCents:
+      priceCents != null && Number.isFinite(priceCents) ? Math.round(priceCents) : null,
+    currency: "USD",
+    categoryId: String(blueprint.id),
+    categoryName: [blueprint.brand, blueprint.model].filter(Boolean).join(" ") || null,
+    variants: available.map((v) => ({
+      id: v.id,
+      title: v.title,
+      options: v.options,
+      isAvailable: v.isAvailable,
+      priceCents: v.priceCents,
+    })),
+    shipFromCountry: provider.countryCode ?? "US",
+    inventory: null, // Print-on-demand: made to order, no stocked inventory.
+    compliance: {
+      printOnDemand: true,
+      printProvider: provider.title,
+      providerCountry: provider.countryCode,
+      safetyCertMentioned: /cpsia|astm|en\s*71|cpc|phthalate|bpa[\s-]*free|non[\s-]*toxic|oeko[\s-]*tex/i.test(
+        `${blueprint.title} ${blueprint.description}`,
+      ),
+    },
+  };
+}
+
 /** Persist a screening verdict onto a supplier product row. */
 export async function recordScreening(
   supplier: string,
@@ -181,6 +239,62 @@ export async function getQuarantined(limit = 50): Promise<SupplierProductRow[]> 
     where screening_status = 'quarantined'
     order by screened_at desc
     limit ${limit}`;
+}
+
+/**
+ * Import a curated set of Printify blueprints into the supplier catalog.
+ *
+ * For each blueprint: fetch detail → pick a print provider (preferring
+ * `preferCountry`) → fetch variants → upsert → run kid-safety screening →
+ * record the verdict. Returns per-blueprint outcomes; failures are collected
+ * in `errors` rather than aborting the batch.
+ */
+export async function importPrintifyBlueprints(
+  client: PrintifyClient,
+  blueprintIds: number[],
+  opts: {
+    preferCountry?: string;
+    onProgress?: (done: number, total: number, blueprintId: number) => void;
+  } = {},
+): Promise<{ imported: number; errors: Array<{ blueprintId: number; error: string }> }> {
+  const preferCountry = (opts.preferCountry ?? "US").toUpperCase();
+  let imported = 0;
+  const errors: Array<{ blueprintId: number; error: string }> = [];
+
+  for (let i = 0; i < blueprintIds.length; i++) {
+    const blueprintId = blueprintIds[i];
+    try {
+      const blueprint = await client.getBlueprint(blueprintId);
+      const providers = await client.listPrintProviders(blueprintId);
+      if (!providers.length) {
+        throw new Error("no print providers available");
+      }
+      const provider =
+        providers.find((p) => p.countryCode === preferCountry) ?? providers[0];
+      const variants = await client.listVariants(blueprintId, provider.id);
+      const row = await upsertSupplierProduct(
+        printifyBlueprintToImport(blueprint, provider, variants),
+      );
+      const result = await screenProduct({
+        title: row.title,
+        description: row.description ?? undefined,
+        category: row.category_name ?? undefined,
+        imageUrls: row.images,
+        supplierProductId: row.supplier_product_id,
+        supplier: row.supplier,
+      });
+      await recordScreening(row.supplier, row.supplier_product_id, result);
+      imported += 1;
+    } catch (err) {
+      errors.push({
+        blueprintId,
+        error: err instanceof Error ? err.message : String(err),
+      });
+    }
+    opts.onProgress?.(i + 1, blueprintIds.length, blueprintId);
+  }
+
+  return { imported, errors };
 }
 
 /** Human override of a screening verdict (records who decided). */

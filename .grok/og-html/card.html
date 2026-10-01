@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>Pillarpath</title>
+    <style>
+      @font-face {
+        font-family: Fraunces;
+        src: url("./Fraunces.ttf") format("truetype");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: block;
+      }
+      @font-face {
+        font-family: Outfit;
+        src: url("./Outfit.ttf") format("truetype");
+        font-weight: 100 900;
+        font-style: normal;
+        font-display: block;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+        background: #050505;
+      }
+      .stage {
+        position: relative;
+        width: 1200px;
+        height: 630px;
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
+        background:
+          radial-gradient(ellipse 42% 58% at 50% 38%, rgba(69, 197, 138, 0.16), transparent 70%),
+          radial-gradient(ellipse 80% 70% at 50% 100%, rgba(69, 197, 138, 0.05), transparent 55%),
+          #050505;
+      }
+      .mark {
+        height: 248px;
+        width: auto;
+        display: block;
+        margin: 0 0 22px;
+        -webkit-mask-image: radial-gradient(ellipse at 50% 48%, #000 52%, transparent 76%);
+        mask-image: radial-gradient(ellipse at 50% 48%, #000 52%, transparent 76%);
+        filter: saturate(1.05) contrast(1.04);
+      }
+      h1 {
+        margin: 0;
+        color: #f4f4f1;
+        font-family: Fraunces, Georgia, serif;
+        font-size: 82px;
+        font-weight: 600;
+        font-variation-settings: "wght" 600, "opsz" 144, "SOFT" 40, "WONK" 0.4;
+        letter-spacing: -0.02em;
+        line-height: 1;
+        text-align: center;
+      }
+      p {
+        margin: 16px 0 0;
+        color: #f4f4f1;
+        font-family: Outfit, system-ui, sans-serif;
+        font-size: 22px;
+        font-weight: 500;
+        font-variation-settings: "wght" 500;
+        letter-spacing: 0.18em;
+        text-align: center;
+        opacity: 0.82;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="stage">
+      <img class="mark" src="./tablet.jpg" alt="" />
+      <h1>Pillarpath</h1>
+      <p>Earn. Save. Shop. Create.</p>
+    </div>
+  </body>
+</html>

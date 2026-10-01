@@ -1,0 +1,38 @@
+{
+  "url": "http://127.0.0.1:8081/",
+  "viewports": {
+    "desktop": {
+      "width": 1280,
+      "height": 800,
+      "status": 200,
+      "title": "Pillarpath",
+      "hasCanvas": false,
+      "bodyTextLen": 2386,
+      "bodyTextHash": "f3a578eaecac70902a9a4d41f45263c3e0b13e956462604b76f71d42f6133e71",
+      "bodyTextPrefix": "Pillarpath Family commerce Sign in A FAMILY OPERATING SYSTEM Ear",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-built.png"
+    },
+    "mobile": {
+      "width": 390,
+      "height": 844,
+      "status": 200,
+      "title": "Pillarpath",
+      "hasCanvas": false,
+      "bodyTextLen": 2386,
+      "bodyTextHash": "f3a578eaecac70902a9a4d41f45263c3e0b13e956462604b76f71d42f6133e71",
+      "bodyTextPrefix": "Pillarpath Family commerce Sign in A FAMILY OPERATING SYSTEM Ear",
+      "horizontalOverflow": false,
+      "consoleErrors": [],
+      "pageErrors": [],
+      "screenshot": "/workspace/screenshots/app-builder-preview-built-mobile.png"
+    }
+  },
+  "brandWarnings": [],
+  "authWarnings": [],
+  "verdictFile": "/workspace/screenshots/app-builder-preview-built.json",
+  "divergesFromBaseline": false,
+  "baselineReasons": []
+}

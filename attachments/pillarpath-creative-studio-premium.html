@@ -1,0 +1,1273 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Pillarpath Creative Studio Pro - Premium Platform</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        
+        :root {
+            --primary: #667eea;
+            --primary-dark: #5568d3;
+            --secondary: #764ba2;
+            --success: #28a745;
+            --danger: #dc3545;
+            --warning: #ffc107;
+            --light: #f8f9fa;
+            --border: #e9ecef;
+            --text: #2c3e50;
+            --text-secondary: #6c757d;
+        }
+
+        html, body {
+            height: 100%;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%);
+            color: var(--text);
+        }
+
+        body { padding: 8px; }
+
+        .studio-app {
+            max-width: 1600px;
+            margin: 0 auto;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            background: white;
+            border-radius: 16px;
+            box-shadow: 0 25px 50px rgba(0,0,0,0.3);
+            overflow: hidden;
+        }
+
+        /* TOP BAR */
+        .top-bar {
+            background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%);
+            color: white;
+            padding: 16px 24px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+        }
+
+        .logo { display: flex; align-items: center; gap: 10px; }
+        .logo h1 { font-size: 24px; font-weight: 700; }
+        .logo-subtitle { font-size: 11px; opacity: 0.9; }
+
+        .top-stats {
+            display: flex;
+            gap: 25px;
+            align-items: center;
+        }
+
+        .top-stat { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+        .top-stat-value { font-weight: 700; font-size: 16px; }
+        .top-stat-icon { font-size: 18px; }
+
+        .user-profile {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            background: rgba(255,255,255,0.2);
+            padding: 8px 14px;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .user-profile:hover { background: rgba(255,255,255,0.3); }
+
+        .user-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            background: rgba(255,255,255,0.4);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px;
+        }
+
+        /* MAIN LAYOUT */
+        .main-layout {
+            display: flex;
+            flex: 1;
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 280px;
+            background: var(--light);
+            border-right: 1px solid var(--border);
+            overflow-y: auto;
+            padding: 16px 0;
+        }
+
+        .sidebar-section {
+            padding: 12px 0;
+            border-bottom: 1px solid var(--border);
+        }
+
+        .sidebar-title {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            color: var(--text-secondary);
+            padding: 0 16px 10px;
+            letter-spacing: 0.5px;
+        }
+
+        .sidebar-item {
+            padding: 12px 16px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            font-size: 14px;
+            color: var(--text);
+            transition: all 0.2s;
+            border-left: 3px solid transparent;
+        }
+
+        .sidebar-item:hover {
+            background: white;
+            border-left-color: var(--primary);
+            color: var(--primary);
+        }
+
+        .sidebar-item.active {
+            background: white;
+            border-left-color: var(--primary);
+            color: var(--primary);
+            font-weight: 600;
+        }
+
+        .sidebar-icon { font-size: 18px; }
+
+        /* CONTENT AREA */
+        .content-area {
+            flex: 1;
+            overflow-y: auto;
+            padding: 28px;
+            background: white;
+        }
+
+        .page { display: none; }
+        .page.active { display: block; animation: fadeIn 0.3s ease; }
+
+        @keyframes fadeIn {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+
+        .page-header {
+            margin-bottom: 28px;
+        }
+
+        .page-title {
+            font-size: 32px;
+            font-weight: 700;
+            margin-bottom: 6px;
+            color: var(--text);
+        }
+
+        .page-subtitle {
+            font-size: 14px;
+            color: var(--text-secondary);
+        }
+
+        /* GRID LAYOUTS */
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+            gap: 20px;
+            margin-bottom: 28px;
+        }
+
+        .card {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            cursor: pointer;
+            transition: all 0.3s;
+            text-decoration: none;
+            color: inherit;
+        }
+
+        .card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 12px 30px rgba(102, 126, 234, 0.2);
+            transform: translateY(-8px);
+        }
+
+        .card-icon { font-size: 48px; margin-bottom: 12px; }
+        .card-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+        .card-desc { font-size: 12px; color: var(--text-secondary); line-height: 1.6; }
+        .card-tag { display: inline-block; background: var(--primary); color: white; font-size: 10px; font-weight: 700; padding: 4px 8px; border-radius: 4px; margin-top: 8px; }
+        .card-tag.pro { background: #FFD700; color: #2c3e50; }
+
+        /* CREATIVE TOOLS */
+        .tool-section {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 14px;
+            padding: 24px;
+            margin-bottom: 24px;
+        }
+
+        .section-title {
+            font-size: 20px;
+            font-weight: 700;
+            margin-bottom: 20px;
+            color: var(--text);
+        }
+
+        .color-palette {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 20px;
+            flex-wrap: wrap;
+        }
+
+        .color-btn {
+            width: 45px;
+            height: 45px;
+            border: 3px solid var(--border);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.2s;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1);
+        }
+
+        .color-btn:hover { transform: scale(1.15); }
+        .color-btn.active { border-color: var(--text); box-shadow: 0 0 0 3px rgba(102,126,234,0.3); }
+
+        /* CANVAS */
+        canvas {
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            background: white;
+            margin-bottom: 16px;
+            max-width: 100%;
+            height: auto;
+            cursor: crosshair;
+        }
+
+        /* BUTTONS */
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 11px 22px;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            transition: all 0.3s;
+            margin-right: 8px;
+            margin-bottom: 8px;
+            display: inline-block;
+        }
+
+        .btn:hover { background: var(--primary-dark); transform: translateY(-2px); box-shadow: 0 6px 16px rgba(102,126,234,0.3); }
+        .btn-secondary { background: var(--border); color: var(--text); }
+        .btn-secondary:hover { background: #dee2e6; }
+        .btn-success { background: var(--success); }
+        .btn-success:hover { background: #218838; }
+        .btn-pro { background: linear-gradient(135deg, #FFD700, #FFA500); color: var(--text); }
+        .btn-pro:hover { transform: translateY(-2px); box-shadow: 0 6px 16px rgba(255, 215, 0, 0.3); }
+
+        /* STATS */
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+            gap: 16px;
+            margin-bottom: 24px;
+        }
+
+        .stat-card {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            transition: all 0.3s;
+        }
+
+        .stat-card:hover { border-color: var(--primary); }
+        .stat-label { font-size: 12px; color: var(--text-secondary); font-weight: 600; margin-bottom: 8px; }
+        .stat-value { font-size: 28px; font-weight: 700; color: var(--primary); }
+
+        /* PROGRESS */
+        .progress-item {
+            margin-bottom: 20px;
+        }
+
+        .progress-label {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 8px;
+            font-size: 13px;
+            font-weight: 600;
+        }
+
+        .progress-bar {
+            background: var(--border);
+            height: 8px;
+            border-radius: 4px;
+            overflow: hidden;
+        }
+
+        .progress-fill {
+            background: linear-gradient(90deg, var(--primary) 0%, var(--secondary) 100%);
+            height: 100%;
+            transition: width 0.3s ease;
+        }
+
+        /* LEADERBOARD */
+        .leaderboard-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-bottom: 20px;
+        }
+
+        .leaderboard-table th {
+            background: var(--light);
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 700;
+            font-size: 12px;
+            color: var(--text-secondary);
+            border-bottom: 2px solid var(--border);
+        }
+
+        .leaderboard-table td {
+            padding: 14px 16px;
+            border-bottom: 1px solid var(--border);
+            font-size: 13px;
+        }
+
+        .leaderboard-rank {
+            font-weight: 700;
+            color: var(--primary);
+        }
+
+        .leaderboard-rank.gold { color: #FFD700; }
+        .leaderboard-rank.silver { color: #C0C0C0; }
+        .leaderboard-rank.bronze { color: #CD7F32; }
+
+        /* ACHIEVEMENT */
+        .achievement-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+            gap: 14px;
+        }
+
+        .achievement {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            padding: 16px;
+            text-align: center;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .achievement:hover { transform: translateY(-5px); box-shadow: 0 8px 20px rgba(0,0,0,0.1); }
+        .achievement-icon { font-size: 40px; margin-bottom: 8px; }
+        .achievement-name { font-size: 11px; font-weight: 600; color: var(--text); }
+        .achievement.locked { opacity: 0.5; }
+
+        /* MARKETPLACE */
+        .product-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+            gap: 16px;
+        }
+
+        .product-card {
+            background: white;
+            border: 2px solid var(--border);
+            border-radius: 12px;
+            overflow: hidden;
+            transition: all 0.3s;
+            cursor: pointer;
+        }
+
+        .product-card:hover { border-color: var(--primary); box-shadow: 0 8px 20px rgba(0,0,0,0.1); transform: translateY(-5px); }
+        .product-image { background: linear-gradient(135deg, var(--primary) 0%, var(--secondary) 100%); height: 140px; display: flex; align-items: center; justify-content: center; font-size: 48px; }
+        .product-info { padding: 14px; }
+        .product-name { font-size: 14px; font-weight: 700; margin-bottom: 4px; }
+        .product-price { font-size: 12px; color: var(--text-secondary); margin-bottom: 10px; }
+
+        /* NOTIFICATIONS */
+        .notification {
+            background: var(--success);
+            color: white;
+            padding: 14px 18px;
+            border-radius: 8px;
+            margin-bottom: 16px;
+            animation: slideDown 0.3s ease;
+            display: none;
+        }
+
+        .notification.show { display: block; }
+
+        @keyframes slideDown {
+            from { transform: translateY(-10px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+
+        /* MODAL */
+        .modal {
+            display: none;
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            z-index: 2000;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .modal.active { display: flex; }
+
+        .modal-content {
+            background: white;
+            padding: 36px;
+            border-radius: 16px;
+            text-align: center;
+            max-width: 450px;
+            animation: popIn 0.3s ease;
+        }
+
+        @keyframes popIn {
+            from { transform: scale(0.8); opacity: 0; }
+            to { transform: scale(1); opacity: 1; }
+        }
+
+        .modal-content h2 { font-size: 28px; margin-bottom: 12px; color: var(--text); }
+        .modal-content p { font-size: 14px; color: var(--text-secondary); margin-bottom: 22px; line-height: 1.6; }
+
+        /* RESPONSIVE */
+        @media (max-width: 1024px) {
+            .sidebar { width: 220px; }
+            .card-grid { grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+        }
+
+        @media (max-width: 768px) {
+            .main-layout { flex-direction: column; }
+            .sidebar { width: 100%; border-right: none; border-bottom: 1px solid var(--border); max-height: 120px; display: flex; overflow-x: auto; }
+            .sidebar-section { display: flex; gap: 8px; padding: 8px 0; border-bottom: none; white-space: nowrap; }
+            .sidebar-title { display: none; }
+            .sidebar-item { padding: 8px 12px; font-size: 12px; }
+            .card-grid { grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); }
+            .top-stats { flex-wrap: wrap; }
+            .page-title { font-size: 24px; }
+            .content-area { padding: 16px; }
+        }
+
+        @media (max-width: 480px) {
+            .top-bar { flex-direction: column; gap: 12px; text-align: center; }
+            .top-stats { gap: 15px; justify-content: center; }
+            .logo h1 { font-size: 20px; }
+            .card-grid { grid-template-columns: repeat(2, 1fr); }
+            .page-title { font-size: 20px; }
+        }
+
+        .tabs {
+            display: flex;
+            gap: 0;
+            border-bottom: 2px solid var(--border);
+            margin-bottom: 20px;
+        }
+
+        .tab-btn {
+            background: none;
+            border: none;
+            padding: 12px 20px;
+            cursor: pointer;
+            font-size: 13px;
+            font-weight: 600;
+            color: var(--text-secondary);
+            border-bottom: 3px solid transparent;
+            transition: all 0.3s;
+        }
+
+        .tab-btn:hover { color: var(--text); }
+        .tab-btn.active { color: var(--primary); border-bottom-color: var(--primary); }
+    </style>
+</head>
+<body>
+    <div class="studio-app">
+        <!-- TOP BAR -->
+        <div class="top-bar">
+            <div class="logo">
+                <div>
+                    <h1>🎨 Pillarpath Studio Pro</h1>
+                    <div class="logo-subtitle">Premium Creative Platform</div>
+                </div>
+            </div>
+            <div class="top-stats">
+                <div class="top-stat">
+                    <span class="top-stat-icon">💜</span>
+                    <div>
+                        <div class="top-stat-value" id="topPillars">2,450</div>
+                        <div style="font-size: 11px; opacity: 0.8;">Units</div>
+                    </div>
+                </div>
+                <div class="top-stat">
+                    <span class="top-stat-icon">🔥</span>
+                    <div>
+                        <div class="top-stat-value">12</div>
+                        <div style="font-size: 11px; opacity: 0.8;">Streak</div>
+                    </div>
+                </div>
+                <div class="top-stat">
+                    <span class="top-stat-icon">⭐</span>
+                    <div>
+                        <div class="top-stat-value">Level 8</div>
+                        <div style="font-size: 11px; opacity: 0.8;">Expert</div>
+                    </div>
+                </div>
+            </div>
+            <div class="user-profile">
+                <div class="user-avatar">👤</div>
+                <div style="font-size: 13px; text-align: left;">
+                    <div style="font-weight: 600;">Alex</div>
+                    <div style="font-size: 11px; opacity: 0.9;">Member</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- MAIN LAYOUT -->
+        <div class="main-layout">
+            <!-- SIDEBAR -->
+            <div class="sidebar">
+                <div class="sidebar-section">
+                    <div class="sidebar-title">Studio</div>
+                    <div class="sidebar-item active" onclick="switchPage('dashboard')"><span class="sidebar-icon">📊</span>Dashboard</div>
+                    <div class="sidebar-item" onclick="switchPage('coloring')"><span class="sidebar-icon">🎨</span>Coloring</div>
+                    <div class="sidebar-item" onclick="switchPage('animation')"><span class="sidebar-icon">🎬</span>Animation</div>
+                    <div class="sidebar-item" onclick="switchPage('music')"><span class="sidebar-icon">🎵</span>Music Studio</div>
+                    <div class="sidebar-item" onclick="switchPage('design')"><span class="sidebar-icon">🖼️</span>Design</div>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-title">Games & Learn</div>
+                    <div class="sidebar-item" onclick="switchPage('games')"><span class="sidebar-icon">🎮</span>Games</div>
+                    <div class="sidebar-item" onclick="switchPage('challenges')"><span class="sidebar-icon">⚡</span>Challenges</div>
+                    <div class="sidebar-item" onclick="switchPage('leaderboard')"><span class="sidebar-icon">🏆</span>Leaderboard</div>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-title">Community</div>
+                    <div class="sidebar-item" onclick="switchPage('marketplace')"><span class="sidebar-icon">🛍️</span>Marketplace</div>
+                    <div class="sidebar-item" onclick="switchPage('gallery')"><span class="sidebar-icon">🖼️</span>Gallery</div>
+                    <div class="sidebar-item" onclick="switchPage('teams')"><span class="sidebar-icon">👥</span>Teams</div>
+                </div>
+                <div class="sidebar-section">
+                    <div class="sidebar-title">Me</div>
+                    <div class="sidebar-item" onclick="switchPage('profile')"><span class="sidebar-icon">👤</span>Profile</div>
+                    <div class="sidebar-item" onclick="switchPage('achievements')"><span class="sidebar-icon">🏅</span>Achievements</div>
+                    <div class="sidebar-item" onclick="switchPage('settings')"><span class="sidebar-icon">⚙️</span>Settings</div>
+                </div>
+            </div>
+
+            <!-- CONTENT -->
+            <div class="content-area">
+                <!-- DASHBOARD -->
+                <div id="dashboard" class="page active">
+                    <div class="page-header">
+                        <div class="page-title">Welcome Back! 👋</div>
+                        <div class="page-subtitle">Create, Learn, Earn & Connect</div>
+                    </div>
+
+                    <div class="notification" id="notification"></div>
+
+                    <div style="margin-bottom: 30px;">
+                        <div class="section-title">🚀 Quick Start</div>
+                        <div class="card-grid">
+                            <div class="card" onclick="switchPage('coloring')">
+                                <div class="card-icon">🎨</div>
+                                <div class="card-title">Digital Coloring</div>
+                                <div class="card-desc">Create beautiful colorful artwork. +25 units/artwork</div>
+                            </div>
+                            <div class="card" onclick="switchPage('animation')">
+                                <div class="card-icon">🎬</div>
+                                <div class="card-title">Animation Studio</div>
+                                <div class="card-desc">Make your creations move! <span class="card-tag pro">PRO</span></div>
+                            </div>
+                            <div class="card" onclick="switchPage('music')">
+                                <div class="card-icon">🎵</div>
+                                <div class="card-title">Music Creator</div>
+                                <div class="card-desc">Compose & mix music easily</div>
+                            </div>
+                            <div class="card" onclick="switchPage('games')">
+                                <div class="card-icon">🎮</div>
+                                <div class="card-title">Learning Games</div>
+                                <div class="card-desc">Brain trainers. +50-100 units per win</div>
+                            </div>
+                            <div class="card" onclick="switchPage('design')">
+                                <div class="card-icon">👕</div>
+                                <div class="card-title">Design Studio</div>
+                                <div class="card-desc">Create custom merchandise</div>
+                            </div>
+                            <div class="card" onclick="switchPage('challenges')">
+                                <div class="card-icon">⚡</div>
+                                <div class="card-title">Daily Challenges</div>
+                                <div class="card-desc">Earn bonus units & streaks</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px;">
+                        <div class="tool-section">
+                            <div class="section-title">📈 Your Progress</div>
+                            <div class="progress-item">
+                                <div class="progress-label"><span>Creative Expression</span><span>78%</span></div>
+                                <div class="progress-bar"><div class="progress-fill" style="width: 78%;"></div></div>
+                            </div>
+                            <div class="progress-item">
+                                <div class="progress-label"><span>Problem Solving</span><span>62%</span></div>
+                                <div class="progress-bar"><div class="progress-fill" style="width: 62%;"></div></div>
+                            </div>
+                            <div class="progress-item">
+                                <div class="progress-label"><span>Collaboration</span><span>85%</span></div>
+                                <div class="progress-bar"><div class="progress-fill" style="width: 85%;"></div></div>
+                            </div>
+                        </div>
+
+                        <div class="tool-section">
+                            <div class="section-title">🎯 This Week</div>
+                            <div class="stats-grid" style="grid-template-columns: 1fr 1fr;">
+                                <div class="stat-card">
+                                    <div class="stat-label">Creations</div>
+                                    <div class="stat-value">12</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-label">Games Won</div>
+                                    <div class="stat-value">28</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-label">Units Earned</div>
+                                    <div class="stat-value">+450</div>
+                                </div>
+                                <div class="stat-card">
+                                    <div class="stat-label">Followers</div>
+                                    <div class="stat-value">156</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- COLORING PAGE -->
+                <div id="coloring" class="page">
+                    <div class="page-header">
+                        <div class="page-title">🎨 Digital Coloring Studio</div>
+                        <div class="page-subtitle">Express yourself with unlimited colors</div>
+                    </div>
+
+                    <div class="tool-section">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <div class="section-title" style="margin: 0;">Magic Canvas</div>
+                            <div style="display: flex; gap: 8px;">
+                                <button class="btn btn-secondary" onclick="showNotification('🎨 New design generated!')">✨ AI Suggest</button>
+                                <button class="btn btn-secondary" onclick="showNotification('📁 Design saved!')">💾 Save</button>
+                            </div>
+                        </div>
+
+                        <div style="margin-bottom: 15px;">
+                            <div style="font-size: 13px; font-weight: 600; margin-bottom: 10px;">🖍️ Crayon Colors:</div>
+                            <div class="color-palette">
+                                <button class="color-btn active" style="background: #FF6B6B;" onclick="selectColor(this, '#FF6B6B')"></button>
+                                <button class="color-btn" style="background: #4C6EF5;" onclick="selectColor(this, '#4C6EF5')"></button>
+                                <button class="color-btn" style="background: #FFD93D;" onclick="selectColor(this, '#FFD93D')"></button>
+                                <button class="color-btn" style="background: #6BCB77;" onclick="selectColor(this, '#6BCB77')"></button>
+                                <button class="color-btn" style="background: #FF006E;" onclick="selectColor(this, '#FF006E')"></button>
+                                <button class="color-btn" style="background: #00D4FF;" onclick="selectColor(this, '#00D4FF')"></button>
+                                <button class="color-btn" style="background: #FF9500;" onclick="selectColor(this, '#FF9500')"></button>
+                                <button class="color-btn" style="background: #9D4EDD;" onclick="selectColor(this, '#9D4EDD')"></button>
+                            </div>
+
+                            <div style="display: flex; gap: 10px; font-size: 12px; color: var(--text-secondary);">
+                                <label><input type="range" min="2" max="20" value="8" style="width: 100px;"> Brush Size</label>
+                                <label><input type="range" min="0" max="100" value="100" style="width: 100px;"> Opacity</label>
+                            </div>
+                        </div>
+
+                        <canvas id="colorCanvas" width="900" height="500" style="max-width: 100%; height: auto;"></canvas>
+
+                        <div>
+                            <button class="btn btn-secondary" onclick="clearColorCanvas()">🔄 Clear</button>
+                            <button class="btn btn-secondary" onclick="showNotification('⏮️ Undo applied')">⏮️ Undo</button>
+                            <button class="btn btn-secondary" onclick="showNotification('⏭️ Redo applied')">⏭️ Redo</button>
+                            <button class="btn btn-success" onclick="showNotification('💾 Downloaded! +25 Units 🎉')">💾 Download (+25 Units)</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ANIMATION PAGE -->
+                <div id="animation" class="page">
+                    <div class="page-header">
+                        <div class="page-title">🎬 Animation Studio</div>
+                        <div class="page-subtitle">Bring your creations to life! <span style="background: var(--warning); color: var(--text); padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">PRO</span></div>
+                    </div>
+
+                    <div class="card-grid">
+                        <div class="card" onclick="showNotification('🎬 Frame Editor opened')">
+                            <div class="card-icon">🖼️</div>
+                            <div class="card-title">Frame Builder</div>
+                            <div class="card-desc">Create frame-by-frame animations</div>
+                        </div>
+                        <div class="card" onclick="showNotification('✨ Effects applied')">
+                            <div class="card-icon">✨</div>
+                            <div class="card-title">Effects & Filters</div>
+                            <div class="card-desc">Add motion, transitions, effects</div>
+                        </div>
+                        <div class="card" onclick="showNotification('📹 Export started')">
+                            <div class="card-icon">📹</div>
+                            <div class="card-title">Export to Video</div>
+                            <div class="card-desc">Save as MP4, GIF, or WebM</div>
+                        </div>
+                        <div class="card" onclick="showNotification('📚 Templates loaded')">
+                            <div class="card-icon">📚</div>
+                            <div class="card-title">Animation Templates</div>
+                            <div class="card-desc">Pre-made animation sequences</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- MUSIC PAGE -->
+                <div id="music" class="page">
+                    <div class="page-header">
+                        <div class="page-title">🎵 Music & Sound Studio</div>
+                        <div class="page-subtitle">Compose, mix, and create</div>
+                    </div>
+
+                    <div class="card-grid">
+                        <div class="card" onclick="showNotification('🎹 Piano loaded')">
+                            <div class="card-icon">🎹</div>
+                            <div class="card-title">Virtual Piano</div>
+                            <div class="card-desc">Play and record melodies</div>
+                        </div>
+                        <div class="card" onclick="showNotification('🥁 Drums ready')">
+                            <div class="card-icon">🥁</div>
+                            <div class="card-title">Drum Machine</div>
+                            <div class="card-desc">Create beat patterns</div>
+                        </div>
+                        <div class="card" onclick="showNotification('🎚️ Mixer opened')">
+                            <div class="card-icon">🎚️</div>
+                            <div class="card-title">Audio Mixer</div>
+                            <div class="card-desc">Mix multiple tracks</div>
+                        </div>
+                        <div class="card" onclick="showNotification('🎼 Library loaded')">
+                            <div class="card-icon">🎼</div>
+                            <div class="card-title">Sound Library</div>
+                            <div class="card-desc">1000+ free sounds</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GAMES PAGE -->
+                <div id="games" class="page">
+                    <div class="page-header">
+                        <div class="page-title">🎮 Learning Games</div>
+                        <div class="page-subtitle">Play, Learn, Earn</div>
+                    </div>
+
+                    <div class="card-grid">
+                        <div class="card" onclick="playGame('memory')">
+                            <div class="card-icon">🧠</div>
+                            <div class="card-title">Memory Match</div>
+                            <div class="card-desc">Find pairs • +50 units</div>
+                        </div>
+                        <div class="card" onclick="playGame('puzzle')">
+                            <div class="card-icon">🧩</div>
+                            <div class="card-title">Puzzle Master</div>
+                            <div class="card-desc">Solve sequences • +75 units</div>
+                        </div>
+                        <div class="card" onclick="playGame('logic')">
+                            <div class="card-icon">⚡</div>
+                            <div class="card-title">Logic Challenge</div>
+                            <div class="card-desc">Brain teasers • +60 units</div>
+                        </div>
+                        <div class="card" onclick="playGame('speed')">
+                            <div class="card-icon">🚀</div>
+                            <div class="card-title">Speed Racer</div>
+                            <div class="card-desc">Quick reactions • +100 units</div>
+                        </div>
+                        <div class="card" onclick="playGame('code')">
+                            <div class="card-icon">💻</div>
+                            <div class="card-title">Code Breaker</div>
+                            <div class="card-desc">Pattern coding • +80 units</div>
+                        </div>
+                        <div class="card" onclick="playGame('wordplay')">
+                            <div class="card-icon">📝</div>
+                            <div class="card-title">Word Master</div>
+                            <div class="card-desc">Vocabulary game • +55 units</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- CHALLENGES PAGE -->
+                <div id="challenges" class="page">
+                    <div class="page-header">
+                        <div class="page-title">⚡ Daily & Weekly Challenges</div>
+                        <div class="page-subtitle">Complete for bonus units</div>
+                    </div>
+
+                    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+                        <div class="tool-section" style="border-left: 4px solid var(--success);">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div class="section-title" style="margin: 0;">Daily: Paint for 30 mins</div>
+                                    <div style="font-size: 12px; color: var(--text-secondary);">Mon-Fri • Resets daily</div>
+                                </div>
+                                <div style="font-size: 24px;">✅</div>
+                            </div>
+                            <div class="progress-item">
+                                <div class="progress-label"><span>Progress</span><span>30/30 min</span></div>
+                                <div class="progress-bar"><div class="progress-fill" style="width: 100%;"></div></div>
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-secondary);">🎁 Reward: +50 units</div>
+                        </div>
+
+                        <div class="tool-section">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div class="section-title" style="margin: 0;">Weekly: 5 Game Wins</div>
+                                    <div style="font-size: 12px; color: var(--text-secondary);">Resets every Monday</div>
+                                </div>
+                                <div style="font-size: 24px;">🎮</div>
+                            </div>
+                            <div class="progress-item">
+                                <div class="progress-label"><span>Progress</span><span>3/5 wins</span></div>
+                                <div class="progress-bar"><div class="progress-fill" style="width: 60%;"></div></div>
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-secondary);">🎁 Reward: +100 units</div>
+                        </div>
+
+                        <div class="tool-section">
+                            <div style="display: flex; justify-content: space-between; align-items: center;">
+                                <div>
+                                    <div class="section-title" style="margin: 0;">Monthly: 10 Creations</div>
+                                    <div style="font-size: 12px; color: var(--text-secondary);">Resets every 1st</div>
+                                </div>
+                                <div style="font-size: 24px;">🎨</div>
+                            </div>
+                            <div class="progress-item">
+                                <div class="progress-label"><span>Progress</span><span>7/10 creations</span></div>
+                                <div class="progress-bar"><div class="progress-fill" style="width: 70%;"></div></div>
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-secondary);">🎁 Reward: +250 units + Badge</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- LEADERBOARD PAGE -->
+                <div id="leaderboard" class="page">
+                    <div class="page-header">
+                        <div class="page-title">🏆 Global Leaderboards</div>
+                        <div class="page-subtitle">Top creators & players</div>
+                    </div>
+
+                    <div class="tabs">
+                        <button class="tab-btn active">🎨 Creative Leaders</button>
+                        <button class="tab-btn">🎮 Game Champions</button>
+                        <button class="tab-btn">⭐ Streak Masters</button>
+                        <button class="tab-btn">👥 Team Scores</button>
+                    </div>
+
+                    <table class="leaderboard-table">
+                        <thead>
+                            <tr>
+                                <th>Rank</th>
+                                <th>Creator</th>
+                                <th>Creations</th>
+                                <th>Units</th>
+                                <th>Followers</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <tr>
+                                <td><span class="leaderboard-rank gold">🥇 1</span></td>
+                                <td>Luna Artist</td>
+                                <td>2,450</td>
+                                <td>18,500</td>
+                                <td>5,230</td>
+                            </tr>
+                            <tr>
+                                <td><span class="leaderboard-rank silver">🥈 2</span></td>
+                                <td>Alex Creator</td>
+                                <td>2,180</td>
+                                <td>16,200</td>
+                                <td>4,890</td>
+                            </tr>
+                            <tr>
+                                <td><span class="leaderboard-rank bronze">🥉 3</span></td>
+                                <td>Maya Design</td>
+                                <td>1,980</td>
+                                <td>15,100</td>
+                                <td>4,560</td>
+                            </tr>
+                            <tr>
+                                <td>4</td>
+                                <td>Jordan Arts</td>
+                                <td>1,750</td>
+                                <td>13,800</td>
+                                <td>4,120</td>
+                            </tr>
+                            <tr style="background: rgba(102, 126, 234, 0.1); font-weight: 600;">
+                                <td>👤 You</td>
+                                <td>Your Name</td>
+                                <td>284</td>
+                                <td>2,450</td>
+                                <td>156</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+
+                <!-- MARKETPLACE PAGE -->
+                <div id="marketplace" class="page">
+                    <div class="page-header">
+                        <div class="page-title">🛍️ Marketplace</div>
+                        <div class="page-subtitle">Buy & Sell Digital Creations</div>
+                    </div>
+
+                    <div class="product-grid">
+                        <div class="product-card">
+                            <div class="product-image">🎨</div>
+                            <div class="product-info">
+                                <div class="product-name">Brush Pack Pro</div>
+                                <div class="product-price">💜 250 units</div>
+                                <button class="btn" onclick="showNotification('✅ Purchased Brush Pack Pro!')">Buy</button>
+                            </div>
+                        </div>
+
+                        <div class="product-card">
+                            <div class="product-image">🎭</div>
+                            <div class="product-info">
+                                <div class="product-name">Color Palette Set</div>
+                                <div class="product-price">💜 180 units</div>
+                                <button class="btn" onclick="showNotification('✅ Purchased Color Palette Set!')">Buy</button>
+                            </div>
+                        </div>
+
+                        <div class="product-card">
+                            <div class="product-image">✨</div>
+                            <div class="product-info">
+                                <div class="product-name">Effects Bundle</div>
+                                <div class="product-price">💜 320 units</div>
+                                <button class="btn" onclick="showNotification('✅ Purchased Effects Bundle!')">Buy</button>
+                            </div>
+                        </div>
+
+                        <div class="product-card">
+                            <div class="product-image">🎵</div>
+                            <div class="product-info">
+                                <div class="product-name">Sound Library</div>
+                                <div class="product-price">💜 150 units</div>
+                                <button class="btn" onclick="showNotification('✅ Purchased Sound Library!')">Buy</button>
+                            </div>
+                        </div>
+
+                        <div class="product-card">
+                            <div class="product-image">🖼️</div>
+                            <div class="product-info">
+                                <div class="product-name">Template Pack</div>
+                                <div class="product-price">💜 200 units</div>
+                                <button class="btn" onclick="showNotification('✅ Purchased Template Pack!')">Buy</button>
+                            </div>
+                        </div>
+
+                        <div class="product-card">
+                            <div class="product-image">🌟</div>
+                            <div class="product-info">
+                                <div class="product-name">VIP Month Pass</div>
+                                <div class="product-price">💜 500 units</div>
+                                <button class="btn" onclick="showNotification('✅ Purchased VIP Month!')">Buy</button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- ACHIEVEMENTS PAGE -->
+                <div id="achievements" class="page">
+                    <div class="page-header">
+                        <div class="page-title">🏅 Achievements & Badges</div>
+                        <div class="page-subtitle">Unlock milestones</div>
+                    </div>
+
+                    <div class="achievement-grid">
+                        <div class="achievement"><div class="achievement-icon">🎨</div><div class="achievement-name">Creative Starter</div></div>
+                        <div class="achievement"><div class="achievement-icon">🎯</div><div class="achievement-name">Game Champion</div></div>
+                        <div class="achievement"><div class="achievement-icon">🔥</div><div class="achievement-name">Week Warrior</div></div>
+                        <div class="achievement"><div class="achievement-icon">⭐</div><div class="achievement-name">100 Creations</div></div>
+                        <div class="achievement"><div class="achievement-icon">💎</div><div class="achievement-name">Master Creator</div></div>
+                        <div class="achievement"><div class="achievement-icon">🚀</div><div class="achievement-name">Speed Demon</div></div>
+                        <div class="achievement locked"><div class="achievement-icon">👑</div><div class="achievement-name">Legendary</div></div>
+                        <div class="achievement locked"><div class="achievement-icon">🌟</div><div class="achievement-name">Hall of Fame</div></div>
+                    </div>
+                </div>
+
+                <!-- DESIGN PAGE -->
+                <div id="design" class="page">
+                    <div class="page-header">
+                        <div class="page-title">🖼️ Design Studio</div>
+                        <div class="page-subtitle">Create merchandise & prints</div>
+                    </div>
+
+                    <div class="card-grid">
+                        <div class="card" onclick="showNotification('👕 T-Shirt Designer loaded')">
+                            <div class="card-icon">👕</div>
+                            <div class="card-title">T-Shirt Designer</div>
+                            <div class="card-desc">Design & print custom tees</div>
+                        </div>
+                        <div class="card" onclick="showNotification('🎒 Hoodie Designer loaded')">
+                            <div class="card-icon">🎒</div>
+                            <div class="card-title">Hoodie Designer</div>
+                            <div class="card-desc">Create custom hoodies</div>
+                        </div>
+                        <div class="card" onclick="showNotification('📱 Phone Case Designer loaded')">
+                            <div class="card-icon">📱</div>
+                            <div class="card-title">Phone Cases</div>
+                            <div class="card-desc">Personalize phone accessories</div>
+                        </div>
+                        <div class="card" onclick="showNotification('🎒 Backpack Designer loaded')">
+                            <div class="card-icon">🎒</div>
+                            <div class="card-title">Backpacks & Bags</div>
+                            <div class="card-desc">Design your own backpack</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- GALLERY PAGE -->
+                <div id="gallery" class="page">
+                    <div class="page-header">
+                        <div class="page-title">🖼️ Community Gallery</div>
+                        <div class="page-subtitle">Discover amazing creations</div>
+                    </div>
+
+                    <div class="card-grid">
+                        <div class="card" style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white;">
+                            <div style="font-size: 48px; text-align: center; margin: 40px 0;">🎨</div>
+                            <div class="card-title" style="color: white;">Luna's Masterpiece</div>
+                            <div class="card-desc" style="color: rgba(255,255,255,0.8);">❤️ 5.2K • 👁️ 12.5K</div>
+                        </div>
+                        <div class="card" style="background: linear-gradient(135deg, #FFD700 0%, #FFA500 100%); color: white;">
+                            <div style="font-size: 48px; text-align: center; margin: 40px 0;">🎬</div>
+                            <div class="card-title" style="color: white;">Epic Animation</div>
+                            <div class="card-desc" style="color: rgba(255,255,255,0.8);">❤️ 3.8K • 👁️ 9.2K</div>
+                        </div>
+                        <div class="card" style="background: linear-gradient(135deg, #6BCB77 0%, #4CCD9F 100%); color: white;">
+                            <div style="font-size: 48px; text-align: center; margin: 40px 0;">🎵</div>
+                            <div class="card-title" style="color: white;">Summer Beats</div>
+                            <div class="card-desc" style="color: rgba(255,255,255,0.8);">❤️ 2.1K • 👁️ 6.8K</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- TEAMS PAGE -->
+                <div id="teams" class="page">
+                    <div class="page-header">
+                        <div class="page-title">👥 Teams & Collaboration</div>
+                        <div class="page-subtitle">Create or join a team</div>
+                    </div>
+
+                    <div class="card-grid">
+                        <div class="card">
+                            <div class="card-icon">⭐</div>
+                            <div class="card-title">Art Squad</div>
+                            <div class="card-desc">45 members • Art & Design</div>
+                            <button class="btn" style="margin-top: 10px;" onclick="showNotification('✅ Joined Art Squad!')">Join Team</button>
+                        </div>
+                        <div class="card">
+                            <div class="card-icon">🎮</div>
+                            <div class="card-title">Game Masters</div>
+                            <div class="card-desc">32 members • Gaming & Challenges</div>
+                            <button class="btn" style="margin-top: 10px;" onclick="showNotification('✅ Joined Game Masters!')">Join Team</button>
+                        </div>
+                        <div class="card">
+                            <div class="card-icon">🎵</div>
+                            <div class="card-title">Music Makers</div>
+                            <div class="card-desc">28 members • Music & Sound</div>
+                            <button class="btn" style="margin-top: 10px;" onclick="showNotification('✅ Joined Music Makers!')">Join Team</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- PROFILE PAGE -->
+                <div id="profile" class="page">
+                    <div class="page-header">
+                        <div class="page-title">👤 Your Profile</div>
+                        <div class="page-subtitle">Edit your info & settings</div>
+                    </div>
+
+                    <div class="stats-grid">
+                        <div class="stat-card">
+                            <div class="stat-label">Total Creations</div>
+                            <div class="stat-value">284</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Followers</div>
+                            <div class="stat-value">156</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Following</div>
+                            <div class="stat-value">92</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-label">Achievements</div>
+                            <div class="stat-value">24</div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- SETTINGS PAGE -->
+                <div id="settings" class="page">
+                    <div class="page-header">
+                        <div class="page-title">⚙️ Settings</div>
+                        <div class="page-subtitle">Customize your experience</div>
+                    </div>
+
+                    <div class="tool-section">
+                        <div class="section-title">Preferences</div>
+                        <div style="display: grid; gap: 16px;">
+                            <label style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                <input type="checkbox" checked style="width: 18px; height: 18px; cursor: pointer;">
+                                <span>Notifications Enabled</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                <input type="checkbox" checked style="width: 18px; height: 18px; cursor: pointer;">
+                                <span>Dark Mode</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                <input type="checkbox" checked style="width: 18px; height: 18px; cursor: pointer;">
+                                <span>Sound Effects</span>
+                            </label>
+                            <label style="display: flex; align-items: center; gap: 12px; cursor: pointer;">
+                                <input type="checkbox" style="width: 18px; height: 18px; cursor: pointer;">
+                                <span>Private Profile</span>
+                            </label>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- MODAL -->
+    <div id="modal" class="modal">
+        <div class="modal-content">
+            <h2 id="modalTitle">🎉</h2>
+            <p id="modalText">message</p>
+            <button class="btn" onclick="closeModal()">Got it!</button>
+        </div>
+    </div>
+
+    <script>
+        let currentColor = '#FF6B6B';
+        let colorContext = null;
+        let isDrawing = false;
+        let pillars = 2450;
+
+        window.addEventListener('load', () => {
+            initColorCanvas();
+        });
+
+        function initColorCanvas() {
+            const canvas = document.getElementById('colorCanvas');
+            colorContext = canvas.getContext('2d');
+            colorContext.fillStyle = '#FFFFFF';
+            colorContext.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw butterfly
+            colorContext.strokeStyle = '#CCCCCC';
+            colorContext.lineWidth = 2;
+            colorContext.beginPath();
+            colorContext.arc(450, 250, 35, 0, Math.PI * 2);
+            colorContext.stroke();
+            for (let i = 0; i < 4; i++) {
+                const angle = (i * Math.PI / 2) + Math.PI / 4;
+                const x = 450 + Math.cos(angle) * 120;
+                const y = 250 + Math.sin(angle) * 120;
+                colorContext.beginPath();
+                colorContext.arc(x, y, 55, 0, Math.PI * 2);
+                colorContext.stroke();
+            }
+
+            canvas.addEventListener('mousedown', (e) => {
+                isDrawing = true;
+                const rect = canvas.getBoundingClientRect();
+                colorContext.beginPath();
+                colorContext.moveTo(e.clientX - rect.left, e.clientY - rect.top);
+            });
+
+            canvas.addEventListener('mousemove', (e) => {
+                if (!isDrawing) return;
+                const rect = canvas.getBoundingClientRect();
+                colorContext.strokeStyle = currentColor;
+                colorContext.lineWidth = 8;
+                colorContext.lineCap = 'round';
+                colorContext.lineJoin = 'round';
+                colorContext.lineTo(e.clientX - rect.left, e.clientY - rect.top);
+                colorContext.stroke();
+            });
+
+            canvas.addEventListener('mouseup', () => { isDrawing = false; });
+        }
+
+        function selectColor(btn, color) {
+            document.querySelectorAll('.color-btn').forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            currentColor = color;
+        }
+
+        function clearColorCanvas() {
+            colorContext.fillStyle = '#FFFFFF';
+            colorContext.fillRect(0, 0, document.getElementById('colorCanvas').width, document.getElementById('colorCanvas').height);
+            initColorCanvas();
+        }
+
+        function switchPage(pageId) {
+            document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+            document.querySelectorAll('.sidebar-item').forEach(s => s.classList.remove('active'));
+            document.getElementById(pageId).classList.add('active');
+            event.target.closest('.sidebar-item')?.classList.add('active');
+        }
+
+        function showNotification(msg) {
+            const notif = document.getElementById('notification');
+            notif.textContent = msg;
+            notif.classList.add('show');
+            setTimeout(() => notif.classList.remove('show'), 3000);
+        }
+
+        function playGame(game) {
+            showNotification('🎮 ' + game + ' game loaded! Win to earn units.');
+            addPillars(Math.floor(Math.random() * 40) + 20);
+        }
+
+        function addPillars(amount) {
+            pillars += amount;
+            document.getElementById('topPillars').textContent = pillars.toLocaleString();
+        }
+
+        function showModal(title, text) {
+            document.getElementById('modalTitle').textContent = title;
+            document.getElementById('modalText').textContent = text;
+            document.getElementById('modal').classList.add('active');
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.remove('active');
+        }
+    </script>
+</body>
+</html>
