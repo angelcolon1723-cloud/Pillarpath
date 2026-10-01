@@ -10,9 +10,12 @@ import {
   claimSocietyAdmin,
   getSocietyStatus,
   getStock,
+  importPrintifySelection,
   publishStockItem,
   rejectStockItem,
+  searchPrintifyBlueprints,
   unpublishStockItem,
+  type BlueprintChoice,
   type SocietyStatus,
 } from "@/lib/society-server";
 import type { StockItem } from "@/lib/suppliers/publish";
@@ -141,10 +144,12 @@ function SocietyPage() {
       )}
 
       {status?.isAdmin && (
-        <div className="mt-8 space-y-4">
-          {items === null && (
-            <p className="text-sm text-muted">Loading supplier catalog…</p>
-          )}
+        <div className="mt-8 space-y-8">
+          <ImportPanel busy={busy} onImported={() => void load()} />
+          <div className="space-y-4">
+            {items === null && (
+              <p className="text-sm text-muted">Loading supplier catalog…</p>
+            )}
           {items !== null && items.length === 0 && (
             <Card className="p-8 text-center">
               <h2 className="font-display text-xl font-semibold">
@@ -165,9 +170,136 @@ function SocietyPage() {
               onAction={(fn, msg) => void run(fn, msg)}
             />
           ))}
+          </div>
         </div>
       )}
     </div>
+  );
+}
+
+function ImportPanel({
+  busy,
+  onImported,
+}: {
+  busy: boolean;
+  onImported: () => void;
+}) {
+  const [query, setQuery] = useState("kids");
+  const [results, setResults] = useState<BlueprintChoice[] | null>(null);
+  const [selected, setSelected] = useState<Set<number>>(new Set());
+  const [working, setWorking] = useState(false);
+
+  async function search() {
+    setWorking(true);
+    try {
+      const res = await searchPrintifyBlueprints({ data: { query } });
+      setResults(res.blueprints);
+      setSelected(new Set());
+      if (!res.blueprints.length) toast("No blueprints matched that search.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Search failed.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  function toggle(id: number) {
+    setSelected((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  async function importSelected() {
+    if (!selected.size) return;
+    setWorking(true);
+    try {
+      const res = await importPrintifySelection({
+        data: { blueprintIds: [...selected] },
+      });
+      if (res.errors.length) {
+        toast.error(
+          `Imported ${res.imported}, ${res.errors.length} failed: ${res.errors[0].error}`,
+        );
+      } else {
+        toast.success(`Imported ${res.imported} product${res.imported === 1 ? "" : "s"} for screening.`);
+      }
+      setSelected(new Set());
+      onImported();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Import failed.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
+  return (
+    <Card className="p-5">
+      <h2 className="font-display text-lg font-semibold">Import from Printify</h2>
+      <p className="mt-1 text-sm text-muted">
+        Search the Printify catalog, pick products, and they&apos;ll be
+        imported and kid-safety screened. Nothing goes live until you publish it.
+      </p>
+      <div className="mt-4 flex gap-2">
+        <Input
+          value={query}
+          onChange={(e) => setQuery(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") void search();
+          }}
+          placeholder="Try &quot;kids&quot;, &quot;toddler&quot;, &quot;youth&quot;…"
+          aria-label="Search Printify catalog"
+        />
+        <Button onClick={() => void search()} disabled={working || busy}>
+          Search
+        </Button>
+      </div>
+      {results !== null && results.length > 0 && (
+        <div className="mt-4 space-y-2">
+          {results.map((b) => (
+            <button
+              key={b.id}
+              type="button"
+              onClick={() => toggle(b.id)}
+              className={cn(
+                "flex w-full items-center gap-3 rounded-xl border p-3 text-left transition-colors",
+                selected.has(b.id)
+                  ? "border-accent bg-accent/10"
+                  : "border-border hover:border-accent/40",
+              )}
+            >
+              <span
+                className={cn(
+                  "grid size-5 shrink-0 place-items-center rounded-md border",
+                  selected.has(b.id)
+                    ? "border-accent bg-accent text-accent-foreground"
+                    : "border-border",
+                )}
+                aria-hidden
+              >
+                {selected.has(b.id) && "✓"}
+              </span>
+              <span className="min-w-0">
+                <span className="block truncate text-sm font-semibold">
+                  {b.title}
+                </span>
+                {b.brand && (
+                  <span className="block text-xs text-subtle">{b.brand}</span>
+                )}
+              </span>
+            </button>
+          ))}
+          <Button
+            onClick={() => void importSelected()}
+            disabled={working || busy || !selected.size}
+          >
+            Import {selected.size} selected
+          </Button>
+        </div>
+      )}
+    </Card>
   );
 }
 

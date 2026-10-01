@@ -11,6 +11,8 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware, roleMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
+import { importPrintifyBlueprints } from "@/lib/suppliers/catalog";
+import { createPrintifyClientFromEnv } from "@/lib/suppliers/printify";
 import {
   DEFAULT_MARGIN_PCT,
   getStockOverview,
@@ -104,6 +106,50 @@ export const publishStockItem = createServerFn({ method: "POST" })
       marginPct: row.margin_pct,
     });
     return { ok: true, storeProductId: row.id };
+  });
+
+export interface BlueprintChoice {
+  id: number;
+  title: string;
+  brand: string | null;
+  description: string | null;
+}
+
+/** Search the Printify catalog by title (admin only). */
+export const searchPrintifyBlueprints = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("admin")])
+  .validator((input: { query: string }) => input)
+  .handler(async ({ data }): Promise<{ blueprints: BlueprintChoice[] }> => {
+    const q = data.query.trim().toLowerCase();
+    if (q.length < 2) return { blueprints: [] };
+    const client = createPrintifyClientFromEnv();
+    if (!client) throw new Error("Printify is not connected (PRINTIFY_API_KEY missing).");
+    const all = await client.listBlueprints();
+    const matches = all
+      .filter((b) => b.title.toLowerCase().includes(q))
+      .slice(0, 30)
+      .map((b) => ({
+        id: b.id,
+        title: b.title,
+        brand: b.brand ?? null,
+        description: (b.description ?? "").slice(0, 160) || null,
+      }));
+    return { blueprints: matches };
+  });
+
+/** Import chosen Printify blueprints through screening (admin only). */
+export const importPrintifySelection = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("admin")])
+  .validator((input: { blueprintIds: number[] }) => input)
+  .handler(async ({ data }) => {
+    const ids = [...new Set(data.blueprintIds)]
+      .filter((n) => Number.isInteger(n) && n > 0)
+      .slice(0, 20);
+    if (!ids.length) throw new Error("No blueprints selected.");
+    const client = createPrintifyClientFromEnv();
+    if (!client) throw new Error("Printify is not connected (PRINTIFY_API_KEY missing).");
+    const result = await importPrintifyBlueprints(client, ids, { preferCountry: "US" });
+    return result;
   });
 
 export const unpublishStockItem = createServerFn({ method: "POST" })
