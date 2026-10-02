@@ -24,6 +24,7 @@ import {
   getPillarpathData,
   setCartQuantity,
 } from "@/lib/pillarpath-server";
+import { getSocietyStatus } from "@/lib/society-server";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -111,6 +112,23 @@ export function PillarpathApp() {
   const [basketOpen, setBasketOpen] = useState(false);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [moreOpen, setMoreOpen] = useState(false);
+  /** Fresh server-side admin check (DB truth, never the possibly-stale session). */
+  const [societyAdmin, setSocietyAdmin] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    if (!moreOpen || societyAdmin !== null || !user || user.isDevFallback) return;
+    let cancelled = false;
+    getSocietyStatus()
+      .then((s) => {
+        if (!cancelled) setSocietyAdmin(s.isAdmin);
+      })
+      .catch(() => {
+        if (!cancelled) setSocietyAdmin(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [moreOpen, societyAdmin, user]);
 
   const consent = useLedger((s) => s.consent);
   const ledgerScreen = useLedger((s) => s.screen);
@@ -457,7 +475,7 @@ export function PillarpathApp() {
                 <Sparkles className="size-4 text-accent" />
                 Switch to {role === "parent" ? "child" : "parent"}
               </button>
-              {user?.role === "admin" ? (
+              {societyAdmin ? (
                 <a
                   href="/society"
                   onClick={() => setMoreOpen(false)}
