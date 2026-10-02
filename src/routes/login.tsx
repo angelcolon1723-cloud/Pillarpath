@@ -2,7 +2,7 @@ import { useEffect, useState } from "react";
 import { createFileRoute, Navigate, useNavigate } from "@tanstack/react-router";
 import { ArrowRight, CheckCircle2, LockKeyhole } from "lucide-react";
 import { toast } from "sonner";
-import { authClient, signInDirect } from "@/lib/auth/client";
+import { authClient, clearOAuthInflight, signInDirect } from "@/lib/auth/client";
 import { emailAndPasswordEnabled } from "@/lib/auth/email-password";
 import { SignedIn, SignedOut } from "@/lib/auth/gates";
 import {
@@ -30,6 +30,8 @@ function OAuthErrorBanner() {
     access_denied: "Google sign-in was cancelled or denied.",
     account_not_linked:
       "That Google account isn't linked to a PillarPath account yet.",
+    state_mismatch:
+      "Sign-in was started more than once — close any other PillarPath tabs, then tap your sign-in button just once.",
   };
   return (
     <div
@@ -64,8 +66,16 @@ function LoginForm() {
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [name, setName] = useState("");
   const [busy, setBusy] = useState(false);
+  // A failed OAuth attempt must release the in-flight claim, or the guard in
+  // signInDirect would keep blocking the retry.
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("error")) {
+      clearOAuthInflight();
+    }
+  }, []);
   // Direct social providers configured on the server (env-driven). Null while
   // loading; empty when none are configured (email sign-in still works).
   const [providers, setProviders] = useState<SocialProviderInfo[] | null>(null);
@@ -102,6 +112,11 @@ function LoginForm() {
       const cleanEmail = email.trim();
       const cleanName = name.trim();
       if (mode === "signup") {
+        if (password !== confirmPassword) {
+          toast.error("Passwords don't match — please retype them.");
+          setBusy(false);
+          return;
+        }
         const result = await authClient.signUp.email({
           name: cleanName,
           email: cleanEmail,
@@ -114,6 +129,18 @@ function LoginForm() {
           password,
         });
         if (result.error) throw new Error(result.error.message);
+      }
+      // The session cookie does not always reach the browser on TanStack Start
+      // (see session-cookie-fix.server.ts). Navigating to "/" with no session
+      // renders the landing page and looks like the login "didn't work", so
+      // verify the session actually stuck before leaving this page.
+      const { data: sessionData } = await authClient.getSession();
+      if (!sessionData) {
+        toast.error(
+          "Signed in, but the session didn't save — please reload the page and try again.",
+        );
+        setBusy(false);
+        return;
       }
       await navigate({ to: "/" });
     } catch (error) {
@@ -199,6 +226,16 @@ function LoginForm() {
                 minLength={8}
                 required
               />
+              {mode === "signup" ? (
+                <Input
+                  type="password"
+                  placeholder="Confirm password"
+                  value={confirmPassword}
+                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  minLength={8}
+                  required
+                />
+              ) : null}
               <Button className="h-12 w-full" disabled={busy}>
                 {busy
                   ? "Working…"
@@ -234,7 +271,10 @@ function LoginForm() {
           <button
             type="button"
             className="mt-5 min-h-11 w-full text-sm text-muted underline-offset-4 hover:text-ink hover:underline"
-            onClick={() => setMode(mode === "signin" ? "signup" : "signin")}
+            onClick={() => {
+              setConfirmPassword("");
+              setMode(mode === "signin" ? "signup" : "signin");
+            }}
           >
             {mode === "signin"
               ? "New to Pillarpath? Create an account"

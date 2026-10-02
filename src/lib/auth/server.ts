@@ -38,6 +38,7 @@ import { Pool } from "pg";
 import { ensureDbReady, getPglite } from "../db";
 import { emailAndPasswordEnabled } from "./email-password";
 import { GATE_PROVIDER_ID, gateIdentitySessions } from "./gate-session.server";
+import { sessionCookieFix } from "./session-cookie-fix.server";
 import { GROK_PROVIDERS } from "./providers";
 import {
   buildCustomOAuthPlugin,
@@ -277,6 +278,10 @@ export const auth = betterAuth({
 
   plugins: [
     gateIdentitySessions(),
+
+    // Re-forward auth Set-Cookie through TanStack Start directly (with
+    // logging when the header bag is empty) — see session-cookie-fix.server.
+    sessionCookieFix(),
 
     // One genericOAuth provider per upstream (when auth is on), all federating
     // to the broker with the SAME client and differing only by the `idp` hint.

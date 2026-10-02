@@ -83,6 +83,63 @@ function inLivePreview(): boolean {
 /** Message the popup posts back to the opener once sign-in completes. */
 type PopupMessage = { source: "grok-auth-popup"; token: string | null; error?: string };
 
+// ── OAuth in-flight guard ────────────────────────────────────────────────────
+// Better Auth keeps ONE last-write-wins `better-auth.state` cookie while its DB
+// rows are per-flow. A second initiation — another tab, or an impatient re-tap
+// while the first POST is still cold-starting — overwrites the cookie, and the
+// first flow then fails its signed-cookie check as `state_mismatch`. Guard
+// across tabs with a localStorage marker (sessionStorage is per-tab and would
+// be blind to the other tab's initiation).
+const OAUTH_INFLIGHT_KEY = "pillarpath.oauth-inflight";
+// Matches the state's 5-minute cookie window, plus a margin.
+const OAUTH_INFLIGHT_TTL_MS = 6 * 60 * 1000;
+
+function readOAuthInflight(): number | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(OAUTH_INFLIGHT_KEY);
+    if (!raw) return null;
+    const at = Number(raw);
+    if (!Number.isFinite(at)) return null;
+    if (Date.now() - at > OAUTH_INFLIGHT_TTL_MS) {
+      window.localStorage.removeItem(OAUTH_INFLIGHT_KEY);
+      return null;
+    }
+    return at;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Throws when another tab (or an earlier tap) already started an OAuth flow.
+ * Call before initiating; the claim is released by `clearOAuthInflight()` on
+ * sign-out and when the login page loads with an `?error=` (a failed attempt
+ * must not lock the user out), and expires on its own after the TTL.
+ */
+function claimOAuthInflight(): void {
+  if (readOAuthInflight() !== null) {
+    throw new Error(
+      "A sign-in is already in progress in another tab — please finish it there, or close the other PillarPath tabs and try once.",
+    );
+  }
+  try {
+    window.localStorage.setItem(OAUTH_INFLIGHT_KEY, String(Date.now()));
+  } catch {
+    /* storage unavailable — proceed without the guard */
+  }
+}
+
+/** Release the OAuth in-flight claim. */
+export function clearOAuthInflight(): void {
+  if (typeof window === "undefined") return;
+  try {
+    window.localStorage.removeItem(OAUTH_INFLIGHT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /**
  * Start sign-in with one of PillarPath's OWN direct social providers
  * (Google, Apple, Facebook, TikTok, X, Instagram, Snapchat).
@@ -100,6 +157,11 @@ export async function signInDirect(
     await signIn(provider.id, opts);
     return;
   }
+  // Claim the in-flight marker BEFORE the slow pre-signOut round-trip: an
+  // impatient second tap (or another tab) while the first POST is still
+  // cold-starting would otherwise overwrite the single last-write-wins
+  // `better-auth.state` cookie and the first flow dies with state_mismatch.
+  claimOAuthInflight();
   const callbackURL = opts.callbackURL ?? "/";
   await authClient.signOut().catch(() => {});
   const { error } = await authClient.signIn.social({
@@ -130,6 +192,10 @@ export async function signIn(
 ): Promise<void> {
   const callbackURL = opts.callbackURL ?? "/";
   const errorCallbackURL = opts.errorCallbackURL ?? "/login";
+
+  // Guard first (synchronous): a second OAuth initiation would overwrite the
+  // single last-write-wins state cookie and kill the first flow.
+  claimOAuthInflight();
 
   // Open the popup SYNCHRONOUSLY on the user gesture — before any await
   // (including signOut). Awaiting first drops user-gesture privilege in some
@@ -247,6 +313,7 @@ function waitForPopupToken(popup: Window): Promise<string | null> {
  * preview the local clear is sufficient, so it always resolves.
  */
 export async function signOut(redirectTo = "/"): Promise<void> {
+  clearOAuthInflight();
   await runSignOut({
     livePreview: inLivePreview(),
     hasBearer: Boolean(getBearerToken()),
