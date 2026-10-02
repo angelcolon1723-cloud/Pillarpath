@@ -105,7 +105,7 @@ export async function signInDirect(
   const { error } = await authClient.signIn.social({
     provider: provider.id,
     callbackURL,
-    errorCallbackURL: opts.errorCallbackURL ?? "/",
+    errorCallbackURL: opts.errorCallbackURL ?? "/login",
   });
   if (error) throw new Error(error.message ?? "Sign-in failed");
 }
@@ -129,7 +129,7 @@ export async function signIn(
   opts: { callbackURL?: string; errorCallbackURL?: string } = {},
 ): Promise<void> {
   const callbackURL = opts.callbackURL ?? "/";
-  const errorCallbackURL = opts.errorCallbackURL ?? "/";
+  const errorCallbackURL = opts.errorCallbackURL ?? "/login";
 
   // Open the popup SYNCHRONOUSLY on the user gesture — before any await
   // (including signOut). Awaiting first drops user-gesture privilege in some

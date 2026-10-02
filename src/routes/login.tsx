@@ -15,6 +15,37 @@ import { Input } from "@/components/ui/input";
 
 export const Route = createFileRoute("/login")({ component: LoginPage });
 
+/**
+ * Surfaces OAuth failures instead of silently bouncing to the landing page.
+ * Better Auth redirects here as /login?error=<code> when the provider
+ * callback fails (see signInDirect's errorCallbackURL).
+ */
+function OAuthErrorBanner() {
+  const [code] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return new URLSearchParams(window.location.search).get("error");
+  });
+  if (!code) return null;
+  const friendly: Record<string, string> = {
+    access_denied: "Google sign-in was cancelled or denied.",
+    account_not_linked:
+      "That Google account isn't linked to a PillarPath account yet.",
+  };
+  return (
+    <div
+      role="alert"
+      className="mb-4 rounded-2xl border border-danger/40 bg-danger-soft p-4 text-sm"
+    >
+      <p className="font-semibold text-danger">
+        {friendly[code] ?? "Sign-in didn't complete."}
+      </p>
+      <p className="mt-1 text-xs text-muted">
+        Code: {code} — screenshot this and send it to support.
+      </p>
+    </div>
+  );
+}
+
 function LoginPage() {
   return (
     <>
@@ -131,6 +162,7 @@ function LoginForm() {
               Use your account to keep family data and orders synced.
             </p>
           </div>
+          <OAuthErrorBanner />
           {emailAndPasswordEnabled ? (
             <form className="space-y-3" onSubmit={submit}>
               {mode === "signup" ? (
