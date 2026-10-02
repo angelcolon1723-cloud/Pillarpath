@@ -8,6 +8,7 @@ import { Card } from "@/components/ui/card";
 import {
   approveStockItem,
   claimSocietyAdmin,
+  createPrintifyDrafts,
   getSocietyStatus,
   getStock,
   importPrintifySelection,
@@ -20,12 +21,14 @@ import {
   type SocietyStatus,
 } from "@/lib/society-server";
 import type { StockItem } from "@/lib/suppliers/publish";
+import { suggestRetailPrice } from "@/lib/suppliers/pricing";
 import { cn } from "@/lib/utils";
 
 /**
  * /society — PillarPath Society Network internal stock page.
  *
- * Unlisted (no nav links anywhere, noindex). Admin-gated server-side.
+ * Unlisted from public navigation and noindex. Admin-gated server-side.
+ * Admins reach it through the Society Network entry in the app's More menu.
  * First slice of the Society Network dashboard: review screened supplier
  * products and publish approved ones to the storefront shelves.
  */
@@ -90,6 +93,7 @@ function SocietyPage() {
   }
 
   return (
+    <main className="theme-landing min-h-dvh bg-bg text-ink">
     <div className="mx-auto w-full max-w-6xl px-4 py-10">
       <p className="text-xs font-semibold uppercase tracking-widest text-muted">
         PillarPath Society Network · Internal
@@ -175,6 +179,7 @@ function SocietyPage() {
         </div>
       )}
     </div>
+    </main>
   );
 }
 
@@ -255,6 +260,29 @@ function ImportPanel({
     }
   }
 
+  async function createDrafts() {
+    setWorking(true);
+    try {
+      const res = await createPrintifyDrafts();
+      if (!res.created) {
+        toast("No approved products need drafts right now.");
+      } else if (res.failed.length) {
+        toast(
+          `${res.created} drafts created (${res.withCosts} with real costs). ${res.failed.length} failed: ${res.failed[0]?.title}`,
+        );
+      } else {
+        toast.success(
+          `${res.created} Printify drafts created, ${res.withCosts} with real fulfillment costs.`,
+        );
+      }
+      onImported();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Draft creation failed.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
   return (
     <Card className="p-5">
       <h2 className="font-display text-lg font-semibold">Import from Printify</h2>
@@ -325,6 +353,14 @@ function ImportPanel({
             >
               Sync fulfillment costs
             </Button>
+            <Button
+              variant="outline"
+              onClick={() => void createDrafts()}
+              disabled={working || busy}
+              title="Create draft products in your Printify shop with PillarPath designs to reveal real fulfillment costs. Drafts are never published."
+            >
+              Create Printify drafts
+            </Button>
           </div>
         </div>
       )}
@@ -348,12 +384,12 @@ function StockCard({
   const reasons = Array.isArray(item.screening_reasons)
     ? item.screening_reasons.map(String)
     : [];
-  const suggestedRetail =
+  const suggestion =
     item.cost_cents != null
-      ? Math.round(item.cost_cents * (1 + defaultMargin / 100))
+      ? suggestRetailPrice(item.title, item.cost_cents, defaultMargin)
       : null;
   const [price, setPrice] = useState(
-    suggestedRetail != null ? (suggestedRetail / 100).toFixed(2) : "",
+    suggestion != null ? (suggestion.cents / 100).toFixed(2) : "",
   );
   const live = item.store_active === true;
 
@@ -446,9 +482,16 @@ function StockCard({
             >
               Publish to shelves
             </Button>
-            {suggestedRetail != null && (
+            {suggestion != null && (
               <span className="text-xs text-subtle">
-                Suggested ${(suggestedRetail / 100).toFixed(2)} ({defaultMargin}% margin)
+                Auto-price ${(suggestion.cents / 100).toFixed(2)} ({defaultMargin}%
+                margin
+                {suggestion.clamped === "low"
+                  ? `, raised to typical ${suggestion.category} pricing`
+                  : suggestion.clamped === "high"
+                    ? `, capped to typical ${suggestion.category} pricing`
+                    : ""}
+                )
               </span>
             )}
           </div>

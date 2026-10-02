@@ -13,6 +13,7 @@
 
 import { getSql } from "@/lib/db";
 import type { SupplierProductRow } from "@/lib/suppliers/catalog";
+import { suggestRetailPrice } from "@/lib/suppliers/pricing";
 
 if (typeof window !== "undefined") {
   throw new Error(
@@ -84,7 +85,13 @@ export async function publishSupplierProductToStorefront(
         "No supplier cost on record — set an explicit retail price to publish.",
       );
     }
-    retailPriceCents = Math.round(product.cost_cents * (1 + marginPct / 100));
+    // Automatic market-aware pricing: cost-plus, clamped to the typical
+    // market band for the product's category.
+    retailPriceCents = suggestRetailPrice(
+      product.title,
+      product.cost_cents,
+      marginPct,
+    ).cents;
   } else {
     marginPct =
       product.cost_cents != null && product.cost_cents > 0

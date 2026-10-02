@@ -80,15 +80,37 @@ export interface PrintifyProductVariantInput {
   isEnabled?: boolean;
 }
 
+export interface PrintifyPrintAreaImageInput {
+  /** Uploaded image id returned by /uploads/images.json. */
+  id: string;
+  /** Center position as a fraction of the print area (0–1). Defaults to 0.5. */
+  x?: number;
+  y?: number;
+  /** Relative scale. Defaults to 0.55. */
+  scale?: number;
+  angle?: number;
+}
+
+export interface PrintifyPrintAreaInput {
+  variantIds: number[];
+  placeholders: { position: string; images: PrintifyPrintAreaImageInput[] }[];
+}
+
 export interface PrintifyCreateProductInput {
   title: string;
   description: string;
   blueprintId: number;
   printProviderId: number;
   variants: PrintifyProductVariantInput[];
-  /** Print area name → artwork image URL (must be publicly reachable). */
-  printAreas: Record<string, string>;
+  /** Print areas with artwork placements (artwork must already be uploaded). */
+  printAreas: PrintifyPrintAreaInput[];
   tags?: string[];
+}
+
+export interface PrintifyPrintArea {
+  variantIds: number[];
+  /** Placeholder positions, e.g. ["front"]. */
+  positions: string[];
 }
 
 export interface PrintifyProduct {
@@ -101,6 +123,8 @@ export interface PrintifyProduct {
   variants: Array<{
     id: number;
     price: number | null;
+    /** Fulfillment cost in cents, when the API exposes it. */
+    cost: number | null;
     isEnabled: boolean;
     title?: string;
   }>;
@@ -382,8 +406,26 @@ export class PrintifyClient {
     }));
   }
 
-  /* ---------------- uploads ---------------- */
+  /** Print areas (with placeholder positions) for a blueprint + provider. */
+  async listPrintAreas(
+    blueprintId: number,
+    printProviderId: number,
+  ): Promise<PrintifyPrintArea[]> {
+    const raw = await this.request<unknown>(
+      "GET",
+      `/catalog/blueprints/${blueprintId}/print_providers/${printProviderId}/print_areas.json`,
+    );
+    return asArray<Record<string, unknown>>(raw).map((a) => ({
+      variantIds: asArray<unknown>(a.variant_ids)
+        .map(toNumber)
+        .filter((n) => n > 0),
+      positions: asArray<Record<string, unknown>>(a.placeholders)
+        .map((p) => str(p.position))
+        .filter(Boolean),
+    }));
+  }
 
+  /* ---------------- uploads ---------------- */
   /** Register an image by public URL for use in print areas. Returns the upload id. */
   async uploadImageByUrl(fileName: string, url: string): Promise<string> {
     const raw = await this.request<Record<string, unknown>>("POST", "/uploads/images.json", {
@@ -429,7 +471,19 @@ export class PrintifyClient {
             price: v.price,
             is_enabled: v.isEnabled ?? true,
           })),
-          print_areas: input.printAreas,
+          print_areas: input.printAreas.map((a) => ({
+            variant_ids: a.variantIds,
+            placeholders: a.placeholders.map((p) => ({
+              position: p.position,
+              images: p.images.map((img) => ({
+                id: img.id,
+                x: img.x ?? 0.5,
+                y: img.y ?? 0.5,
+                scale: img.scale ?? 0.55,
+                angle: img.angle ?? 0,
+              })),
+            })),
+          })),
           ...(input.tags?.length ? { tags: input.tags } : {}),
         },
       },
@@ -558,6 +612,7 @@ function mapProduct(raw: Record<string, unknown>): PrintifyProduct {
   const variants = asArray<Record<string, unknown>>(raw.variants).map((v) => ({
     id: toNumber(v.id ?? v.variant_id),
     price: v.price != null ? toNumber(v.price) : null,
+    cost: v.cost != null ? toNumber(v.cost) : null,
     isEnabled: v.is_enabled !== false,
     title: v.title != null ? str(v.title) : undefined,
   }));

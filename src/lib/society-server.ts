@@ -208,3 +208,142 @@ export const unpublishStockItem = createServerFn({ method: "POST" })
     await audit(context.identity.userId, "stock.unpublish", data.storeProductId);
     return { ok: true };
   });
+
+/**
+ * Create draft products in the Printify shop for every approved Printify
+ * supplier row that doesn't have one yet. Drafts are NEVER published to a
+ * sales channel — they exist so Printify reveals the real per-variant
+ * fulfillment cost, which is backfilled into `cost_cents`.
+ *
+ * Each draft gets a PillarPath print design (served from /designs) placed
+ * centered on the provider's print areas. One tap, admin only.
+ */
+const PRODUCTION_URL = "https://pillarpath.vercel.app";
+
+function designForTitle(title: string): string {
+  const t = title.toLowerCase();
+  if (t.includes("puzzle")) return "cosmic-rocket.png";
+  if (t.includes("tumbler") || t.includes("mug") || t.includes("bottle"))
+    return "earn-save-grow.png";
+  return "emblem.png";
+}
+
+export const createPrintifyDrafts = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("admin")])
+  .handler(async ({ context }) => {
+    const client = createPrintifyClientFromEnv();
+    if (!client) throw new Error("Printify is not connected (PRINTIFY_API_KEY missing).");
+    const sql = await getSql();
+    const rows = await sql<{
+      id: number;
+      title: string;
+      supplier_product_id: string;
+      supplier_sku: string | null;
+      compliance: Record<string, unknown> | null;
+    }>`
+      select id, title, supplier_product_id, supplier_sku, compliance
+      from supplier_products
+      where supplier = 'printify'
+        and screening_status = 'approved'
+        and (compliance is null or (compliance ->> 'printify_draft_product_id') is null)
+      order by id
+      limit 25`;
+    if (!rows.length) return { created: 0, withCosts: 0, failed: [] as { title: string; error: string }[] };
+
+    const shops = await client.listShops();
+    if (!shops.length) throw new Error("No Printify shop found.");
+    const shopId = shops[0].id;
+
+    const failed: { title: string; error: string }[] = [];
+    let created = 0;
+    let withCosts = 0;
+
+    for (const row of rows) {
+      const m =
+        row.supplier_product_id.match(/blueprint:(\d+):provider:(\d+)/) ??
+        row.supplier_sku?.match(/printify-(\d+)-(\d+)/);
+      if (!m) {
+        failed.push({ title: row.title, error: "unknown blueprint/provider" });
+        continue;
+      }
+      const blueprintId = Number(m[1]);
+      const providerId = Number(m[2]);
+      try {
+        // 1. Upload the PillarPath design.
+        const designFile = designForTitle(row.title);
+        const uploadId = await client.uploadImageByUrl(
+          designFile,
+          `${PRODUCTION_URL}/designs/${designFile}`,
+        );
+
+        // 2. Variants + print areas for placement.
+        const [variants, areas] = await Promise.all([
+          client.listVariants(blueprintId, providerId),
+          client.listPrintAreas(blueprintId, providerId).catch(() => []),
+        ]);
+        const enabled = variants.filter((v) => v.isAvailable);
+        if (!enabled.length) throw new Error("no available variants");
+        const variantIds = enabled.map((v) => v.id);
+        const printAreas = (areas.length ? areas : [{ variantIds: [], positions: [] }]).map(
+          (a) => ({
+            variantIds: a.variantIds.length ? a.variantIds : variantIds,
+            placeholders: (a.positions.length ? a.positions : ["front"]).map(
+              (position) => ({
+                position,
+                images: [{ id: uploadId, x: 0.5, y: 0.5, scale: 0.55, angle: 0 }],
+              }),
+            ),
+          }),
+        );
+
+        // 3. Create the draft (never published; price is a placeholder).
+        const product = await client.createProduct(shopId, {
+          title: `PillarPath — ${row.title} (draft)`,
+          description:
+            "PillarPath internal draft, created automatically for fulfillment-cost discovery. Not published to any sales channel.",
+          blueprintId,
+          printProviderId: providerId,
+          variants: variantIds.map((id) => ({ id, price: 2500, isEnabled: true })),
+          printAreas,
+          tags: ["pillarpath-draft", "cost-discovery"],
+        });
+
+        // 4. Read back real fulfillment costs and backfill.
+        const full = await client.getProduct(shopId, product.id);
+        const costs = full.variants
+          .map((v) => v.cost)
+          .filter((c): c is number => c != null && c > 0);
+        const compliance = {
+          ...(row.compliance ?? {}),
+          printify_draft_product_id: product.id,
+          printify_draft_created_at: new Date().toISOString(),
+        };
+        if (costs.length) {
+          const minCost = Math.round(Math.min(...costs));
+          await sql`
+            update supplier_products
+            set cost_cents = ${minCost},
+                compliance = ${JSON.stringify(compliance)}::jsonb,
+                updated_at = now()
+            where id = ${row.id}`;
+          withCosts += 1;
+        } else {
+          await sql`
+            update supplier_products
+            set compliance = ${JSON.stringify(compliance)}::jsonb,
+                updated_at = now()
+            where id = ${row.id}`;
+        }
+        created += 1;
+        await audit(context.identity.userId, "stock.printify_draft", row.title, {
+          productId: product.id,
+        });
+      } catch (err) {
+        failed.push({
+          title: row.title,
+          error: err instanceof Error ? err.message : String(err),
+        });
+      }
+    }
+    return { created, withCosts, failed };
+  });

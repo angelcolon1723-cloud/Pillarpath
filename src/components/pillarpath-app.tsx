@@ -457,6 +457,16 @@ export function PillarpathApp() {
                 <Sparkles className="size-4 text-accent" />
                 Switch to {role === "parent" ? "child" : "parent"}
               </button>
+              {user?.role === "admin" ? (
+                <a
+                  href="/society"
+                  onClick={() => setMoreOpen(false)}
+                  className="flex min-h-14 items-center gap-3 rounded-2xl border border-accent/40 bg-accent-soft px-4 text-left text-sm font-semibold text-accent"
+                >
+                  <LayoutDashboard className="size-4" />
+                  Society Network
+                </a>
+              ) : null}
             </div>
           </div>
         </div>
