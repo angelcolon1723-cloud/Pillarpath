@@ -42,6 +42,20 @@ export class UnauthorizedError extends Error {
   }
 }
 
+/**
+ * Thrown by `requireUserId` when the caller's password login still owes its
+ * 4-digit verification code. Carries `status: 403`; the message is a stable
+ * contract — match `err.message === "OTP_REQUIRED"` client-side to route the
+ * visitor to the code step.
+ */
+export class OtpRequiredError extends Error {
+  readonly status = 403;
+  constructor() {
+    super("OTP_REQUIRED");
+    this.name = "OtpRequiredError";
+  }
+}
+
 export type VerifiedUser = { id: string; email: string | null };
 
 /**
@@ -150,6 +164,25 @@ export async function getSessionUser(
 }
 
 /**
+ * True when the user has a pending password-login code ceremony. The marker is
+ * written by `requestLoginOtp` (login-otp.ts) and deleted by `verifyLoginOtp`;
+ * OAuth sessions never get one. Skipped entirely when no email provider is
+ * configured, so dev/preview stay usable.
+ */
+async function isLoginOtpRequired(userId: string): Promise<boolean> {
+  const { isEmailConfigured } = await import("@/lib/email.server");
+  if (!isEmailConfigured()) return false;
+  const { getSql } = await import("@/lib/db");
+  const sql = await getSql();
+  const rows = await sql`
+    select 1 from verification
+    where identifier = ${`login-otp-required:${userId}`}
+      and "expiresAt" > now()
+    limit 1`;
+  return rows.length > 0;
+}
+
+/**
  * Resolve the current user id for a server function, or throw when unauthorized.
  * Prefer `authMiddleware` (`./middleware`), which calls this for you.
  * - Auth enabled -> the verified session user id; throws
@@ -159,8 +192,15 @@ export async function getSessionUser(
  *   closed): one shared dev user on a real database would let every visitor
  *   read/write everyone's rows.
  * - Auth disabled + no database -> the shared dev user id.
+ *
+ * When a password login still owes its 4-digit verification code, throws
+ * `OtpRequiredError` instead — pass `{ skipOtpCheck: true }` only from the OTP
+ * ceremony's own endpoints.
  */
-export async function requireUserId(bearerToken?: string): Promise<string> {
+export async function requireUserId(
+  bearerToken?: string,
+  opts?: { skipOtpCheck?: boolean },
+): Promise<string> {
   if (!authConfigured && !gateIdentityEnabled()) {
     if (databaseConfigured) {
       throw new Error(
@@ -172,5 +212,8 @@ export async function requireUserId(bearerToken?: string): Promise<string> {
   }
   const user = await getSessionUser(bearerToken);
   if (!user) throw new UnauthorizedError();
+  if (!opts?.skipOtpCheck && (await isLoginOtpRequired(user.id))) {
+    throw new OtpRequiredError();
+  }
   return user.id;
 }
