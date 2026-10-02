@@ -99,6 +99,9 @@ function SocietyPage() {
         PillarPath Society Network · Internal
       </p>
       <h1 className="mt-2 font-display text-3xl font-bold">Stock the shelves</h1>
+      <p className="mt-1 font-display text-lg text-accent">
+        The Society of Becoming.
+      </p>
       <p className="mt-2 max-w-2xl text-sm text-muted">
         Supplier products flow here after kid-safety screening. Only{" "}
         <span className="font-semibold text-accent">approved</span> products can

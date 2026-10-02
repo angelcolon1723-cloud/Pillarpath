@@ -87,7 +87,7 @@ function Landing() {
       <section className="px-5 py-14 sm:py-20">
         <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.15fr_0.85fr]">
           <div>
-            <Eyebrow>Kids&rsquo; financial literacy</Eyebrow>
+            <Eyebrow>Better than yesterday.</Eyebrow>
             <h1 className="mt-4 max-w-4xl font-display text-5xl font-semibold leading-[0.98] tracking-tight sm:text-7xl">
               Turn chores into money smarts.
             </h1>
