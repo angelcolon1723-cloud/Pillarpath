@@ -225,7 +225,12 @@ function designForTitle(title: string): string {
   if (t.includes("puzzle")) return "cosmic-rocket.png";
   if (t.includes("tumbler") || t.includes("mug") || t.includes("bottle"))
     return "earn-save-grow.png";
-  return "emblem.png";
+  if (
+    t.includes("tee") || t.includes("shirt") || t.includes("hoodie") ||
+    t.includes("sweatshirt") || t.includes("jersey") || t.includes("crewneck")
+  )
+    return "better-than-yesterday.png";
+  return "society-of-becoming.png";
 }
 
 export const createPrintifyDrafts = createServerFn({ method: "POST" })
