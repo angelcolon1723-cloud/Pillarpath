@@ -97,11 +97,22 @@ function LoginForm() {
     event.preventDefault();
     setBusy(true);
     try {
+      // Trim: mobile autofill often sneaks in trailing spaces, which fail
+      // email validation and look like a broken signup form.
+      const cleanEmail = email.trim();
+      const cleanName = name.trim();
       if (mode === "signup") {
-        const result = await authClient.signUp.email({ name, email, password });
+        const result = await authClient.signUp.email({
+          name: cleanName,
+          email: cleanEmail,
+          password,
+        });
         if (result.error) throw new Error(result.error.message);
       } else {
-        const result = await authClient.signIn.email({ email, password });
+        const result = await authClient.signIn.email({
+          email: cleanEmail,
+          password,
+        });
         if (result.error) throw new Error(result.error.message);
       }
       await navigate({ to: "/" });
