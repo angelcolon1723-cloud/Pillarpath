@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { cloneElement, isValidElement, useEffect, useState } from "react";
 import { GraduationCap, ShieldCheck, Users } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -64,6 +64,14 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
 
   if (!role.roleChosen) {
     return <RolePicker />;
+  }
+
+  // This point is reached only after the choice is recorded, so `role` is
+  // DB-fresh server truth. Hand it to the app shell so it opens in the right
+  // workspace on first paint — the shell must never guess from a hardcoded
+  // default or the (up-to-5-minutes-stale) session cookie cache.
+  if (isValidElement<{ initialRole?: MyRole["role"] }>(children)) {
+    return <>{cloneElement(children, { initialRole: role.role })}</>;
   }
 
   return <>{children}</>;

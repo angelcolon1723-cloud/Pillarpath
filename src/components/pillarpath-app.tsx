@@ -101,11 +101,15 @@ const teacherNav: Array<[TeacherSection, string, typeof Home]> = (
 
 type Role = "parent" | "child" | "teacher";
 
-export function PillarpathApp() {
+export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teacher" | "admin" }) {
   const user = useCurrentUser();
   const [data, setData] = useState<AppData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [role, setRole] = useState<Role>("parent");
+  // Workspace role comes from the DB-fresh `initialRole` handed down by
+  // RoleGate — never a hardcoded default. ("admin" has no separate app
+  // shell; admins land in the parent workspace.) Manual tab switches can
+  // still change it afterwards via pickRole.
+  const [role, setRole] = useState<Role>(initialRole === "teacher" ? "teacher" : "parent");
   const [parentSection, setParentSection] = useState<ParentSection>("dashboard");
   const [teacherSection, setTeacherSection] = useState<TeacherSection>("dashboard");
   const [familyTab, setFamilyTab] = useState<"profiles" | "ledger">("profiles");
