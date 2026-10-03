@@ -37,6 +37,7 @@ import {
   ParentVault,
 } from "@/components/kiddo/parent-views";
 import {
+  ChildChores,
   ChildConfirm,
   ChildHome,
   ChildLearn,
@@ -354,7 +355,7 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
             </div>
           </header>
 
-          <main className="px-4 py-5 pb-28 sm:px-6 lg:px-8 lg:py-8">
+          <main className="overflow-x-clip px-4 py-5 pb-28 sm:px-6 lg:px-8 lg:py-8">
             {role === "parent" ? (
               <ParentWorkspace
                 data={data}
@@ -632,6 +633,7 @@ function ChildWorkspace() {
   if (screen === "classroom") return <ChildClassroom />;
   if (screen === "gallery") return <ChildGallery />;
   if (screen === "give") return <ChildGive />;
+  if (screen === "chores") return <ChildChores />;
   return <ChildHome />;
 }
 

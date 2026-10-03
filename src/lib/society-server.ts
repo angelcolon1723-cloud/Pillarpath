@@ -352,3 +352,103 @@ export const createPrintifyDrafts = createServerFn({ method: "POST" })
     }
     return { created, withCosts, failed };
   });
+
+/**
+ * Teacher verification review queue (admin only).
+ *
+ * Teachers choose their role post-signup and land here as `pending`;
+ * the client teacher views gate student details / grades / family
+ * messaging on `user.teacher_status = 'verified'`. These functions keep
+ * `teacher_verifications` (the review record) and `user.teacher_status`
+ * (the enforcement flag) in sync, and audit every decision.
+ */
+
+export interface TeacherVerificationRequest {
+  teacherId: string;
+  email: string | null;
+  name: string | null;
+  school: string;
+  district: string;
+  workEmail: string;
+  notes: string;
+  status: string;
+  createdAt: string;
+  reviewedAt: string | null;
+}
+
+export const listTeacherVerifications = createServerFn({ method: "GET" })
+  .middleware([roleMiddleware("admin")])
+  .handler(async (): Promise<{ items: TeacherVerificationRequest[] }> => {
+    const sql = await getSql();
+    const rows = await sql<{
+      teacher_id: string;
+      email: string | null;
+      name: string | null;
+      school: string;
+      district: string;
+      work_email: string;
+      notes: string;
+      status: string;
+      created_at: Date | string;
+      reviewed_at: Date | string | null;
+    }>`
+      select tv.teacher_id,
+             u.email,
+             u.name,
+             tv.school,
+             tv.district,
+             tv.work_email,
+             tv.notes,
+             tv.status,
+             tv.created_at,
+             tv.reviewed_at
+      from teacher_verifications tv
+      left join "user" u on u.id = tv.teacher_id
+      order by case when tv.status = 'pending' then 0 else 1 end,
+               tv.created_at desc`;
+    return {
+      items: rows.map((r) => ({
+        teacherId: r.teacher_id,
+        email: r.email,
+        name: r.name,
+        school: r.school,
+        district: r.district,
+        workEmail: r.work_email,
+        notes: r.notes,
+        status: r.status,
+        createdAt: new Date(r.created_at).toISOString(),
+        reviewedAt:
+          r.reviewed_at == null ? null : new Date(r.reviewed_at).toISOString(),
+      })),
+    };
+  });
+
+export const reviewTeacherVerification = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("admin")])
+  .validator((input: { teacherId: string; approve: boolean }) => input)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const status = data.approve ? "verified" : "rejected";
+    // Fail-closed: only a row still `pending` can be decided; an already
+    // reviewed row updates zero rows and throws.
+    const updated = await sql<{ school: string }>`
+      update teacher_verifications
+      set status = ${status},
+          reviewed_by = ${context.identity.userId},
+          reviewed_at = now()
+      where teacher_id = ${data.teacherId} and status = 'pending'
+      returning school`;
+    if (updated.length === 0) {
+      throw new Error("This verification request is no longer pending.");
+    }
+    await sql`
+      update "user" set teacher_status = ${status}
+      where id = ${data.teacherId}`;
+    await audit(
+      context.identity.userId,
+      data.approve ? "teacher.verify.approve" : "teacher.verify.reject",
+      data.teacherId,
+      { school: updated[0].school },
+    );
+    return { ok: true };
+  });

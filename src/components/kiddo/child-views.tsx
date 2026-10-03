@@ -6,6 +6,7 @@ import {
   Target,
   Brush,
   Check,
+  ChevronLeft,
   Heart,
   HeartHandshake,
   Home,
@@ -30,6 +31,7 @@ import { CHORE_CATEGORIES, type ChoreCategory } from "@/lib/chores";
 import { formatUnits } from "@/lib/utils";
 import { useLedger, formatDollars } from "@/store/ledger";
 import { bandForAge, missionProgress } from "@/lib/studio-path";
+import { WorldMap } from "@/components/kiddo/world/WorldMap";
 
 const CHORE_ICON: Record<string, typeof Home> = {
   "rs-homework": BookOpen,
@@ -74,91 +76,40 @@ export function FrozenBanner() {
   );
 }
 
-export function ChildHome() {
-  const childName = useLedger((s) => s.childName);
-  const balance = useLedger((s) => s.balance);
-  const vault = useLedger((s) => s.vault);
-  const vaultTarget = useLedger((s) => s.vaultTarget);
-  const vaultGoal = useLedger((s) => s.vaultGoal);
-  const frozen = useLedger((s) => s.frozen);
+export function BackToWorld() {
+  const setScreen = useLedger((s) => s.setScreen);
+  return (
+    <Button variant="ghost" size="sm" onClick={() => setScreen("home")} className="gap-1 text-muted">
+      <ChevronLeft className="size-4" />
+      World map
+    </Button>
+  );
+}
+
+export function ChildChores() {
   const pendingChores = useLedger((s) => s.pendingChores);
   const completedChoreIds = useLedger((s) => s.completedChoreIds);
-  const pendingPurchases = useLedger((s) => s.pendingPurchases);
-  const reserved = pendingPurchases.reduce((sum, p) => sum + p.price, 0);
-  const available = Math.max(0, balance - reserved);
-  const setScreen = useLedger((s) => s.setScreen);
   const completeChore = useLedger((s) => s.completeChore);
   const choreCatalog = useLedger((s) => s.choreCatalog);
   const disabledChoreIds = useLedger((s) => s.disabledChoreIds);
-  const childAge = useLedger((s) => s.childAge);
-  const completedMissionIds = useLedger((s) => s.completedMissionIds ?? []);
-  const studioXp = useLedger((s) => s.studioXp ?? 0);
-  const band = bandForAge(childAge);
-  const studio = missionProgress(band, completedMissionIds);
+  const frozen = useLedger((s) => s.frozen);
 
   return (
     <div className="screen-enter space-y-4">
+      <BackToWorld />
       <header>
-        <p className="text-sm font-medium text-muted">Hi {childName}</p>
+        <p className="text-sm font-medium text-muted">Chore Village</p>
         <h1 className="font-display text-3xl font-semibold tracking-tight">
-          Your ledger
+          Today&apos;s work
         </h1>
         <p className="mt-1 text-sm text-muted">
-          Earn Units. Spend them here. Save the rest.
+          Mark done — your parent awards the Units.
         </p>
       </header>
 
       <FrozenBanner />
 
-      <div className="units-hero tilt-r overflow-hidden rounded-xl p-5 shadow-[var(--shadow-border)]">
-        <p className="text-xs font-medium uppercase tracking-wider text-white/60">
-          Spendable
-        </p>
-        <p className="units-shimmer mt-1 font-hero text-5xl font-bold tracking-tight tabular-nums">
-          {formatUnits(balance)}
-        </p>
-        <p className="mt-1 text-sm text-white/70">Pillar Units · {available} available</p>
-      </div>
-
-      <Card className="tilt-l bg-vault p-5 text-vault-foreground">
-        <p className="text-xs font-medium uppercase tracking-wider text-vault-foreground/60">
-          Savings vault
-        </p>
-        <p className="mt-1 font-display text-3xl font-semibold tabular-nums">
-          {formatUnits(vault)}
-        </p>
-        <p className="mt-1 text-sm text-vault-foreground/75">
-          {vaultGoal} · {Math.round((vault / vaultTarget) * 100)}% of goal
-        </p>
-        <Progress
-          value={(vault / vaultTarget) * 100}
-          className="mt-4 bg-white/15"
-          barClassName="bg-vault-foreground"
-        />
-      </Card>
-
-      {pendingPurchases.length > 0 ? (
-        <Card className="p-4">
-          <CardTitle className="mb-2 text-base">Waiting on parent</CardTitle>
-          <ul className="space-y-2">
-            {pendingPurchases.map((p) => (
-              <li key={p.id} className="flex items-center gap-3 text-sm">
-                <ProductIcon name={p.icon} className="size-4 text-muted" />
-                <span className="flex-1">{p.name}</span>
-                <span className="font-mono tabular-nums text-muted">
-                  {p.price}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </Card>
-      ) : null}
-
       <Card className="p-4">
-        <CardTitle className="mb-1 text-base">Today's goals</CardTitle>
-        <p className="mb-3 text-sm text-muted">
-          Mark done — your parent awards the Units.
-        </p>
         {CHORE_CATEGORIES.map((category) => {
           const items = choreCatalog.filter(
             (c) => c.category === category && !disabledChoreIds.includes(c.id),
@@ -175,35 +126,34 @@ export function ChildHome() {
                   const pending = pendingChores.some((p) => p.choreId === c.id);
                   const done = completedChoreIds.includes(c.id);
                   return (
-              <div key={c.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-surface-2 text-ink">
-                  <Icon className="size-5" strokeWidth={1.7} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium">{c.name}</div>
-                  <div className="text-xs text-muted">Earn {c.amount} Units</div>
-                </div>
-                <Button
-                  size="sm"
-                  variant={done ? "secondary" : pending ? "outline" : "default"}
-                  disabled={frozen || pending || done}
-                  onClick={() => {
-                    const err = completeChore(c.id);
-                    if (err) toast.error(err);
-                    else toast.success("Sent to your parent");
-                  }}
-                >
-                  {done ? (
-                    <>
-                      <Check className="size-3.5" />
-                      Done
-                    </>
-                  ) : pending ? (
-                    "Waiting"
-                  ) : (
-                    "Done"
-                  )}
-                </Button>
+                    <div key={c.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
+                      <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-surface-2 text-ink">
+                        <Icon className="size-5" strokeWidth={1.7} />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <div className="text-sm font-medium">{c.name}</div>
+                        <div className="text-xs text-muted">Earn {c.amount} Units</div>
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={done ? "secondary" : pending ? "outline" : "default"}
+                        disabled={frozen || pending || done}
+                        onClick={() => {
+                          const err = completeChore(c.id);
+                          if (err) toast.error(err);
+                          else toast.success("Sent to your parent");
+                        }}
+                      >
+                        {done ? (
+                          <>
+                            <Check className="size-3.5" /> Done
+                          </>
+                        ) : pending ? (
+                          "Waiting"
+                        ) : (
+                          "Done"
+                        )}
+                      </Button>
                     </div>
                   );
                 })}
@@ -212,70 +162,14 @@ export function ChildHome() {
           );
         })}
       </Card>
-
-      <Card className="border-accent/20 bg-accent-soft p-4">
-        <div className="flex items-start gap-3">
-          <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-surface text-accent">
-            <Brain className="size-5" />
-          </span>
-          <div className="min-w-0 flex-1">
-            <CardTitle className="text-base">Money Lab</CardTitle>
-            <p className="mt-1 text-sm text-muted">
-              Learn how spending, saving, and matching work before you use your Units.
-            </p>
-          </div>
-        </div>
-        <Button variant="outline" className="mt-3 w-full" onClick={() => setScreen("learn")}>
-          <CircleDollarSign className="size-4" />
-          Learn a money skill
-        </Button>
-      </Card>
-
-      <div className="grid gap-2">
-        <Button className="h-12" onClick={() => setScreen("market")}>
-          <ShoppingBag className="size-4" />
-          Open marketplace
-        </Button>
-        <Button variant="outline" className="h-12" onClick={() => setScreen("vault")}>
-          <Landmark className="size-4" />
-          Savings vault
-        </Button>
-        <Button variant="outline" className="h-12" onClick={() => setScreen("studio")}>
-          <Brush className="size-4" />
-          {band.name} studio · {studio.done}/{studio.total}
-        </Button>
-        <Button variant="outline" className="h-12" onClick={() => setScreen("gallery")}>
-          <Images className="size-4" />
-          Showcase gallery
-        </Button>
-        <Button variant="outline" className="h-12" onClick={() => setScreen("give")}>
-          <HeartHandshake className="size-4" />
-          Give Units
-        </Button>
-      </div>
-
-      <Card className="p-4">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-accent">
-              Creative Studio
-            </p>
-            <CardTitle className="mt-1 text-base">
-              {band.name} · ages {band.ages}
-            </CardTitle>
-            <p className="mt-1 text-sm text-muted">
-              {studio.complete
-                ? "Track complete. Advanced work unlocks with age."
-                : `${studio.done} of ${studio.total} missions · ${studioXp} XP`}
-            </p>
-          </div>
-          <Brush className="size-5 text-accent" />
-        </div>
-        <Progress value={studio.pct} className="mt-4" />
-      </Card>
     </div>
   );
 }
+
+export function ChildHome() {
+  return <WorldMap />;
+}
+
 
 export function ChildMarket() {
   const selectProduct = useLedger((s) => s.selectProduct);

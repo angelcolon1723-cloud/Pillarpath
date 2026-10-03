@@ -3,12 +3,14 @@ import {
   ArrowLeft,
   Brush,
   Circle,
+  Download,
   Eraser,
   Layers,
   Layers2,
   Lock,
   Minus,
   Music2,
+  PaintBucket,
   Play,
   Plus,
   Sparkles,
@@ -61,7 +63,85 @@ function makeLayer() {
 
 /* ------------------------------ Pro Canvas ------------------------ */
 
-type CanvasTool = "brush" | "eraser" | "line" | "rect" | "circle" | "text";
+type CanvasTool = "brush" | "eraser" | "fill" | "line" | "rect" | "circle" | "text";
+
+/** Scanline flood fill on a 2d context. */
+function floodFill(
+  ctx: CanvasRenderingContext2D,
+  sx: number,
+  sy: number,
+  hex: string,
+  opacity: number,
+) {
+  const w = ctx.canvas.width;
+  const h = ctx.canvas.height;
+  const x0 = Math.floor(sx);
+  const y0 = Math.floor(sy);
+  if (x0 < 0 || y0 < 0 || x0 >= w || y0 >= h) return;
+  const img = ctx.getImageData(0, 0, w, h);
+  const d = img.data;
+  const ti = (y0 * w + x0) * 4;
+  const tr = d[ti];
+  const tg = d[ti + 1];
+  const tb = d[ti + 2];
+  const ta = d[ti + 3];
+  const m = /^#?([0-9a-f]{6})$/i.exec(hex);
+  const fr = m ? parseInt(m[1].slice(0, 2), 16) : 0;
+  const fg = m ? parseInt(m[1].slice(2, 4), 16) : 0;
+  const fb = m ? parseInt(m[1].slice(4, 6), 16) : 0;
+  const fa = Math.round(opacity * 255);
+  // Already the target color — nothing to do.
+  if (tr === fr && tg === fg && tb === fb && ta === fa) return;
+  const tol = 40;
+  const match = (i: number) =>
+    Math.abs(d[i] - tr) <= tol &&
+    Math.abs(d[i + 1] - tg) <= tol &&
+    Math.abs(d[i + 2] - tb) <= tol &&
+    Math.abs(d[i + 3] - ta) <= tol;
+  const stack: Array<[number, number]> = [[x0, y0]];
+  while (stack.length) {
+    const [x, y] = stack.pop() as [number, number];
+    let nx = x;
+    // scan left to the boundary
+    while (nx >= 0 && match((y * w + nx) * 4)) nx--;
+    nx++;
+    let spanUp = false;
+    let spanDown = false;
+    while (nx < w && match((y * w + nx) * 4)) {
+      const i = (y * w + nx) * 4;
+      d[i] = fr;
+      d[i + 1] = fg;
+      d[i + 2] = fb;
+      d[i + 3] = fa;
+      if (y > 0) {
+        const up = match(((y - 1) * w + nx) * 4);
+        if (up && !spanUp) {
+          stack.push([nx, y - 1]);
+          spanUp = true;
+        } else if (!up) spanUp = false;
+      }
+      if (y < h - 1) {
+        const dn = match(((y + 1) * w + nx) * 4);
+        if (dn && !spanDown) {
+          stack.push([nx, y + 1]);
+          spanDown = true;
+        } else if (!dn) spanDown = false;
+      }
+      nx++;
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
+/** Trigger a PNG download of a canvas element. */
+function downloadCanvasPng(canvas: HTMLCanvasElement, filename: string) {
+  const a = document.createElement("a");
+  a.href = canvas.toDataURL("image/png");
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
 
 function ProCanvas({ onDone }: { onDone: () => void }) {
   const viewRef = useRef<HTMLCanvasElement>(null);
@@ -220,6 +300,14 @@ function ProCanvas({ onDone }: { onDone: () => void }) {
       return;
     }
 
+    if (t === "fill") {
+      pushUndo();
+      floodFill(ctx, p.x, p.y, colorRef.current, opacityRef.current);
+      ctx.globalAlpha = 1;
+      composite();
+      return;
+    }
+
     pushUndo();
     setupStroke(ctx, t);
     if (t === "brush" || t === "eraser") {
@@ -334,9 +422,25 @@ function ProCanvas({ onDone }: { onDone: () => void }) {
     onDone();
   }
 
+  function download() {
+    const out = document.createElement("canvas");
+    out.width = PRO_W;
+    out.height = PRO_H;
+    const ctx = out.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = PAPER;
+    ctx.fillRect(0, 0, PRO_W, PRO_H);
+    layersRef.current.forEach((layer, i) => {
+      if (visibleRef.current[i]) ctx.drawImage(layer, 0, 0);
+    });
+    downloadCanvasPng(out, "pillarpath-artwork.png");
+    toast.success("Artwork downloaded");
+  }
+
   const tools: Array<[CanvasTool, typeof Brush, string]> = [
     ["brush", Brush, "Brush"],
     ["eraser", Eraser, "Eraser"],
+    ["fill", PaintBucket, "Fill"],
     ["line", Minus, "Line"],
     ["rect", Square, "Rect"],
     ["circle", Circle, "Circle"],
@@ -503,6 +607,9 @@ function ProCanvas({ onDone }: { onDone: () => void }) {
           <Button variant="outline" size="sm" onClick={clearLayer}>
             <Trash2 className="size-4" /> Clear layer
           </Button>
+          <Button variant="outline" size="sm" onClick={download}>
+            <Download className="size-4" /> Download PNG
+          </Button>
           <Button size="sm" onClick={save}>
             Save piece
           </Button>
@@ -584,7 +691,8 @@ function StoryStudio({ onDone }: { onDone: () => void }) {
     setPanels((p) => p.filter((x) => x.id !== id));
   }
 
-  function saveStory() {
+  /** Composite the story strip; calls back with the finished canvas. */
+  function renderStoryStrip(done: (out: HTMLCanvasElement) => void) {
     if (panels.length === 0) {
       toast.error("Add at least one panel first");
       return;
@@ -617,11 +725,7 @@ function StoryStudio({ onDone }: { onDone: () => void }) {
         ctx.fillText(label.slice(0, 60), pad, y + 26, PANEL_W);
         y += capH + pad;
       });
-      saveDrawing(out.toDataURL("image/png"), {
-        title: title.trim() || "Studio Pro story",
-      });
-      toast.success("Story saved to the gallery");
-      onDone();
+      done(out);
     };
     let loaded = 0;
     imgs.forEach((img) => {
@@ -636,6 +740,23 @@ function StoryStudio({ onDone }: { onDone: () => void }) {
       }
     });
     if (imgs.length === 0) drawAll();
+  }
+
+  function saveStory() {
+    renderStoryStrip((out) => {
+      saveDrawing(out.toDataURL("image/png"), {
+        title: title.trim() || "Studio Pro story",
+      });
+      toast.success("Story saved to the gallery");
+      onDone();
+    });
+  }
+
+  function downloadStory() {
+    renderStoryStrip((out) => {
+      downloadCanvasPng(out, "pillarpath-story.png");
+      toast.success("Story downloaded");
+    });
   }
 
   return (
@@ -764,6 +885,9 @@ function StoryStudio({ onDone }: { onDone: () => void }) {
           <Button onClick={saveStory} className="w-full">
             Save story to gallery
           </Button>
+          <Button variant="outline" onClick={downloadStory} className="w-full">
+            <Download className="size-4" /> Download story PNG
+          </Button>
         </Card>
       ) : (
         <p className="text-center text-sm text-muted">
@@ -781,8 +905,10 @@ const TRACKS = [
   { id: "kick", name: "Kick", color: "#e23b3b" },
   { id: "snare", name: "Snare", color: "#f08c1e" },
   { id: "hat", name: "Hat", color: "#f5c518" },
+  { id: "clap", name: "Clap", color: "#e564e8" },
   { id: "bass", name: "Bass", color: "#2e9e5b" },
   { id: "keys", name: "Keys", color: "#1e88e5" },
+  { id: "arp", name: "Arp", color: "#7c5cff" },
 ] as const;
 
 type TrackId = (typeof TRACKS)[number]["id"];
@@ -795,14 +921,18 @@ function defaultPattern(): Record<TrackId, boolean[]> {
     kick: off(),
     snare: off(),
     hat: off(),
+    clap: off(),
     bass: off(),
     keys: off(),
+    arp: off(),
   };
   [0, 4, 8, 12].forEach((s) => (p.kick[s] = true));
   [4, 12].forEach((s) => (p.snare[s] = true));
   for (let s = 0; s < STEPS; s += 2) p.hat[s] = true;
+  [4, 12].forEach((s) => (p.clap[s] = true));
   [0, 6, 8, 14].forEach((s) => (p.bass[s] = true));
   [0, 4, 8, 12].forEach((s) => (p.keys[s] = true));
+  [2, 6, 10, 14].forEach((s) => (p.arp[s] = true));
   return p;
 }
 
@@ -813,14 +943,14 @@ function audio() {
   return sharedCtx;
 }
 
-function noiseBuffer(ctx: AudioContext) {
+function noiseBuffer(ctx: BaseAudioContext) {
   const buf = ctx.createBuffer(1, ctx.sampleRate * 0.3, ctx.sampleRate);
   const d = buf.getChannelData(0);
   for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
   return buf;
 }
 
-function playTrackSound(ctx: AudioContext, track: TrackId, step: number, when: number) {
+function playTrackSound(ctx: BaseAudioContext, track: TrackId, step: number, when: number) {
   if (track === "kick") {
     const o = ctx.createOscillator();
     const g = ctx.createGain();
@@ -866,6 +996,33 @@ function playTrackSound(ctx: AudioContext, track: TrackId, step: number, when: n
     o.connect(g).connect(ctx.destination);
     o.start(when);
     o.stop(when + 0.32);
+  } else if (track === "clap") {
+    // layered noise bursts through a bandpass = hand clap
+    for (let i = 0; i < 3; i++) {
+      const src = ctx.createBufferSource();
+      src.buffer = noiseBuffer(ctx);
+      const f = ctx.createBiquadFilter();
+      f.type = "bandpass";
+      f.frequency.value = 1600;
+      f.Q.value = 1.4;
+      const g = ctx.createGain();
+      const t = when + i * 0.018;
+      g.gain.setValueAtTime(0.3 - i * 0.07, t);
+      g.gain.exponentialRampToValueAtTime(0.001, t + 0.09);
+      src.connect(f).connect(g).connect(ctx.destination);
+      src.start(t);
+      src.stop(t + 0.1);
+    }
+  } else if (track === "arp") {
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = "square";
+    o.frequency.value = PENTA[(step * 2 + 1) % PENTA.length] * 2;
+    g.gain.setValueAtTime(0.12, when);
+    g.gain.exponentialRampToValueAtTime(0.001, when + 0.18);
+    o.connect(g).connect(ctx.destination);
+    o.start(when);
+    o.stop(when + 0.2);
   } else {
     const o = ctx.createOscillator();
     const g = ctx.createGain();
@@ -877,6 +1034,45 @@ function playTrackSound(ctx: AudioContext, track: TrackId, step: number, when: n
     o.start(when);
     o.stop(when + 0.3);
   }
+}
+
+/** Encode an AudioBuffer as a 16-bit PCM WAV blob. */
+function audioBufferToWav(buffer: AudioBuffer): Blob {
+  const numCh = Math.min(2, buffer.numberOfChannels);
+  const sampleRate = buffer.sampleRate;
+  const len = buffer.length;
+  const bytesPerSample = 2;
+  const blockAlign = numCh * bytesPerSample;
+  const dataSize = len * blockAlign;
+  const ab = new ArrayBuffer(44 + dataSize);
+  const v = new DataView(ab);
+  const writeStr = (off: number, s: string) => {
+    for (let i = 0; i < s.length; i++) v.setUint8(off + i, s.charCodeAt(i));
+  };
+  writeStr(0, "RIFF");
+  v.setUint32(4, 36 + dataSize, true);
+  writeStr(8, "WAVE");
+  writeStr(12, "fmt ");
+  v.setUint32(16, 16, true);
+  v.setUint16(20, 1, true);
+  v.setUint16(22, numCh, true);
+  v.setUint32(24, sampleRate, true);
+  v.setUint32(28, sampleRate * blockAlign, true);
+  v.setUint16(32, blockAlign, true);
+  v.setUint16(34, 16, true);
+  writeStr(36, "data");
+  v.setUint32(40, dataSize, true);
+  const channels: Float32Array[] = [];
+  for (let c = 0; c < numCh; c++) channels.push(buffer.getChannelData(c));
+  let off = 44;
+  for (let i = 0; i < len; i++) {
+    for (let c = 0; c < numCh; c++) {
+      const s = Math.max(-1, Math.min(1, channels[c][i]));
+      v.setInt16(off, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+      off += 2;
+    }
+  }
+  return new Blob([ab], { type: "audio/wav" });
 }
 
 function BeatSequencer({ onDone, onFirstPlay }: { onDone: () => void; onFirstPlay?: () => void }) {
@@ -903,7 +1099,7 @@ function BeatSequencer({ onDone, onFirstPlay }: { onDone: () => void; onFirstPla
 
   function clear() {
     const off = () => Array(STEPS).fill(false);
-    setPattern({ kick: off(), snare: off(), hat: off(), bass: off(), keys: off() });
+    setPattern({ kick: off(), snare: off(), hat: off(), clap: off(), bass: off(), keys: off(), arp: off() });
   }
 
   useEffect(() => {
@@ -940,6 +1136,36 @@ function BeatSequencer({ onDone, onFirstPlay }: { onDone: () => void; onFirstPla
     if (timer.current) window.clearInterval(timer.current);
     timer.current = null;
     setPlaying(false);
+  }
+
+  async function exportWav() {
+    if (playing) stop();
+    const bpmNow = bpmRef.current;
+    const pat = patternRef.current;
+    const spb = 60 / bpmNow / 4;
+    const bars = 2;
+    const totalSteps = STEPS * bars;
+    const sampleRate = 44100;
+    const dur = totalSteps * spb + 0.5;
+    const off = new OfflineAudioContext(1, Math.ceil(sampleRate * dur), sampleRate);
+    for (let s = 0; s < totalSteps; s++) {
+      const stepIdx = s % STEPS;
+      const when = s * spb;
+      (Object.keys(pat) as TrackId[]).forEach((t) => {
+        if (pat[t][stepIdx]) playTrackSound(off, t, stepIdx, when);
+      });
+    }
+    const buf = await off.startRendering();
+    const blob = audioBufferToWav(buf);
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "pillarpath-beat.wav";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    toast.success("Beat exported as WAV");
   }
 
   return (
@@ -979,6 +1205,9 @@ function BeatSequencer({ onDone, onFirstPlay }: { onDone: () => void; onFirstPla
             onClick={() => setPattern(defaultPattern())}
           >
             Starter beat
+          </Button>
+          <Button variant="outline" size="sm" onClick={exportWav}>
+            <Download className="size-4" /> Export WAV
           </Button>
         </div>
         <div className="space-y-1.5 overflow-x-auto">

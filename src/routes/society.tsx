@@ -12,13 +12,16 @@ import {
   getSocietyStatus,
   getStock,
   importPrintifySelection,
+  listTeacherVerifications,
   publishStockItem,
   rejectStockItem,
+  reviewTeacherVerification,
   searchPrintifyBlueprints,
   syncPrintifyCosts,
   unpublishStockItem,
   type BlueprintChoice,
   type SocietyStatus,
+  type TeacherVerificationRequest,
 } from "@/lib/society-server";
 import type { StockItem } from "@/lib/suppliers/publish";
 import { suggestRetailPrice } from "@/lib/suppliers/pricing";
@@ -58,6 +61,7 @@ function SocietyPage() {
   const [status, setStatus] = useState<SocietyStatus | null>(null);
   const [denied, setDenied] = useState(false);
   const [items, setItems] = useState<StockItem[] | null>(null);
+  const [verifications, setVerifications] = useState<TeacherVerificationRequest[] | null>(null);
   const [defaultMargin, setDefaultMargin] = useState(40);
   const [busy, setBusy] = useState(false);
 
@@ -66,9 +70,13 @@ function SocietyPage() {
       const s = await getSocietyStatus();
       setStatus(s);
       if (s.isAdmin) {
-        const stock = await getStock();
+        const [stock, tv] = await Promise.all([
+          getStock(),
+          listTeacherVerifications(),
+        ]);
         setItems(stock.items);
         setDefaultMargin(stock.defaultMarginPct);
+        setVerifications(tv.items);
       }
     } catch {
       setDenied(true);
@@ -154,6 +162,11 @@ function SocietyPage() {
       {status?.isAdmin && (
         <div className="mt-8 space-y-8">
           <ImportPanel busy={busy} onImported={() => void load()} />
+          <TeacherVerificationsPanel
+            items={verifications}
+            busy={busy}
+            onAction={(fn, msg) => void run(fn, msg)}
+          />
           <div className="space-y-4">
             {items === null && (
               <p className="text-sm text-muted">Loading supplier catalog…</p>
@@ -367,6 +380,124 @@ function ImportPanel({
           </div>
         </div>
       )}
+    </Card>
+  );
+}
+
+function TeacherVerificationsPanel({
+  items,
+  busy,
+  onAction,
+}: {
+  items: TeacherVerificationRequest[] | null;
+  busy: boolean;
+  onAction: (fn: () => Promise<unknown>, msg: string) => void;
+}) {
+  return (
+    <Card className="p-5">
+      <h2 className="font-display text-lg font-semibold">Teacher verifications</h2>
+      <p className="mt-1 text-sm text-muted">
+        Educator applications. Teachers unlock student details, grades, and
+        family messaging only after you approve them here.
+      </p>
+      <div className="mt-4 space-y-3">
+        {items === null && (
+          <p className="text-sm text-muted">Loading verification requests…</p>
+        )}
+        {items !== null && items.length === 0 && (
+          <p className="text-sm text-muted">No verification requests.</p>
+        )}
+        {items?.map((v) => {
+          const pending = v.status === "pending";
+          return (
+            <div
+              key={v.teacherId}
+              className="rounded-xl border border-border p-4"
+            >
+              <div className="flex flex-wrap items-center gap-2">
+                <Badge
+                  tone={
+                    v.status === "verified"
+                      ? "accent"
+                      : v.status === "rejected"
+                        ? "danger"
+                        : v.status === "pending"
+                          ? "warn"
+                          : "muted"
+                  }
+                >
+                  {v.status}
+                </Badge>
+                <span className="text-sm font-semibold">
+                  {v.name || v.email || v.teacherId}
+                </span>
+                {v.name && (
+                  <span className="text-xs text-subtle">{v.email}</span>
+                )}
+                <span className="ml-auto text-xs text-subtle">
+                  Submitted {new Date(v.createdAt).toLocaleDateString()}
+                  {v.reviewedAt
+                    ? ` · reviewed ${new Date(v.reviewedAt).toLocaleDateString()}`
+                    : ""}
+                </span>
+              </div>
+              <dl className="mt-2 grid gap-x-6 gap-y-1 text-sm sm:grid-cols-2">
+                <div>
+                  <dt className="text-xs text-subtle">School</dt>
+                  <dd>{v.school || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-subtle">District</dt>
+                  <dd>{v.district || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-subtle">Work email</dt>
+                  <dd>{v.workEmail || "—"}</dd>
+                </div>
+                <div>
+                  <dt className="text-xs text-subtle">Notes</dt>
+                  <dd className="text-muted">{v.notes || "—"}</dd>
+                </div>
+              </dl>
+              {pending && (
+                <div className="mt-3 flex flex-wrap gap-2 border-t border-border pt-3">
+                  <Button
+                    size="sm"
+                    disabled={busy}
+                    onClick={() =>
+                      onAction(
+                        () =>
+                          reviewTeacherVerification({
+                            data: { teacherId: v.teacherId, approve: true },
+                          }),
+                        "Teacher verified.",
+                      )
+                    }
+                  >
+                    Approve
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    disabled={busy}
+                    onClick={() =>
+                      onAction(
+                        () =>
+                          reviewTeacherVerification({
+                            data: { teacherId: v.teacherId, approve: false },
+                          }),
+                        "Verification rejected.",
+                      )
+                    }
+                  >
+                    Reject
+                  </Button>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
     </Card>
   );
 }

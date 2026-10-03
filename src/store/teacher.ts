@@ -1,10 +1,11 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
+import { toast } from "sonner";
 import {
   CLASSROOM_ACTIVITY_SEED,
   type ClassroomActivityTemplate,
 } from "@/lib/chores";
-import { uid } from "@/lib/utils";
+import * as teacherApi from "@/lib/teacher-server";
 
 /* ------------------------------------------------------------------ */
 /* PillarPath Teacher Workspace store                                   */
@@ -12,7 +13,14 @@ import { uid } from "@/lib/utils";
 /* Classroom Units are INTENTIONALLY separate from family Units.        */
 /* Teachers only ever see educational data (names, assignments,         */
 /* progress, classroom Units) — never family balances, bank info, or    */
-/* private marketplace transactions. See Master Manual sections 17, 24. */
+/* private marketplace transactions. See Master Manual sections 17, 24.*/
+/*                                                                      */
+/* Write-through sync: every mutator applies the change locally right   */
+/* away (optimistic), then fires the matching server function in the    */
+/* background. On success, server-generated values (join codes,         */
+/* timestamps, balances) are patched in; on failure the pre-mutation   */
+/* snapshot is restored and a toast explains what happened. Actions     */
+/* stay synchronous so UI call sites are unchanged.                     */
 /* ------------------------------------------------------------------ */
 
 export type TeacherClassroom = {
@@ -308,7 +316,7 @@ const RESOURCES: TeacherResource[] = [
 function seedLessons(): TeacherLesson[] {
   return CURRICULUM.map((c) => ({
     ...c,
-    id: uid("lesson"),
+    id: crypto.randomUUID(),
     dueDate: "",
     createdAt: nowIso(),
     seeded: true,
@@ -332,6 +340,9 @@ type TeacherData = {
 };
 
 type TeacherState = TeacherData & {
+  _syncing: boolean;
+  _loadError: string | null;
+  loadFromServer: () => Promise<void>;
   setTeacherName: (name: string) => void;
   createClassroom: (input: {
     name: string;
@@ -339,14 +350,25 @@ type TeacherState = TeacherData & {
     subject: string;
   }) => TeacherClassroom;
   addStudent: (classroomId: string, name: string) => string | null;
+  removeClassroomStudent: (studentId: string) => void;
   joinClassroom: (joinCode: string, studentName: string) => string | null;
   addAnnouncement: (classroomId: string, text: string) => void;
   createLesson: (
     input: Omit<TeacherLesson, "id" | "createdAt" | "seeded">,
   ) => string | null;
+  updateLesson: (
+    id: string,
+    input: Partial<Omit<TeacherLesson, "id" | "createdAt" | "seeded">>,
+  ) => string | null;
+  deleteLesson: (id: string) => void;
   createAssignment: (
     input: Omit<TeacherAssignment, "id" | "createdAt" | "status">,
   ) => string | null;
+  updateAssignment: (
+    id: string,
+    input: Partial<Omit<TeacherAssignment, "id" | "createdAt" | "status">>,
+  ) => string | null;
+  deleteAssignment: (id: string) => void;
   closeAssignment: (id: string) => void;
   submitAssignment: (
     assignmentId: string,
@@ -399,463 +421,1094 @@ type TeacherState = TeacherData & {
   resetDemo: () => void;
 };
 
+function snapshotData(s: TeacherState): TeacherData {
+  return {
+    teacherName: s.teacherName,
+    classrooms: s.classrooms,
+    students: s.students,
+    lessons: s.lessons,
+    assignments: s.assignments,
+    submissions: s.submissions,
+    connections: s.connections,
+    messages: s.messages,
+    threads: s.threads,
+    classroomUnitBalances: s.classroomUnitBalances,
+    unitEvents: s.unitEvents,
+    resources: s.resources,
+    earningActivities: s.earningActivities,
+  };
+}
+
 export const useTeacher = create<TeacherState>()(
   persist(
-    (set, get) => ({
-      teacherName: "Ms. Rivera",
-      classrooms: [],
-      students: [],
-      lessons: seedLessons(),
-      assignments: [],
-      submissions: [],
-      connections: [],
-      messages: [],
-      threads: [],
-      classroomUnitBalances: {},
-      unitEvents: [],
-      resources: RESOURCES,
-      earningActivities: CLASSROOM_ACTIVITY_SEED.map((a) => ({ ...a })),
-
-      setTeacherName: (name) => set({ teacherName: name.trim() || "Teacher" }),
-
-      createClassroom: (input) => {
-        const classroom: TeacherClassroom = {
-          id: uid("class"),
-          name: input.name.trim(),
-          gradeLevel: input.gradeLevel.trim(),
-          subject: input.subject.trim(),
-          joinCode: makeJoinCode(),
-          studentIds: [],
-          announcements: [],
-          createdAt: nowIso(),
+    (set, get) => {
+      /** Capture the pre-mutation slices; returns a rollback that restores
+       *  them and toasts the failure so the UI never silently diverges. */
+      const beginSync = () => {
+        const snapshot = snapshotData(get());
+        return (message: string) => {
+          set(snapshot);
+          toast.error(message);
         };
-        set((s) => ({ classrooms: [classroom, ...s.classrooms] }));
-        return classroom;
-      },
+      };
 
-      addStudent: (classroomId, name) => {
-        const trimmed = name.trim();
-        if (!trimmed) return "Enter a student name";
-        const classroom = get().classrooms.find((c) => c.id === classroomId);
-        if (!classroom) return "Classroom not found";
-        const student: TeacherStudent = {
-          id: uid("student"),
-          name: trimmed,
-          classroomId,
-          joinedAt: nowIso(),
-        };
-        set((s) => ({
-          students: [student, ...s.students],
-          classrooms: s.classrooms.map((c) =>
-            c.id === classroomId
-              ? { ...c, studentIds: [student.id, ...c.studentIds] }
-              : c,
-          ),
-        }));
-        return null;
-      },
-
-      joinClassroom: (joinCode, studentName) => {
-        const code = joinCode.trim().toUpperCase();
-        const trimmed = studentName.trim();
-        if (!code || !trimmed) return "Enter the join code and the student's name";
-        const classroom = get().classrooms.find((c) => c.joinCode === code);
-        if (!classroom) return "No classroom uses that join code";
-        if (
-          get().students.some(
-            (s) =>
-              s.classroomId === classroom.id &&
-              s.name.toLowerCase() === trimmed.toLowerCase(),
-          )
-        ) {
-          return "That name is already enrolled in this classroom";
-        }
-        get().addStudent(classroom.id, trimmed);
-        return null;
-      },
-
-      addAnnouncement: (classroomId, text) => {
-        const trimmed = text.trim();
-        if (!trimmed) return;
-        set((s) => ({
-          classrooms: s.classrooms.map((c) =>
-            c.id === classroomId
-              ? {
-                  ...c,
-                  announcements: [
-                    { id: uid("ann"), text: trimmed, at: nowIso() },
-                    ...c.announcements,
-                  ],
-                }
-              : c,
-          ),
-        }));
-      },
-
-      createLesson: (input) => {
-        if (!input.title.trim()) return "Give the lesson a title";
-        const lesson: TeacherLesson = {
-          ...input,
-          title: input.title.trim(),
-          id: uid("lesson"),
-          createdAt: nowIso(),
-        };
-        set((s) => ({ lessons: [lesson, ...s.lessons] }));
-        return null;
-      },
-
-      createAssignment: (input) => {
-        if (!input.title.trim()) return "Give the assignment a title";
-        if (!input.classroomId) return "Choose a classroom";
-        const assignment: TeacherAssignment = {
-          ...input,
-          title: input.title.trim(),
-          id: uid("assign"),
-          status: "active",
-          createdAt: nowIso(),
-        };
-        set((s) => ({ assignments: [assignment, ...s.assignments] }));
-        return null;
-      },
-
-      closeAssignment: (id) => {
-        set((s) => ({
-          assignments: s.assignments.map((a) =>
-            a.id === id ? { ...a, status: "closed" as const } : a,
-          ),
-        }));
-      },
-
-      submitAssignment: (assignmentId, studentName, text) => {
-        const assignment = get().assignments.find((a) => a.id === assignmentId);
-        if (!assignment) return "Assignment not found";
-        if (assignment.status !== "active") return "This assignment is closed";
-        const trimmed = text.trim();
-        if (!trimmed) return "Write your work before submitting";
-        let student = get().students.find(
-          (s) =>
-            s.classroomId === assignment.classroomId &&
-            s.name.toLowerCase() === studentName.trim().toLowerCase(),
-        );
-        if (!student) {
-          const err = get().addStudent(assignment.classroomId, studentName);
-          if (err) return err;
-          student = get().students.find(
-            (s) =>
-              s.classroomId === assignment.classroomId &&
-              s.name.toLowerCase() === studentName.trim().toLowerCase(),
-          );
-        }
-        if (!student) return "Could not enroll the student";
-        const submission: TeacherSubmission = {
-          id: uid("sub"),
-          assignmentId,
-          studentId: student.id,
-          studentName: student.name,
-          text: trimmed,
-          submittedAt: nowIso(),
-          status: "submitted",
-          feedback: "",
-          unitsAwarded: 0,
-        };
-        set((s) => ({ submissions: [submission, ...s.submissions] }));
-        return null;
-      },
-
-      reviewSubmission: (id, input) => {
-        const submission = get().submissions.find((s) => s.id === id);
-        if (!submission) return "Submission not found";
-        const assignment = get().assignments.find(
-          (a) => a.id === submission.assignmentId,
-        );
-        const award =
-          input.status === "complete" ? Math.max(0, Math.floor(input.awardUnits)) : 0;
-        set((s) => ({
-          submissions: s.submissions.map((sub) =>
-            sub.id === id
-              ? {
-                  ...sub,
-                  feedback: input.feedback.trim(),
-                  status: input.status,
-                  unitsAwarded: award,
-                }
-              : sub,
-          ),
-          classroomUnitBalances:
-            award > 0
-              ? {
-                  ...s.classroomUnitBalances,
-                  [submission.studentId]:
-                    (s.classroomUnitBalances[submission.studentId] ?? 0) + award,
-                }
-              : s.classroomUnitBalances,
-          unitEvents:
-            award > 0
-              ? [
-                  {
-                    id: uid("cue"),
-                    studentId: submission.studentId,
-                    studentName: submission.studentName,
-                    amount: award,
-                    note: `Assignment reward · ${assignment?.title ?? "assignment"}`,
-                    at: nowIso(),
-                  },
-                  ...s.unitEvents,
-                ].slice(0, 100)
-              : s.unitEvents,
-        }));
-        return null;
-      },
-
-      awardClassroomUnits: (studentId, amount, note) => {
-        const student = get().students.find((s) => s.id === studentId);
-        if (!student) return "Student not found";
-        const amt = Math.max(1, Math.floor(amount));
-        set((s) => ({
-          classroomUnitBalances: {
-            ...s.classroomUnitBalances,
-            [studentId]: (s.classroomUnitBalances[studentId] ?? 0) + amt,
-          },
-          unitEvents: [
-            {
-              id: uid("cue"),
-              studentId,
-              studentName: student.name,
-              amount: amt,
-              note: note.trim() || "Classroom reward",
-              at: nowIso(),
-            },
-            ...s.unitEvents,
-          ].slice(0, 100),
-        }));
-        return null;
-      },
-
-      requestConnection: (joinCode, childName) => {
-        const code = joinCode.trim().toUpperCase();
-        const trimmed = childName.trim();
-        if (!code || !trimmed) return "Enter the classroom join code and your child's name";
-        const classroom = get().classrooms.find((c) => c.joinCode === code);
-        if (!classroom) return "No classroom uses that join code";
-        if (
-          get().connections.some(
-            (c) =>
-              c.classroomId === classroom.id &&
-              c.childName.toLowerCase() === trimmed.toLowerCase() &&
-              c.status !== "disconnected",
-          )
-        ) {
-          return "A connection for this child already exists";
-        }
-        const connection: TeacherConnection = {
-          id: uid("conn"),
-          classroomId: classroom.id,
-          classroomName: classroom.name,
-          childName: trimmed,
-          status: "pending",
-          educationalPermissions: true,
-          unitPermissions: false,
-          requestedAt: nowIso(),
-        };
-        set((s) => ({ connections: [connection, ...s.connections] }));
-        return null;
-      },
-
-      approveConnection: (id) => {
-        set((s) => ({
-          connections: s.connections.map((c) =>
-            c.id === id ? { ...c, status: "approved" as const } : c,
-          ),
-        }));
-      },
-
-      denyConnection: (id) => {
-        set((s) => ({
-          connections: s.connections.map((c) =>
-            c.id === id ? { ...c, status: "disconnected" as const } : c,
-          ),
-        }));
-      },
-
-      disconnectConnection: (id) => {
-        set((s) => ({
-          connections: s.connections.map((c) =>
-            c.id === id ? { ...c, status: "disconnected" as const } : c,
-          ),
-        }));
-      },
-
-      setConnectionPermissions: (id, input) => {
-        set((s) => ({
-          connections: s.connections.map((c) =>
-            c.id === id
-              ? {
-                  ...c,
-                  educationalPermissions: input.educationalPermissions,
-                  unitPermissions: input.unitPermissions,
-                }
-              : c,
-          ),
-        }));
-      },
-
-      sendMessage: (audience, text) => {
-        const trimmed = text.trim();
-        if (!trimmed) return "Write a message first";
-        set((s) => ({
-          messages: [
-            { id: uid("msg"), audience, text: trimmed, at: nowIso() },
-            ...s.messages,
-          ].slice(0, 50),
-        }));
-        return null;
-      },
-
-      classroomUnitBalance: (studentId) => get().classroomUnitBalances[studentId] ?? 0,
-
-      startThread: (classroomId, parentName, childName) => {
-        const parent = parentName.trim();
-        const child = childName.trim();
-        if (!parent || !child) return "Enter the parent and child names";
-        const classroom = get().classrooms.find((c) => c.id === classroomId);
-        if (!classroom) return "Choose a classroom first";
-        const existing = get().threads.find(
-          (t) =>
-            t.classroomId === classroomId &&
-            t.parentName.toLowerCase() === parent.toLowerCase() &&
-            t.childName.toLowerCase() === child.toLowerCase(),
-        );
-        if (existing) return existing.id;
-        const thread: TeacherThread = {
-          id: uid("thread"),
-          classroomId,
-          classroomName: classroom.name,
-          parentName: parent,
-          childName: child,
-          messages: [],
-          updatedAt: nowIso(),
-        };
-        set((s) => ({ threads: [thread, ...s.threads] }));
-        return thread.id;
-      },
-
-      sendThreadMessage: (threadId, from, text) => {
-        const trimmed = text.trim();
-        if (!trimmed) return "Write a message first";
-        if (trimmed.length > 2000) return "Keep messages under 2000 characters";
-        const thread = get().threads.find((t) => t.id === threadId);
-        if (!thread) return "Conversation not found";
-        const msg: TeacherThreadMessage = {
-          id: uid("tmsg"),
-          from,
-          text: trimmed,
-          at: nowIso(),
-        };
-        set((s) => ({
-          threads: s.threads
-            .map((t) =>
-              t.id === threadId
-                ? { ...t, messages: [...t.messages, msg].slice(-200), updatedAt: nowIso() }
-                : t,
-            )
-            .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
-        }));
-        return null;
-      },
-
-      importRoster: (classroomId, names) => {
-        const classroom = get().classrooms.find((c) => c.id === classroomId);
-        if (!classroom) return { imported: 0, skipped: names.length };
-        const seen = new Set(
-          get()
-            .students.filter((s) => s.classroomId === classroomId)
-            .map((s) => s.name.toLowerCase()),
-        );
-        let imported = 0;
-        let skipped = 0;
-        const fresh: TeacherStudent[] = [];
-        for (const raw of names) {
-          const name = raw.trim().replace(/^["']|["']$/g, "").trim();
-          if (!name || seen.has(name.toLowerCase())) {
-            skipped += 1;
-            continue;
+      /** Optimistic-then-sync helper for mutators that don't need to patch
+       *  server-generated values back in. */
+      const syncInBackground = (
+        apply: () => void,
+        call: () => Promise<unknown>,
+        failureMessage: string,
+      ) => {
+        const rollback = beginSync();
+        apply();
+        void (async () => {
+          try {
+            await call();
+          } catch {
+            rollback(failureMessage);
           }
-          seen.add(name.toLowerCase());
-          fresh.push({
-            id: uid("student"),
-            name,
+        })();
+      };
+
+      const pushConnectionStatus = (
+        id: string,
+        status: "approved" | "disconnected",
+        failureMessage: string,
+      ) => {
+        syncInBackground(
+          () =>
+            set((s) => ({
+              connections: s.connections.map((c) =>
+                c.id === id ? { ...c, status } : c,
+              ),
+            })),
+          () => teacherApi.setClassroomConnectionStatus({ data: { id, status } }),
+          failureMessage,
+        );
+      };
+
+      return {
+        teacherName: "Ms. Rivera",
+        classrooms: [],
+        students: [],
+        lessons: seedLessons(),
+        assignments: [],
+        submissions: [],
+        connections: [],
+        messages: [],
+        threads: [],
+        classroomUnitBalances: {},
+        unitEvents: [],
+        resources: RESOURCES,
+        earningActivities: CLASSROOM_ACTIVITY_SEED.map((a) => ({ ...a })),
+        _syncing: false,
+        _loadError: null,
+
+        loadFromServer: async () => {
+          set({ _syncing: true, _loadError: null });
+          try {
+            const w = await teacherApi.loadTeacherWorkspace();
+            set({
+              teacherName: w.teacherName,
+              classrooms: w.classrooms.map((c) => ({
+                id: c.id,
+                name: c.name,
+                gradeLevel: c.gradeLevel,
+                subject: c.subject,
+                joinCode: c.joinCode,
+                studentIds: [...c.studentIds],
+                announcements: c.announcements.map((a) => ({
+                  id: a.id,
+                  text: a.text,
+                  at: a.at,
+                })),
+                createdAt: c.createdAt,
+              })),
+              students: w.students.map((s) => ({
+                id: s.id,
+                name: s.name,
+                classroomId: s.classroomId,
+                joinedAt: s.joinedAt,
+              })),
+              lessons: w.lessons.map((l) => ({
+                id: l.id,
+                module: l.module ?? "",
+                title: l.title,
+                description: l.description ?? "",
+                objective: l.objective ?? "",
+                instructions: l.instructions ?? "",
+                materials: l.materials ?? "",
+                questions: l.questions ?? "",
+                completionRequirements: l.completionRequirements ?? "",
+                unitReward: l.unitReward ?? 0,
+                dueDate: l.dueDate ?? "",
+                createdAt: l.createdAt,
+              })),
+              assignments: w.assignments.map((a) => ({
+                id: a.id,
+                classroomId: a.classroomId,
+                title: a.title,
+                instructions: a.instructions ?? a.description ?? "",
+                attachmentsNote: a.materials ?? "",
+                dueDate: a.dueDate ?? "",
+                scoringCriteria: a.rubric ?? "",
+                unitReward: a.unitReward ?? 0,
+                kind: (a.isCreative ? "creative" : "standard") as "standard" | "creative",
+                status: (a.status === "closed" ? "closed" : "active") as "active" | "closed",
+                createdAt: a.createdAt,
+              })),
+              submissions: w.submissions.map((s) => ({
+                id: s.id,
+                assignmentId: s.assignmentId,
+                studentId: s.studentId,
+                studentName: s.studentName,
+                text: s.body,
+                submittedAt: s.submittedAt,
+                status: (s.status === "reviewed" || s.status === "complete"
+                  ? s.status
+                  : "submitted") as SubmissionStatus,
+                feedback: s.feedback ?? "",
+                unitsAwarded: s.unitsAwarded ?? 0,
+              })),
+              connections: w.connections.map((c) => ({
+                id: c.id,
+                classroomId: c.classroomId,
+                classroomName: c.classroomName,
+                childName: c.childName,
+                status: (c.status === "approved" || c.status === "disconnected"
+                  ? c.status
+                  : "pending") as ConnectionStatus,
+                educationalPermissions: c.educationalPermissions,
+                unitPermissions: c.unitPermissions,
+                requestedAt: c.requestedAt,
+              })),
+              messages: w.messages.map((m) => ({
+                id: m.id,
+                audience: m.audience,
+                text: m.text,
+                at: m.at,
+              })),
+              threads: w.threads.map((t) => ({
+                id: t.id,
+                classroomId: t.classroomId,
+                classroomName: t.classroomName,
+                parentName: t.parentName,
+                childName: t.childName,
+                messages: t.messages.map((m) => ({
+                  id: m.id,
+                  from: (m.from === "parent" ? "parent" : "teacher") as ThreadSender,
+                  text: m.text,
+                  at: m.at,
+                })),
+                updatedAt: t.updatedAt,
+              })),
+              classroomUnitBalances: { ...w.classroomUnitBalances },
+              unitEvents: w.unitEvents.map((e) => ({
+                id: e.id,
+                studentId: e.studentId,
+                studentName: e.studentName,
+                amount: e.amount,
+                note: e.note,
+                at: e.at,
+              })),
+              earningActivities: w.activities.map((a) => ({
+                id: a.id,
+                name: a.name,
+                amount: a.amount,
+                hint: a.hint ?? "",
+              })),
+              _syncing: false,
+              _loadError: null,
+            });
+          } catch (e) {
+            // Keep the existing local data — a failed load must never wipe it.
+            set({
+              _syncing: false,
+              _loadError:
+                e instanceof Error ? e.message : "Could not load the teacher workspace",
+            });
+          }
+        },
+
+        setTeacherName: (name) => {
+          const next = name.trim() || "Teacher";
+          syncInBackground(
+            () => set({ teacherName: next }),
+            () => teacherApi.setTeacherName({ data: { name: next } }),
+            "Could not save the teacher name",
+          );
+        },
+
+        createClassroom: (input) => {
+          const rollback = beginSync();
+          const classroom: TeacherClassroom = {
+            id: crypto.randomUUID(),
+            name: input.name.trim(),
+            gradeLevel: input.gradeLevel.trim(),
+            subject: input.subject.trim(),
+            joinCode: makeJoinCode(),
+            studentIds: [],
+            announcements: [],
+            createdAt: nowIso(),
+          };
+          set((s) => ({ classrooms: [classroom, ...s.classrooms] }));
+          void (async () => {
+            try {
+              const res = await teacherApi.createClassroom({
+                data: {
+                  id: classroom.id,
+                  name: classroom.name,
+                  gradeLevel: classroom.gradeLevel,
+                  subject: classroom.subject,
+                },
+              });
+              if (res.joinCode) {
+                set((s) => ({
+                  classrooms: s.classrooms.map((c) =>
+                    c.id === classroom.id ? { ...c, joinCode: res.joinCode } : c,
+                  ),
+                }));
+              }
+            } catch {
+              rollback("Could not create the classroom");
+            }
+          })();
+          return classroom;
+        },
+
+        addStudent: (classroomId, name) => {
+          const trimmed = name.trim();
+          if (!trimmed) return "Enter a student name";
+          const classroom = get().classrooms.find((c) => c.id === classroomId);
+          if (!classroom) return "Classroom not found";
+          const rollback = beginSync();
+          const student: TeacherStudent = {
+            id: crypto.randomUUID(),
+            name: trimmed,
             classroomId,
             joinedAt: nowIso(),
-          });
-          imported += 1;
-        }
-        if (fresh.length > 0) {
-          const ids = fresh.map((s) => s.id);
+          };
           set((s) => ({
-            students: [...fresh, ...s.students],
+            students: [student, ...s.students],
             classrooms: s.classrooms.map((c) =>
               c.id === classroomId
-                ? { ...c, studentIds: [...ids, ...c.studentIds] }
+                ? { ...c, studentIds: [student.id, ...c.studentIds] }
                 : c,
             ),
           }));
-        }
-        return { imported, skipped };
-      },
+          void (async () => {
+            try {
+              const res = await teacherApi.addClassroomStudent({
+                data: { id: student.id, classroomId, name: trimmed },
+              });
+              if (res.joinedAt) {
+                set((s) => ({
+                  students: s.students.map((st) =>
+                    st.id === student.id ? { ...st, joinedAt: res.joinedAt } : st,
+                  ),
+                }));
+              }
+            } catch {
+              rollback("Could not enroll the student");
+            }
+          })();
+          return null;
+        },
 
-      addEarningActivity: (input) => {
-        const name = input.name.trim();
-        if (!name) return "Give the activity a name";
-        const activity: ClassroomActivityTemplate = {
-          id: uid("activity"),
-          name,
-          amount: Math.max(1, Math.floor(input.amount) || 1),
-          hint: input.hint.trim(),
-        };
-        set((s) => ({ earningActivities: [...s.earningActivities, activity] }));
-        return null;
-      },
+        removeClassroomStudent: (studentId) => {
+          syncInBackground(
+            () =>
+              set((s) => ({
+                students: s.students.filter((st) => st.id !== studentId),
+                classrooms: s.classrooms.map((c) => ({
+                  ...c,
+                  studentIds: c.studentIds.filter((id) => id !== studentId),
+                })),
+              })),
+            () => teacherApi.removeClassroomStudent({ data: { studentId } }),
+            "Could not remove the student",
+          );
+        },
 
-      updateEarningActivity: (id, input) => {
-        const name = input.name.trim();
-        if (!name) return "Give the activity a name";
-        set((s) => ({
-          earningActivities: s.earningActivities.map((a) =>
-            a.id === id
-              ? {
-                  ...a,
-                  name,
-                  amount: Math.max(1, Math.floor(input.amount) || 1),
-                  hint: input.hint.trim(),
+        joinClassroom: (joinCode, studentName) => {
+          const code = joinCode.trim().toUpperCase();
+          const trimmed = studentName.trim();
+          if (!code || !trimmed) return "Enter the join code and the student's name";
+          const classroom = get().classrooms.find((c) => c.joinCode === code);
+          if (!classroom) return "No classroom uses that join code";
+          if (
+            get().students.some(
+              (s) =>
+                s.classroomId === classroom.id &&
+                s.name.toLowerCase() === trimmed.toLowerCase(),
+            )
+          ) {
+            return "That name is already enrolled in this classroom";
+          }
+          const rollback = beginSync();
+          const student: TeacherStudent = {
+            id: crypto.randomUUID(),
+            name: trimmed,
+            classroomId: classroom.id,
+            joinedAt: nowIso(),
+          };
+          set((s) => ({
+            students: [student, ...s.students],
+            classrooms: s.classrooms.map((c) =>
+              c.id === classroom.id
+                ? { ...c, studentIds: [student.id, ...c.studentIds] }
+                : c,
+            ),
+          }));
+          void (async () => {
+            try {
+              const res = await teacherApi.enrollStudentByCode({
+                data: { id: student.id, code, studentName: trimmed },
+              });
+              set((s) => ({
+                students: s.students.map((st) =>
+                  st.id === student.id
+                    ? { ...st, classroomId: res.classroomId ?? st.classroomId }
+                    : st,
+                ),
+              }));
+            } catch {
+              rollback("Could not join the classroom");
+            }
+          })();
+          return null;
+        },
+
+        addAnnouncement: (classroomId, text) => {
+          const trimmed = text.trim();
+          if (!trimmed) return;
+          const rollback = beginSync();
+          const announcement = { id: crypto.randomUUID(), text: trimmed, at: nowIso() };
+          set((s) => ({
+            classrooms: s.classrooms.map((c) =>
+              c.id === classroomId
+                ? {
+                    ...c,
+                    announcements: [announcement, ...c.announcements],
+                  }
+                : c,
+            ),
+          }));
+          void (async () => {
+            try {
+              const res = await teacherApi.postAnnouncement({
+                data: { id: announcement.id, classroomId, text: trimmed },
+              });
+              if (res.at) {
+                set((s) => ({
+                  classrooms: s.classrooms.map((c) =>
+                    c.id === classroomId
+                      ? {
+                          ...c,
+                          announcements: c.announcements.map((a) =>
+                            a.id === announcement.id ? { ...a, at: res.at } : a,
+                          ),
+                        }
+                      : c,
+                  ),
+                }));
+              }
+            } catch {
+              rollback("Could not post the announcement");
+            }
+          })();
+        },
+
+        createLesson: (input) => {
+          if (!input.title.trim()) return "Give the lesson a title";
+          const rollback = beginSync();
+          const lesson: TeacherLesson = {
+            ...input,
+            title: input.title.trim(),
+            id: crypto.randomUUID(),
+            createdAt: nowIso(),
+          };
+          set((s) => ({ lessons: [lesson, ...s.lessons] }));
+          void (async () => {
+            try {
+              await teacherApi.createLesson({
+                data: {
+                  id: lesson.id,
+                  module: lesson.module,
+                  title: lesson.title,
+                  description: lesson.description,
+                  objective: lesson.objective,
+                  instructions: lesson.instructions,
+                  materials: lesson.materials,
+                  questions: lesson.questions,
+                  completionRequirements: lesson.completionRequirements,
+                  unitReward: lesson.unitReward,
+                  dueDate: lesson.dueDate,
+                },
+              });
+            } catch {
+              rollback("Could not create the lesson");
+            }
+          })();
+          return null;
+        },
+
+        updateLesson: (id, input) => {
+          const lesson = get().lessons.find((l) => l.id === id);
+          if (!lesson) return "Lesson not found";
+          const title = (input.title ?? lesson.title).trim();
+          if (!title) return "Give the lesson a title";
+          syncInBackground(
+            () =>
+              set((s) => ({
+                lessons: s.lessons.map((l) =>
+                  l.id === id ? { ...l, ...input, title, id: l.id } : l,
+                ),
+              })),
+            () =>
+              teacherApi.updateLesson({
+                data: {
+                  id,
+                  module: input.module ?? lesson.module,
+                  title,
+                  description: input.description ?? lesson.description,
+                  objective: input.objective ?? lesson.objective,
+                  instructions: input.instructions ?? lesson.instructions,
+                  materials: input.materials ?? lesson.materials,
+                  questions: input.questions ?? lesson.questions,
+                  completionRequirements:
+                    input.completionRequirements ?? lesson.completionRequirements,
+                  unitReward: input.unitReward ?? lesson.unitReward,
+                  dueDate: input.dueDate ?? lesson.dueDate,
+                },
+              }),
+            "Could not update the lesson",
+          );
+          return null;
+        },
+
+        deleteLesson: (id) => {
+          syncInBackground(
+            () => set((s) => ({ lessons: s.lessons.filter((l) => l.id !== id) })),
+            () => teacherApi.deleteLesson({ data: { id } }),
+            "Could not delete the lesson",
+          );
+        },
+
+        createAssignment: (input) => {
+          if (!input.title.trim()) return "Give the assignment a title";
+          if (!input.classroomId) return "Choose a classroom";
+          const rollback = beginSync();
+          const assignment: TeacherAssignment = {
+            ...input,
+            title: input.title.trim(),
+            id: crypto.randomUUID(),
+            status: "active",
+            createdAt: nowIso(),
+          };
+          set((s) => ({ assignments: [assignment, ...s.assignments] }));
+          void (async () => {
+            try {
+              await teacherApi.createAssignment({
+                data: {
+                  id: assignment.id,
+                  classroomId: assignment.classroomId,
+                  title: assignment.title,
+                  description: "",
+                  instructions: assignment.instructions,
+                  materials: assignment.attachmentsNote,
+                  rubric: assignment.scoringCriteria,
+                  dueDate: assignment.dueDate,
+                  unitReward: assignment.unitReward,
+                  isCreative: assignment.kind === "creative",
+                },
+              });
+            } catch {
+              rollback("Could not create the assignment");
+            }
+          })();
+          return null;
+        },
+
+        updateAssignment: (id, input) => {
+          const assignment = get().assignments.find((a) => a.id === id);
+          if (!assignment) return "Assignment not found";
+          const title = (input.title ?? assignment.title).trim();
+          if (!title) return "Give the assignment a title";
+          const kind = input.kind ?? assignment.kind;
+          syncInBackground(
+            () =>
+              set((s) => ({
+                assignments: s.assignments.map((a) =>
+                  a.id === id ? { ...a, ...input, title, kind, id: a.id } : a,
+                ),
+              })),
+            () =>
+              teacherApi.updateAssignment({
+                data: {
+                  id,
+                  title,
+                  instructions: input.instructions ?? assignment.instructions,
+                  materials: input.attachmentsNote ?? assignment.attachmentsNote,
+                  rubric: input.scoringCriteria ?? assignment.scoringCriteria,
+                  dueDate: input.dueDate ?? assignment.dueDate,
+                  unitReward: input.unitReward ?? assignment.unitReward,
+                  isCreative: kind === "creative",
+                },
+              }),
+            "Could not update the assignment",
+          );
+          return null;
+        },
+
+        deleteAssignment: (id) => {
+          syncInBackground(
+            () =>
+              set((s) => ({
+                assignments: s.assignments.filter((a) => a.id !== id),
+                submissions: s.submissions.filter((su) => su.assignmentId !== id),
+              })),
+            () => teacherApi.deleteAssignment({ data: { id } }),
+            "Could not delete the assignment",
+          );
+        },
+
+        closeAssignment: (id) => {
+          syncInBackground(
+            () =>
+              set((s) => ({
+                assignments: s.assignments.map((a) =>
+                  a.id === id ? { ...a, status: "closed" as const } : a,
+                ),
+              })),
+            () => teacherApi.closeAssignment({ data: { id } }),
+            "Could not close the assignment",
+          );
+        },
+
+        submitAssignment: (assignmentId, studentName, text) => {
+          const assignment = get().assignments.find((a) => a.id === assignmentId);
+          if (!assignment) return "Assignment not found";
+          if (assignment.status !== "active") return "This assignment is closed";
+          const trimmed = text.trim();
+          if (!trimmed) return "Write your work before submitting";
+          const name = studentName.trim();
+          let student = get().students.find(
+            (s) =>
+              s.classroomId === assignment.classroomId &&
+              s.name.toLowerCase() === name.toLowerCase(),
+          );
+          let createdStudent: TeacherStudent | null = null;
+          if (!student) {
+            if (!name) return "Enter a student name";
+            createdStudent = {
+              id: crypto.randomUUID(),
+              name,
+              classroomId: assignment.classroomId,
+              joinedAt: nowIso(),
+            };
+            student = createdStudent;
+          }
+          const rollback = beginSync();
+          const submission: TeacherSubmission = {
+            id: crypto.randomUUID(),
+            assignmentId,
+            studentId: student.id,
+            studentName: student.name,
+            text: trimmed,
+            submittedAt: nowIso(),
+            status: "submitted",
+            feedback: "",
+            unitsAwarded: 0,
+          };
+          const fresh = createdStudent;
+          set((s) => ({
+            students: fresh ? [fresh, ...s.students] : s.students,
+            classrooms: fresh
+              ? s.classrooms.map((c) =>
+                  c.id === assignment.classroomId
+                    ? { ...c, studentIds: [fresh.id, ...c.studentIds] }
+                    : c,
+                )
+              : s.classrooms,
+            submissions: [submission, ...s.submissions],
+          }));
+          void (async () => {
+            try {
+              if (fresh) {
+                const res = await teacherApi.addClassroomStudent({
+                  data: { id: fresh.id, classroomId: fresh.classroomId, name: fresh.name },
+                });
+                if (res.joinedAt) {
+                  set((st) => ({
+                    students: st.students.map((x) =>
+                      x.id === fresh.id ? { ...x, joinedAt: res.joinedAt } : x,
+                    ),
+                  }));
                 }
-              : a,
-          ),
-        }));
-        return null;
-      },
+              }
+              const res = await teacherApi.logAssignmentSubmission({
+                data: {
+                  id: submission.id,
+                  assignmentId,
+                  studentId: student.id,
+                  body: trimmed,
+                },
+              });
+              if (res.submittedAt) {
+                set((st) => ({
+                  submissions: st.submissions.map((su) =>
+                    su.id === submission.id ? { ...su, submittedAt: res.submittedAt } : su,
+                  ),
+                }));
+              }
+            } catch {
+              rollback("Could not submit the assignment");
+            }
+          })();
+          return null;
+        },
 
-      removeEarningActivity: (id) => {
-        set((s) => ({
-          earningActivities: s.earningActivities.filter((a) => a.id !== id),
-        }));
-      },
+        reviewSubmission: (id, input) => {
+          const submission = get().submissions.find((s) => s.id === id);
+          if (!submission) return "Submission not found";
+          const assignment = get().assignments.find(
+            (a) => a.id === submission.assignmentId,
+          );
+          const award =
+            input.status === "complete" ? Math.max(0, Math.floor(input.awardUnits)) : 0;
+          syncInBackground(
+            () =>
+              set((s) => ({
+                submissions: s.submissions.map((sub) =>
+                  sub.id === id
+                    ? {
+                        ...sub,
+                        feedback: input.feedback.trim(),
+                        status: input.status,
+                        unitsAwarded: award,
+                      }
+                    : sub,
+                ),
+                classroomUnitBalances:
+                  award > 0
+                    ? {
+                        ...s.classroomUnitBalances,
+                        [submission.studentId]:
+                          (s.classroomUnitBalances[submission.studentId] ?? 0) + award,
+                      }
+                    : s.classroomUnitBalances,
+                unitEvents:
+                  award > 0
+                    ? [
+                        {
+                          id: crypto.randomUUID(),
+                          studentId: submission.studentId,
+                          studentName: submission.studentName,
+                          amount: award,
+                          note: `Assignment reward · ${assignment?.title ?? "assignment"}`,
+                          at: nowIso(),
+                        },
+                        ...s.unitEvents,
+                      ].slice(0, 100)
+                    : s.unitEvents,
+              })),
+            () =>
+              teacherApi.reviewAssignmentSubmission({
+                data: {
+                  id,
+                  feedback: input.feedback.trim(),
+                  status: input.status,
+                  awardUnits: award,
+                },
+              }),
+            "Could not save the review",
+          );
+          return null;
+        },
 
-      resetDemo: () => {
-        set({
-          classrooms: [],
-          students: [],
-          assignments: [],
-          submissions: [],
-          connections: [],
-          messages: [],
-          threads: [],
-          classroomUnitBalances: {},
-          unitEvents: [],
-          lessons: seedLessons(),
-          earningActivities: CLASSROOM_ACTIVITY_SEED.map((a) => ({ ...a })),
-        });
-      },
-    }),
+        awardClassroomUnits: (studentId, amount, note) => {
+          const student = get().students.find((s) => s.id === studentId);
+          if (!student) return "Student not found";
+          const amt = Math.max(1, Math.floor(amount));
+          const cleanNote = note.trim() || "Classroom reward";
+          const rollback = beginSync();
+          const eventId = crypto.randomUUID();
+          set((s) => ({
+            classroomUnitBalances: {
+              ...s.classroomUnitBalances,
+              [studentId]: (s.classroomUnitBalances[studentId] ?? 0) + amt,
+            },
+            unitEvents: [
+              {
+                id: eventId,
+                studentId,
+                studentName: student.name,
+                amount: amt,
+                note: cleanNote,
+                at: nowIso(),
+              },
+              ...s.unitEvents,
+            ].slice(0, 100),
+          }));
+          void (async () => {
+            try {
+              const res = await teacherApi.awardClassroomUnits({
+                data: {
+                  id: eventId,
+                  classroomId: student.classroomId,
+                  studentId,
+                  amount: amt,
+                  note: cleanNote,
+                },
+              });
+              if (typeof res.newBalance === "number") {
+                set((s) => ({
+                  classroomUnitBalances: {
+                    ...s.classroomUnitBalances,
+                    [studentId]: res.newBalance,
+                  },
+                }));
+              }
+            } catch {
+              rollback("Could not award classroom Units");
+            }
+          })();
+          return null;
+        },
+
+        requestConnection: (joinCode, childName) => {
+          const code = joinCode.trim().toUpperCase();
+          const trimmed = childName.trim();
+          if (!code || !trimmed) return "Enter the classroom join code and your child's name";
+          const classroom = get().classrooms.find((c) => c.joinCode === code);
+          if (!classroom) return "No classroom uses that join code";
+          if (
+            get().connections.some(
+              (c) =>
+                c.classroomId === classroom.id &&
+                c.childName.toLowerCase() === trimmed.toLowerCase() &&
+                c.status !== "disconnected",
+            )
+          ) {
+            return "A connection for this child already exists";
+          }
+          const connectionId = crypto.randomUUID();
+          syncInBackground(
+            () => {
+              const connection: TeacherConnection = {
+                id: connectionId,
+                classroomId: classroom.id,
+                classroomName: classroom.name,
+                childName: trimmed,
+                status: "pending",
+                educationalPermissions: true,
+                unitPermissions: false,
+                requestedAt: nowIso(),
+              };
+              set((s) => ({ connections: [connection, ...s.connections] }));
+            },
+            () =>
+              teacherApi.requestClassroomConnection({
+                data: { id: connectionId, classroomId: classroom.id, childName: trimmed },
+              }),
+            "Could not send the connection request",
+          );
+          return null;
+        },
+
+        approveConnection: (id) =>
+          pushConnectionStatus(id, "approved", "Could not approve the connection"),
+
+        denyConnection: (id) =>
+          pushConnectionStatus(id, "disconnected", "Could not deny the connection"),
+
+        disconnectConnection: (id) =>
+          pushConnectionStatus(id, "disconnected", "Could not disconnect the connection"),
+
+        setConnectionPermissions: (id, input) => {
+          syncInBackground(
+            () =>
+              set((s) => ({
+                connections: s.connections.map((c) =>
+                  c.id === id
+                    ? {
+                        ...c,
+                        educationalPermissions: input.educationalPermissions,
+                        unitPermissions: input.unitPermissions,
+                      }
+                    : c,
+                ),
+              })),
+            () =>
+              teacherApi.setClassroomConnectionPermissions({
+                data: {
+                  id,
+                  educationalPermissions: input.educationalPermissions,
+                  unitPermissions: input.unitPermissions,
+                },
+              }),
+            "Could not update the connection permissions",
+          );
+        },
+
+        sendMessage: (audience, text) => {
+          const trimmed = text.trim();
+          if (!trimmed) return "Write a message first";
+          const rollback = beginSync();
+          const classroomId =
+            audience === "All classrooms"
+              ? null
+              : (get().classrooms.find((c) => c.name === audience)?.id ?? null);
+          const id = crypto.randomUUID();
+          set((s) => ({
+            messages: [
+              { id, audience, text: trimmed, at: nowIso() },
+              ...s.messages,
+            ].slice(0, 50),
+          }));
+          void (async () => {
+            try {
+              const res = await teacherApi.postAnnouncement({
+                data: { id, classroomId, text: trimmed },
+              });
+              set((s) => ({
+                messages: s.messages.map((m) =>
+                  m.id === id
+                    ? {
+                        ...m,
+                        audience: res.audienceLabel ?? m.audience,
+                        at: res.at ?? m.at,
+                      }
+                    : m,
+                ),
+              }));
+            } catch {
+              rollback("Could not send the message");
+            }
+          })();
+          return null;
+        },
+
+        classroomUnitBalance: (studentId) => get().classroomUnitBalances[studentId] ?? 0,
+
+        startThread: (classroomId, parentName, childName) => {
+          const parent = parentName.trim();
+          const child = childName.trim();
+          if (!parent || !child) return "Enter the parent and child names";
+          const classroom = get().classrooms.find((c) => c.id === classroomId);
+          if (!classroom) return "Choose a classroom first";
+          const existing = get().threads.find(
+            (t) =>
+              t.classroomId === classroomId &&
+              t.parentName.toLowerCase() === parent.toLowerCase() &&
+              t.childName.toLowerCase() === child.toLowerCase(),
+          );
+          if (existing) return existing.id;
+          const threadId = crypto.randomUUID();
+          syncInBackground(
+            () => {
+              const thread: TeacherThread = {
+                id: threadId,
+                classroomId,
+                classroomName: classroom.name,
+                parentName: parent,
+                childName: child,
+                messages: [],
+                updatedAt: nowIso(),
+              };
+              set((s) => ({ threads: [thread, ...s.threads] }));
+            },
+            () =>
+              teacherApi.startFamilyThread({
+                data: {
+                  id: threadId,
+                  classroomId,
+                  parentName: parent,
+                  childName: child,
+                },
+              }),
+            "Could not start the conversation",
+          );
+          return threadId;
+        },
+
+        sendThreadMessage: (threadId, from, text) => {
+          const trimmed = text.trim();
+          if (!trimmed) return "Write a message first";
+          if (trimmed.length > 2000) return "Keep messages under 2000 characters";
+          const thread = get().threads.find((t) => t.id === threadId);
+          if (!thread) return "Conversation not found";
+          const rollback = beginSync();
+          const msg: TeacherThreadMessage = {
+            id: crypto.randomUUID(),
+            from,
+            text: trimmed,
+            at: nowIso(),
+          };
+          set((s) => ({
+            threads: s.threads
+              .map((t) =>
+                t.id === threadId
+                  ? { ...t, messages: [...t.messages, msg].slice(-200), updatedAt: nowIso() }
+                  : t,
+              )
+              .sort((a, b) => (a.updatedAt < b.updatedAt ? 1 : -1)),
+          }));
+          void (async () => {
+            try {
+              const res = await teacherApi.sendThreadMessage({
+                data: { id: msg.id, threadId, from, body: trimmed },
+              });
+              if (res.at) {
+                set((s) => ({
+                  threads: s.threads.map((t) =>
+                    t.id === threadId
+                      ? {
+                          ...t,
+                          messages: t.messages.map((m) =>
+                            m.id === msg.id ? { ...m, at: res.at } : m,
+                          ),
+                        }
+                      : t,
+                  ),
+                }));
+              }
+            } catch {
+              rollback("Could not send the message");
+            }
+          })();
+          return null;
+        },
+
+        importRoster: (classroomId, names) => {
+          const classroom = get().classrooms.find((c) => c.id === classroomId);
+          if (!classroom) return { imported: 0, skipped: names.length };
+          const seen = new Set(
+            get()
+              .students.filter((s) => s.classroomId === classroomId)
+              .map((s) => s.name.toLowerCase()),
+          );
+          let imported = 0;
+          let skipped = 0;
+          const fresh: TeacherStudent[] = [];
+          for (const raw of names) {
+            const name = raw.trim().replace(/^["']|["']$/g, "").trim();
+            if (!name || seen.has(name.toLowerCase())) {
+              skipped += 1;
+              continue;
+            }
+            seen.add(name.toLowerCase());
+            fresh.push({
+              id: crypto.randomUUID(),
+              name,
+              classroomId,
+              joinedAt: nowIso(),
+            });
+            imported += 1;
+          }
+          if (fresh.length > 0) {
+            const ids = fresh.map((s) => s.id);
+            syncInBackground(
+              () =>
+                set((s) => ({
+                  students: [...fresh, ...s.students],
+                  classrooms: s.classrooms.map((c) =>
+                    c.id === classroomId
+                      ? { ...c, studentIds: [...ids, ...c.studentIds] }
+                      : c,
+                  ),
+                })),
+              () =>
+                teacherApi.importClassroomRoster({
+                  data: {
+                    classroomId,
+                    students: fresh.map((s) => ({ id: s.id, name: s.name })),
+                  },
+                }),
+              "Could not import the roster",
+            );
+          }
+          return { imported, skipped };
+        },
+
+        addEarningActivity: (input) => {
+          const name = input.name.trim();
+          if (!name) return "Give the activity a name";
+          const rollback = beginSync();
+          const activity: ClassroomActivityTemplate = {
+            id: crypto.randomUUID(),
+            name,
+            amount: Math.max(1, Math.floor(input.amount) || 1),
+            hint: input.hint.trim(),
+          };
+          set((s) => ({ earningActivities: [...s.earningActivities, activity] }));
+          void (async () => {
+            try {
+              await teacherApi.createEarningActivity({
+                data: {
+                  id: activity.id,
+                  name: activity.name,
+                  amount: activity.amount,
+                  hint: activity.hint,
+                },
+              });
+            } catch {
+              rollback("Could not add the earning activity");
+            }
+          })();
+          return null;
+        },
+
+        updateEarningActivity: (id, input) => {
+          const name = input.name.trim();
+          if (!name) return "Give the activity a name";
+          const amount = Math.max(1, Math.floor(input.amount) || 1);
+          const hint = input.hint.trim();
+          syncInBackground(
+            () =>
+              set((s) => ({
+                earningActivities: s.earningActivities.map((a) =>
+                  a.id === id ? { ...a, name, amount, hint } : a,
+                ),
+              })),
+            () => teacherApi.updateEarningActivity({ data: { id, name, amount, hint } }),
+            "Could not update the earning activity",
+          );
+          return null;
+        },
+
+        removeEarningActivity: (id) => {
+          syncInBackground(
+            () =>
+              set((s) => ({
+                earningActivities: s.earningActivities.filter((a) => a.id !== id),
+              })),
+            () => teacherApi.deleteEarningActivity({ data: { id } }),
+            "Could not remove the earning activity",
+          );
+        },
+
+        resetDemo: () => {
+          // Local-only: reseed the client slices so the demo starts fresh.
+          // Server data is intentionally untouched — the next loadFromServer()
+          // call brings the real workspace back.
+          set({
+            classrooms: [],
+            students: [],
+            assignments: [],
+            submissions: [],
+            connections: [],
+            messages: [],
+            threads: [],
+            classroomUnitBalances: {},
+            unitEvents: [],
+            lessons: seedLessons(),
+            earningActivities: CLASSROOM_ACTIVITY_SEED.map((a) => ({ ...a })),
+          });
+        },
+      };
+    },
     {
       name: STORAGE_KEY,
       storage: createJSONStorage(() => localStorage),

@@ -1,10 +1,11 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   Bell,
   BookOpen,
   Check,
   ClipboardList,
   Coins,
+  Copy,
   Download,
   FileSpreadsheet,
   GraduationCap,
@@ -46,6 +47,11 @@ import {
   type TeacherStudent,
   type TeacherSubmission,
 } from "@/store/teacher";
+import {
+  TeacherVerificationBanner,
+  VerificationLockedSection,
+  useTeacherVerificationStatus,
+} from "@/components/kiddo/teacher-verification";
 import { formatWhen } from "@/lib/utils";
 import { cn } from "@/lib/utils";
 
@@ -70,6 +76,31 @@ export function TeacherWorkspace({ section }: { section: TeacherSection }) {
   const activeClassroom =
     classrooms.find((c) => c.id === classroomId) ?? classrooms[0] ?? null;
 
+  // Pull the server workspace once per mount; the store keeps its seeded
+  // local data until the server answers (and keeps it on failure).
+  const loadedRef = useRef(false);
+  useEffect(() => {
+    if (loadedRef.current) return;
+    loadedRef.current = true;
+    void useTeacher.getState().loadFromServer();
+  }, []);
+
+  const { status, loading, refresh } = useTeacherVerificationStatus();
+  const gated = !loading && status !== "verified";
+  // If the teacher gets verified mid-session (e.g. admin approves while the
+  // workspace is open), the first load ran unverified and returned no
+  // student data — pull the full workspace again on the transition.
+  const prevStatusRef = useRef(status);
+  useEffect(() => {
+    const prev = prevStatusRef.current;
+    prevStatusRef.current = status;
+    if (prev !== "verified" && status === "verified") {
+      void useTeacher.getState().loadFromServer();
+    }
+  }, [status]);
+  const lockedSection = (s: TeacherSection) =>
+    gated && (s === "students" || s === "records" || s === "messages");
+
   return (
     <div className="screen-enter space-y-5">
       {activeClassroom ? (
@@ -78,6 +109,7 @@ export function TeacherWorkspace({ section }: { section: TeacherSection }) {
           onPick={setClassroomId}
         />
       ) : null}
+      {gated ? <TeacherVerificationBanner onSubmitted={refresh} /> : null}
       {section === "dashboard" ? <TeacherDashboard /> : null}
       {section === "classes" ? (
         <TeacherClasses
@@ -90,7 +122,11 @@ export function TeacherWorkspace({ section }: { section: TeacherSection }) {
         <TeacherAssignments activeClassroom={activeClassroom} creativeOnly={false} />
       ) : null}
       {section === "students" ? (
-        <TeacherStudents activeClassroom={activeClassroom} />
+        lockedSection(section) ? (
+          <VerificationLockedSection title={teacherNavLabels.students} />
+        ) : (
+          <TeacherStudents activeClassroom={activeClassroom} />
+        )
       ) : null}
       {section === "units" ? (
         <TeacherUnits activeClassroom={activeClassroom} />
@@ -109,10 +145,18 @@ export function TeacherWorkspace({ section }: { section: TeacherSection }) {
       ) : null}
       {section === "resources" ? <TeacherResources /> : null}
       {section === "records" ? (
-        <TeacherRecords activeClassroom={activeClassroom} />
+        lockedSection(section) ? (
+          <VerificationLockedSection title={teacherNavLabels.records} />
+        ) : (
+          <TeacherRecords activeClassroom={activeClassroom} />
+        )
       ) : null}
       {section === "messages" ? (
-        <TeacherMessages activeClassroom={activeClassroom} />
+        lockedSection(section) ? (
+          <VerificationLockedSection title={teacherNavLabels.messages} />
+        ) : (
+          <TeacherMessages activeClassroom={activeClassroom} />
+        )
       ) : null}
       {section === "settings" ? <TeacherSettings /> : null}
     </div>
@@ -486,6 +530,7 @@ function ClassroomCard({
 }) {
   const students = useTeacher((s) => s.students);
   const addStudent = useTeacher((s) => s.addStudent);
+  const removeClassroomStudent = useTeacher((s) => s.removeClassroomStudent);
   const addAnnouncement = useTeacher((s) => s.addAnnouncement);
   const assignments = useTeacher((s) => s.assignments);
   const [studentName, setStudentName] = useState("");
@@ -499,22 +544,37 @@ function ClassroomCard({
 
   return (
     <Card className={cn("p-4", active && "ring-2 ring-accent/40")}>
-      <button type="button" onClick={onPick} className="w-full text-left">
-        <div className="flex items-start justify-between gap-3">
-          <div>
-            <h2 className="font-display text-xl font-semibold">{classroom.name}</h2>
-            <p className="text-sm text-muted">
-              {[classroom.gradeLevel, classroom.subject].filter(Boolean).join(" · ")}
-            </p>
-          </div>
+      <div className="flex items-start justify-between gap-3">
+        <button type="button" onClick={onPick} className="min-w-0 flex-1 text-left">
+          <h2 className="font-display text-xl font-semibold">{classroom.name}</h2>
+          <p className="text-sm text-muted">
+            {[classroom.gradeLevel, classroom.subject].filter(Boolean).join(" · ")}
+          </p>
+        </button>
+        <div className="flex shrink-0 items-center gap-1.5">
           <Badge tone="muted">Join code · {classroom.joinCode}</Badge>
+          <Button
+            type="button"
+            variant="outline"
+            size="icon-sm"
+            aria-label="Copy join code"
+            title="Copy join code"
+            onClick={() => {
+              void navigator.clipboard
+                .writeText(classroom.joinCode)
+                .then(() => toast.success("Join code copied"))
+                .catch(() => toast.error("Could not copy the join code"));
+            }}
+          >
+            <Copy className="size-4" />
+          </Button>
         </div>
-        <div className="mt-3 flex gap-4 text-xs text-muted">
-          <span>{roster.length} students</span>
-          <span>{classAssignments.length} active assignments</span>
-          <span>{classroom.announcements.length} announcements</span>
-        </div>
-      </button>
+      </div>
+      <div className="mt-3 flex gap-4 text-xs text-muted">
+        <span>{roster.length} students</span>
+        <span>{classAssignments.length} active assignments</span>
+        <span>{classroom.announcements.length} announcements</span>
+      </div>
 
       <div className="mt-3">
         <Button
@@ -553,11 +613,28 @@ function ClassroomCard({
             {roster.length > 0 ? (
               <ul className="mt-2 divide-y divide-border">
                 {roster.map((s) => (
-                  <li key={s.id} className="py-2 text-sm">
-                    {s.name}
-                    <span className="ml-2 text-xs text-muted">
-                      joined {formatWhen(s.joinedAt)}
+                  <li key={s.id} className="flex items-center justify-between gap-2 py-2 text-sm">
+                    <span>
+                      {s.name}
+                      <span className="ml-2 text-xs text-muted">
+                        joined {formatWhen(s.joinedAt)}
+                      </span>
                     </span>
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={`Remove ${s.name}`}
+                      title="Remove student"
+                      onClick={() => {
+                        if (window.confirm(`Remove ${s.name} from ${classroom.name}?`)) {
+                          removeClassroomStudent(s.id);
+                          toast.message("Student removed");
+                        }
+                      }}
+                    >
+                      <X className="size-4" />
+                    </Button>
                   </li>
                 ))}
               </ul>
@@ -612,8 +689,11 @@ function ClassroomCard({
 function TeacherLessons() {
   const lessons = useTeacher((s) => s.lessons);
   const createLesson = useTeacher((s) => s.createLesson);
+  const updateLesson = useTeacher((s) => s.updateLesson);
+  const deleteLesson = useTeacher((s) => s.deleteLesson);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const emptyForm = {
     module: "",
     title: "",
     description: "",
@@ -624,10 +704,33 @@ function TeacherLessons() {
     completionRequirements: "",
     unitReward: 10,
     dueDate: "",
-  });
+  };
+  const [form, setForm] = useState(emptyForm);
 
   const set = (key: keyof typeof form, value: string | number) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  function resetForm() {
+    setForm(emptyForm);
+    setEditingId(null);
+  }
+
+  function startEdit(lesson: TeacherLesson) {
+    setForm({
+      module: lesson.module,
+      title: lesson.title,
+      description: lesson.description,
+      objective: lesson.objective,
+      instructions: lesson.instructions,
+      materials: lesson.materials,
+      questions: lesson.questions,
+      completionRequirements: lesson.completionRequirements,
+      unitReward: lesson.unitReward,
+      dueDate: lesson.dueDate,
+    });
+    setEditingId(lesson.id);
+    setOpen(true);
+  }
 
   return (
     <div className="space-y-5">
@@ -637,13 +740,18 @@ function TeacherLessons() {
         text="The 10-module starter curriculum ships with PillarPath — add your own lessons anytime."
       />
 
-      <Button onClick={() => setOpen((v) => !v)}>
+      <Button
+        onClick={() => {
+          if (!open) resetForm();
+          setOpen((v) => !v);
+        }}
+      >
         <Plus className="size-4" /> {open ? "Close builder" : "New lesson"}
       </Button>
 
       {open ? (
         <Card className="space-y-3 p-4">
-          <CardTitle className="text-base">Lesson builder</CardTitle>
+          <CardTitle className="text-base">{editingId ? "Edit lesson" : "Lesson builder"}</CardTitle>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <FieldLabel>Module</FieldLabel>
@@ -692,30 +800,48 @@ function TeacherLessons() {
           </div>
           <Button
             onClick={() => {
-              const err = createLesson(form);
+              const err = editingId ? updateLesson(editingId, form) : createLesson(form);
               if (err) toast.error(err);
               else {
                 setOpen(false);
-                setForm({ module: "", title: "", description: "", objective: "", instructions: "", materials: "", questions: "", completionRequirements: "", unitReward: 10, dueDate: "" });
-                toast.success("Lesson created");
+                resetForm();
+                toast.success(editingId ? "Lesson updated" : "Lesson created");
               }
             }}
           >
-            Save lesson
+            {editingId ? "Save changes" : "Save lesson"}
           </Button>
         </Card>
       ) : null}
 
       <div className="grid gap-3">
         {lessons.map((l) => (
-          <LessonCard key={l.id} lesson={l} />
+          <LessonCard
+            key={l.id}
+            lesson={l}
+            onEdit={() => startEdit(l)}
+            onDelete={() => {
+              if (window.confirm(`Delete "${l.title}"?`)) {
+                deleteLesson(l.id);
+                toast.message("Lesson deleted");
+              }
+            }}
+          />
         ))}
       </div>
     </div>
   );
 }
 
-function LessonCard({ lesson }: { lesson: TeacherLesson }) {
+function LessonCard({
+  lesson,
+  onEdit,
+  onDelete,
+}: {
+  lesson: TeacherLesson;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   const [expanded, setExpanded] = useState(false);
   return (
     <Card className="p-4">
@@ -738,6 +864,12 @@ function LessonCard({ lesson }: { lesson: TeacherLesson }) {
           {lesson.unitReward > 0 ? (
             <Badge tone="accent">+{lesson.unitReward} Units</Badge>
           ) : null}
+          <Button variant="outline" size="sm" onClick={onEdit} aria-label="Edit lesson">
+            <Pencil className="size-4" />
+          </Button>
+          <Button variant="outline" size="sm" onClick={onDelete} aria-label="Delete lesson">
+            <Trash2 className="size-4" />
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setExpanded((v) => !v)}>
             {expanded ? "Less" : "Details"}
           </Button>
@@ -789,9 +921,12 @@ function TeacherAssignments({
   const assignments = useTeacher((s) => s.assignments);
   const submissions = useTeacher((s) => s.submissions);
   const createAssignment = useTeacher((s) => s.createAssignment);
+  const updateAssignment = useTeacher((s) => s.updateAssignment);
+  const deleteAssignment = useTeacher((s) => s.deleteAssignment);
   const closeAssignment = useTeacher((s) => s.closeAssignment);
   const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const emptyAssignmentForm = () => ({
     classroomId: activeClassroom?.id ?? "",
     title: "",
     instructions: "",
@@ -800,6 +935,7 @@ function TeacherAssignments({
     scoringCriteria: "",
     unitReward: 10,
   });
+  const [form, setForm] = useState(emptyAssignmentForm);
 
   const list = assignments.filter((a) =>
     creativeOnly ? a.kind === "creative" : a.kind === "standard",
@@ -807,6 +943,20 @@ function TeacherAssignments({
 
   const set = (key: keyof typeof form, value: string | number) =>
     setForm((f) => ({ ...f, [key]: value }));
+
+  function startEdit(a: TeacherAssignment) {
+    setForm({
+      classroomId: a.classroomId,
+      title: a.title,
+      instructions: a.instructions,
+      attachmentsNote: a.attachmentsNote,
+      dueDate: a.dueDate,
+      scoringCriteria: a.scoringCriteria,
+      unitReward: a.unitReward,
+    });
+    setEditingId(a.id);
+    setOpen(true);
+  }
 
   return (
     <div className="space-y-5">
@@ -831,13 +981,21 @@ function TeacherAssignments({
         </Card>
       ) : null}
 
-      <Button onClick={() => setOpen((v) => !v)}>
+      <Button
+        onClick={() => {
+          if (!open) {
+            setEditingId(null);
+            setForm(emptyAssignmentForm());
+          }
+          setOpen((v) => !v);
+        }}
+      >
         <Plus className="size-4" /> {open ? "Close builder" : creativeOnly ? "New creative assignment" : "New assignment"}
       </Button>
 
       {open ? (
         <Card className="space-y-3 p-4">
-          <CardTitle className="text-base">Assignment builder</CardTitle>
+          <CardTitle className="text-base">{editingId ? "Edit assignment" : "Assignment builder"}</CardTitle>
           <div className="grid gap-3 sm:grid-cols-2">
             <div>
               <FieldLabel>Classroom</FieldLabel>
@@ -907,27 +1065,25 @@ function TeacherAssignments({
           </div>
           <Button
             onClick={() => {
-              const err = createAssignment({
+              const payload = {
                 ...form,
                 kind: creativeOnly ? "creative" : "standard",
-              });
+              } as const;
+              const err = editingId
+                ? updateAssignment(editingId, payload)
+                : createAssignment(payload);
               if (err) toast.error(err);
               else {
                 setOpen(false);
-                setForm({
-                  classroomId: activeClassroom?.id ?? "",
-                  title: "",
-                  instructions: "",
-                  attachmentsNote: "",
-                  dueDate: "",
-                  scoringCriteria: "",
-                  unitReward: 10,
-                });
-                toast.success("Assignment published to the classroom");
+                setEditingId(null);
+                setForm(emptyAssignmentForm());
+                toast.success(
+                  editingId ? "Assignment updated" : "Assignment published to the classroom",
+                );
               }
             }}
           >
-            Publish assignment
+            {editingId ? "Save changes" : "Publish assignment"}
           </Button>
         </Card>
       ) : null}
@@ -960,17 +1116,56 @@ function TeacherAssignments({
                     </p>
                   </div>
                   {a.status === "active" ? (
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => {
-                        closeAssignment(a.id);
-                        toast.message("Assignment closed");
-                      }}
-                    >
-                      Close
-                    </Button>
-                  ) : null}
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => startEdit(a)}
+                        aria-label="Edit assignment"
+                      >
+                        <Pencil className="size-4" /> Edit
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (window.confirm(`Delete "${a.title}"? Its submissions go with it.`)) {
+                            deleteAssignment(a.id);
+                            toast.message("Assignment deleted");
+                          }
+                        }}
+                        aria-label="Delete assignment"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          closeAssignment(a.id);
+                          toast.message("Assignment closed");
+                        }}
+                      >
+                        Close
+                      </Button>
+                    </div>
+                  ) : (
+                    <div className="flex shrink-0 items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          if (window.confirm(`Delete "${a.title}"? Its submissions go with it.`)) {
+                            deleteAssignment(a.id);
+                            toast.message("Assignment deleted");
+                          }
+                        }}
+                        aria-label="Delete assignment"
+                      >
+                        <Trash2 className="size-4" />
+                      </Button>
+                    </div>
+                  )}
                 </div>
                 {subs.length > 0 ? (
                   <div className="mt-3 space-y-3 border-t border-border pt-3">
@@ -1001,6 +1196,7 @@ function TeacherStudents({
   const submissions = useTeacher((s) => s.submissions);
   const assignments = useTeacher((s) => s.assignments);
   const classroomUnitBalance = useTeacher((s) => s.classroomUnitBalance);
+  const removeClassroomStudent = useTeacher((s) => s.removeClassroomStudent);
 
   if (!activeClassroom) {
     return (
@@ -1037,6 +1233,12 @@ function TeacherStudents({
                 completed={completed}
                 activeCount={activeCount}
                 balance={classroomUnitBalance(student.id)}
+                onRemove={() => {
+                  if (window.confirm(`Remove ${student.name} from ${activeClassroom.name}?`)) {
+                    removeClassroomStudent(student.id);
+                    toast.message("Student removed");
+                  }
+                }}
               />
             );
           })}
@@ -1051,11 +1253,13 @@ function StudentCard({
   completed,
   activeCount,
   balance,
+  onRemove,
 }: {
   student: TeacherStudent;
   completed: number;
   activeCount: number;
   balance: number;
+  onRemove?: () => void;
 }) {
   return (
     <Card className="p-4">
@@ -1068,6 +1272,18 @@ function StudentCard({
           <p className="text-xs text-muted">Joined {formatWhen(student.joinedAt)}</p>
         </div>
         <Badge tone="muted">{balance} classroom Units</Badge>
+        {onRemove ? (
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            aria-label={`Remove ${student.name}`}
+            title="Remove student"
+            onClick={onRemove}
+          >
+            <X className="size-4" />
+          </Button>
+        ) : null}
       </div>
       <div className="mt-3 grid grid-cols-2 gap-2 text-center">
         <div className="rounded-lg bg-surface-2 p-2">

@@ -124,6 +124,21 @@
   50% { opacity: 1; }
 }
 
+@keyframes star-twinkle {
+  0%, 100% { opacity: 0.25; transform: scale(0.9); }
+  50% { opacity: 1; transform: scale(1.15); }
+}
+
+/* Twinkling stars over the PillarPath World map. */
+.star-twinkle {
+  animation: star-twinkle 3.2s ease-in-out infinite;
+}
+
+/* Gentle float for the hub monument and realm portals. */
+.float-y {
+  animation: float-y 5s ease-in-out infinite;
+}
+
 /* Animated neon gradient text — Units counters, hero numbers. */
 .units-shimmer {
   background: linear-gradient(
