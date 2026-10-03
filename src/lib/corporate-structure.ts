@@ -52,6 +52,8 @@ export const PERMISSION_RESOURCES: Record<string, string> = {
   deployments: "Builds, releases, and system health",
   screening: "Product safety screening queue",
   analytics: "Business analytics and reports",
+  messages: "Tower secure messaging (team channels and DMs)",
+  announcements: "Company-wide announcements (#announcements)",
 };
 
 export const PERMISSION_ACTIONS: Record<string, string> = {

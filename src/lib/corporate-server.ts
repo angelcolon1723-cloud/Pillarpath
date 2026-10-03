@@ -384,3 +384,212 @@ export const testCjConnection = createServerFn({ method: "POST" })
       return { ok: false, message: `Could not reach CJ's API: ${e instanceof Error ? e.message : "network error"}` };
     }
   });
+
+/* ------------------------------------------------------------------ */
+/* Tower secure messaging — internal team communication                */
+/* ------------------------------------------------------------------ */
+/*
+ * Channels (#general, #announcements, DMs) for corporate team members.
+ * Every function requires an active corporate role; messages never leave
+ * the Tower. Announcements are post-restricted to the C-suite (level 9+).
+ * All sends are audit-logged.
+ */
+
+export interface TowerChannel {
+  id: string;
+  name: string;
+  description: string;
+  isAnnouncement: boolean;
+  isDm: boolean;
+  peerName: string | null;
+  canPost: boolean;
+  lastAt: string | null;
+}
+
+export interface TowerMessage {
+  id: string;
+  senderName: string;
+  senderTitle: string | null;
+  isMe: boolean;
+  body: string;
+  at: string;
+}
+
+async function ensureTowerChannels(sql: Awaited<ReturnType<typeof getSql>>) {
+  const existing = await sql<{ name: string }>`select name from corporate_channels where is_dm = false`;
+  const names = new Set(existing.map((r) => r.name));
+  if (!names.has("#general")) {
+    await sql`insert into corporate_channels (id, name, description)
+      values (${crypto.randomUUID()}, '#general', 'The whole company, one room.')`;
+  }
+  if (!names.has("#announcements")) {
+    await sql`insert into corporate_channels (id, name, description, is_announcement)
+      values (${crypto.randomUUID()}, '#announcements', 'Official company announcements.')`;
+  }
+}
+
+async function callerMaxLevel(sql: Awaited<ReturnType<typeof getSql>>, userId: string): Promise<number> {
+  // Platform admin (CEO) is level 10; otherwise the highest granted role.
+  const u = await sql<{ role: string | null }>`select role from "user" where id = ${userId}`;
+  if (u[0]?.role === "admin") return 10;
+  const r = await sql<{ level: number }>`
+    select max(cr.level)::int as level from corporate_team t
+    join corporate_roles cr on cr.id = t.role_id
+    where t.user_id = ${userId} and t.status = 'active'`;
+  return r[0]?.level ?? 0;
+}
+
+async function canSeeChannel(
+  sql: Awaited<ReturnType<typeof getSql>>,
+  userId: string,
+  channelId: string,
+): Promise<{ id: string; is_announcement: boolean; is_dm: boolean } | null> {
+  const rows = await sql<{ id: string; is_announcement: boolean; is_dm: boolean }>`
+    select id, is_announcement, is_dm from corporate_channels where id = ${channelId}`;
+  if (rows.length === 0) return null;
+  const ch = rows[0];
+  if (!ch.is_dm) return ch; // team channels are open to all corporate members
+  const mem = await sql<{ user_id: string }>`
+    select user_id from corporate_channel_members where channel_id = ${channelId} and user_id = ${userId}`;
+  return mem.length > 0 ? ch : null;
+}
+
+/** Channels visible to the caller: team channels + their DMs. */
+export const listTowerChannels = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<{ channels: TowerChannel[] }> => {
+    const status = await readStatus(context.userId);
+    if (!status.isCorporate) throw new ForbiddenError("corporate:overview:view");
+    const sql = await getSql();
+    await ensureTowerChannels(sql);
+    const maxLevel = await callerMaxLevel(sql, context.userId);
+    const rows = await sql<{
+      id: string; name: string; description: string;
+      is_announcement: boolean; is_dm: boolean; last_at: string | null;
+    }>`
+      select c.id, c.name, c.description, c.is_announcement, c.is_dm,
+             max(m.created_at)::text as last_at
+      from corporate_channels c
+      left join corporate_messages m on m.channel_id = c.id
+      where c.is_dm = false
+         or exists (select 1 from corporate_channel_members cm
+                    where cm.channel_id = c.id and cm.user_id = ${context.userId})
+      group by c.id, c.name, c.description, c.is_announcement, c.is_dm
+      order by c.is_dm asc, c.name asc`;
+    const channels: TowerChannel[] = [];
+    for (const r of rows) {
+      let peerName: string | null = null;
+      if (r.is_dm) {
+        const peer = await sql<{ name: string }>`
+          select u.name from corporate_channel_members cm
+          join "user" u on u.id = cm.user_id
+          where cm.channel_id = ${r.id} and cm.user_id <> ${context.userId} limit 1`;
+        peerName = peer[0]?.name ?? "Teammate";
+      }
+      channels.push({
+        id: r.id,
+        name: r.is_dm ? (peerName ?? "Direct message") : r.name,
+        description: r.description,
+        isAnnouncement: r.is_announcement,
+        isDm: r.is_dm,
+        peerName,
+        canPost: !r.is_announcement || maxLevel >= 9,
+        lastAt: r.last_at,
+      });
+    }
+    return { channels };
+  });
+
+/** Messages in a channel the caller can see. */
+export const listTowerMessages = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator((input: { channelId: string }) => input)
+  .handler(async ({ context, data }): Promise<{ messages: TowerMessage[] }> => {
+    const status = await readStatus(context.userId);
+    if (!status.isCorporate) throw new ForbiddenError("corporate:overview:view");
+    const sql = await getSql();
+    const ch = await canSeeChannel(sql, context.userId, data.channelId);
+    if (!ch) throw new ForbiddenError("corporate:messages:view");
+    const rows = await sql<{
+      id: string; body: string; at: string; sender_id: string;
+      sender_name: string; sender_title: string | null;
+    }>`
+      select m.id, m.body, m.created_at::text as at, m.sender_user_id as sender_id,
+             coalesce(u.name, 'Teammate') as sender_name,
+             (select cr.title from corporate_team t join corporate_roles cr on cr.id = t.role_id
+              where t.user_id = m.sender_user_id and t.status = 'active'
+              order by cr.level desc limit 1) as sender_title
+      from corporate_messages m
+      left join "user" u on u.id = m.sender_user_id
+      where m.channel_id = ${data.channelId}
+      order by m.created_at asc limit 200`;
+    return {
+      messages: rows.map((r) => ({
+        id: r.id,
+        senderName: r.sender_name,
+        senderTitle: r.sender_title,
+        isMe: r.sender_id === context.userId,
+        body: r.body,
+        at: r.at,
+      })),
+    };
+  });
+
+/** Send a message to a visible channel. */
+export const sendTowerMessage = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { channelId: string; body: string }) => input)
+  .handler(async ({ context, data }): Promise<{ id: string }> => {
+    const status = await readStatus(context.userId);
+    if (!status.isCorporate) throw new ForbiddenError("corporate:overview:view");
+    const body = data.body.trim();
+    if (!body) throw new Error("Write a message first.");
+    if (body.length > 2000) throw new Error("Messages are limited to 2000 characters.");
+    const sql = await getSql();
+    const ch = await canSeeChannel(sql, context.userId, data.channelId);
+    if (!ch) throw new ForbiddenError("corporate:messages:manage");
+    if (ch.is_announcement) {
+      const maxLevel = await callerMaxLevel(sql, context.userId);
+      if (maxLevel < 9) throw new ForbiddenError("corporate:announcements:publish");
+    }
+    const id = crypto.randomUUID();
+    await sql`insert into corporate_messages (id, channel_id, sender_user_id, body)
+      values (${id}, ${data.channelId}, ${context.userId}, ${body})`;
+    await audit(context.userId, "corporate.message.send", data.channelId, {
+      channelId: data.channelId,
+      length: body.length,
+    });
+    return { id };
+  });
+
+/** Open (or create) a 1:1 direct message channel with a teammate. */
+export const openTowerDirectMessage = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { email: string }) => input)
+  .handler(async ({ context, data }): Promise<{ channelId: string }> => {
+    const status = await readStatus(context.userId);
+    if (!status.isCorporate) throw new ForbiddenError("corporate:overview:view");
+    const sql = await getSql();
+    const users = await sql<{ id: string; name: string }>`
+      select id, name from "user" where lower(email) = lower(${data.email.trim()})`;
+    if (users.length === 0) throw new Error("No account found with that email.");
+    const peerId = users[0].id;
+    if (peerId === context.userId) throw new Error("That's you — pick a teammate.");
+    const peerStatus = await readStatus(peerId);
+    if (!peerStatus.isCorporate) throw new Error("They don't have a corporate role yet.");
+    // Find an existing DM between the two.
+    const existing = await sql<{ channel_id: string }>`
+      select cm1.channel_id from corporate_channel_members cm1
+      join corporate_channel_members cm2 on cm2.channel_id = cm1.channel_id
+      join corporate_channels c on c.id = cm1.channel_id
+      where cm1.user_id = ${context.userId} and cm2.user_id = ${peerId}
+        and c.is_dm = true limit 1`;
+    if (existing.length > 0) return { channelId: existing[0].channel_id };
+    const channelId = crypto.randomUUID();
+    await sql`insert into corporate_channels (id, name, description, is_dm, created_by)
+      values (${channelId}, 'dm', 'Direct message', true, ${context.userId})`;
+    await sql`insert into corporate_channel_members (channel_id, user_id)
+      values (${channelId}, ${context.userId}), (${channelId}, ${peerId})`;
+    await audit(context.userId, "corporate.dm.open", channelId, { peer: data.email.trim() });
+    return { channelId };
+  });

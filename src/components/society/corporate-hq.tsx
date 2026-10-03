@@ -21,13 +21,15 @@ import {
 } from "@/lib/corporate-server";
 import { hasGrant } from "@/lib/corporate-structure";
 import { CorporateTower, DepartmentRoom } from "./corporate-tower";
+import { TowerMessages } from "./tower-messages";
 
-type Tab = "tower" | "org" | "team" | "permissions";
+type Tab = "tower" | "org" | "team" | "messages" | "permissions";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "tower", label: "🏢 Tower" },
   { id: "org", label: "🌳 Org Chart" },
   { id: "team", label: "👥 Team" },
+  { id: "messages", label: "💬 Messages" },
   { id: "permissions", label: "🔑 Permissions" },
 ];
 
@@ -215,6 +217,7 @@ export function CorporateHQ() {
             onRevoke={(teamId) => run(() => revokeCorporateRole({ data: { teamId } }), "Role revoked.")}
           />
         )}
+        {tab === "messages" && <TowerMessages />}
         {tab === "permissions" && <PermissionMatrix roles={matrix} />}
       </div>
     </div>

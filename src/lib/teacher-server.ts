@@ -104,6 +104,8 @@ export interface TeacherWorkspaceConnection {
   educationalPermissions: boolean;
   unitPermissions: boolean;
   requestedAt: string;
+  parentUserId: string | null;
+  parentAccountName: string | null;
 }
 
 export interface TeacherWorkspaceBroadcast {
@@ -606,11 +608,15 @@ export const loadTeacherWorkspace = createServerFn({ method: "GET" })
       educational_permissions: boolean;
       unit_permissions: boolean;
       requested_at: string | Date;
+      parent_user_id: string | null;
+      parent_account_name: string | null;
     }>`
       select cc.id, cc.classroom_id, c.name as classroom_name, cc.child_name, cc.status,
-        cc.educational_permissions, cc.unit_permissions, cc.requested_at
+        cc.educational_permissions, cc.unit_permissions, cc.requested_at,
+        cc.parent_user_id, pu.name as parent_account_name
       from classroom_connections cc
       join classrooms c on c.id = cc.classroom_id
+      left join "user" pu on pu.id = cc.parent_user_id
       where c.teacher_id = ${teacherId}
       order by cc.requested_at desc` : [];
 
@@ -768,6 +774,8 @@ export const loadTeacherWorkspace = createServerFn({ method: "GET" })
         educationalPermissions: c.educational_permissions === true,
         unitPermissions: c.unit_permissions === true,
         requestedAt: toISO(c.requested_at),
+        parentUserId: c.parent_user_id,
+        parentAccountName: c.parent_account_name,
       })),
       messages: broadcastRows.map((b) => ({
         id: b.id,
@@ -1495,7 +1503,7 @@ export const setClassroomConnectionPermissions = createServerFn({ method: "POST"
 export const startFamilyThread = createServerFn({ method: "POST" })
   .middleware([roleMiddleware("teacher")])
   .validator(
-    (input: { id: string; classroomId: string; parentName: string; childName: string }) =>
+    (input: { id: string; classroomId: string; parentName: string; childName: string; parentUserId?: string }) =>
       input,
   )
   .handler(async ({ context, data }): Promise<{ id: string }> => {
@@ -1508,6 +1516,30 @@ export const startFamilyThread = createServerFn({ method: "POST" })
     const sql = await getSql();
     await assertOwnClassroom(sql, teacherId, classroomId);
 
+    // When the family connected through the app, link the thread to their
+    // account so the two-way conversation reaches their inbox. Falls back to
+    // matching an approved connection by child name.
+    let parentUserId: string | null = null;
+    if (data.parentUserId) {
+      const link = await sql<{ parent_user_id: string }>`
+        select parent_user_id from classroom_connections
+        where classroom_id = ${classroomId}
+          and parent_user_id = ${data.parentUserId}
+          and status = 'approved'
+        limit 1`;
+      if (link.length > 0) parentUserId = link[0].parent_user_id;
+    }
+    if (!parentUserId) {
+      const match = await sql<{ parent_user_id: string }>`
+        select parent_user_id from classroom_connections
+        where classroom_id = ${classroomId}
+          and lower(child_name) = lower(${childName})
+          and status = 'approved'
+          and parent_user_id is not null
+        order by requested_at desc limit 1`;
+      if (match.length > 0) parentUserId = match[0].parent_user_id;
+    }
+
     // Idempotent: the same teacher/classroom/parent/child always maps to one
     // thread (case-insensitive on names).
     const existing = await sql<{ id: string }>`
@@ -1517,11 +1549,16 @@ export const startFamilyThread = createServerFn({ method: "POST" })
         and lower(parent_name) = lower(${parentName})
         and lower(child_name) = lower(${childName})
       order by created_at asc limit 1`;
-    if (existing.length > 0) return { id: existing[0].id };
+    if (existing.length > 0) {
+      if (parentUserId) {
+        await sql`update family_threads set parent_user_id = ${parentUserId} where id = ${existing[0].id} and parent_user_id is null`;
+      }
+      return { id: existing[0].id };
+    }
 
     await sql`
-      insert into family_threads (id, teacher_id, classroom_id, parent_name, child_name)
-      values (${id}, ${teacherId}, ${classroomId}, ${parentName}, ${childName})`;
+      insert into family_threads (id, teacher_id, classroom_id, parent_name, child_name, parent_user_id)
+      values (${id}, ${teacherId}, ${classroomId}, ${parentName}, ${childName}, ${parentUserId})`;
     return { id };
   });
 
@@ -1677,4 +1714,148 @@ export const requestTeacherVerification = createServerFn({ method: "POST" })
       set teacher_status = ${status}
       where id = ${teacherId}`;
     return { ok: true, status };
+  });
+
+/* ------------------------------------------------------------------ */
+/* Parent-side messaging (two-way teacher<->parent)                     */
+/* ------------------------------------------------------------------ */
+
+export interface ParentClassroomConnection {
+  id: string;
+  classroomId: string;
+  classroomName: string;
+  teacherName: string;
+  childName: string;
+  status: string;
+  requestedAt: string;
+}
+
+export interface ParentThread {
+  id: string;
+  parentName: string;
+  childName: string;
+  classroomName: string;
+  teacherName: string;
+  updatedAt: string;
+  messages: { id: string; sender: string; body: string; at: string }[];
+}
+
+/** Parent joins a classroom with the teacher's join code. */
+export const joinClassroomByCode = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("parent")])
+  .validator((input: { code: string; childName: string }) => input)
+  .handler(async ({ context, data }): Promise<{ id: string; classroomName: string; status: string }> => {
+    const userId = context.identity.userId;
+    const code = data.code.trim().toUpperCase();
+    if (!code) throw new Error("Enter the classroom join code.");
+    const childName = requireNonBlank(data.childName, "Child name");
+    const sql = await getSql();
+    const rooms = await sql<{ id: string; name: string }>`
+      select id, name from classrooms where join_code = ${code}`;
+    if (rooms.length === 0) throw new Error("No classroom found with that code. Check it and try again.");
+    const classroomId = rooms[0].id;
+    const existing = await sql<{ id: string; status: string }>`
+      select id, status from classroom_connections
+      where classroom_id = ${classroomId}
+        and parent_user_id = ${userId}
+        and lower(child_name) = lower(${childName})
+        and status <> 'disconnected'
+      order by requested_at desc limit 1`;
+    if (existing.length > 0) {
+      return { id: existing[0].id, classroomName: rooms[0].name, status: existing[0].status };
+    }
+    const id = crypto.randomUUID();
+    await sql`
+      insert into classroom_connections (id, classroom_id, child_name, parent_user_id, status)
+      values (${id}, ${classroomId}, ${childName}, ${userId}, 'pending')`;
+    return { id, classroomName: rooms[0].name, status: "pending" };
+  });
+
+/** Parent's classroom connections with teacher/classroom info. */
+export const listMyClassroomConnections = createServerFn({ method: "GET" })
+  .middleware([roleMiddleware("parent")])
+  .handler(async ({ context }): Promise<{ connections: ParentClassroomConnection[] }> => {
+    const sql = await getSql();
+    const rows = await sql<{
+      id: string; classroom_id: string; classroom_name: string; teacher_name: string;
+      child_name: string; status: string; requested_at: string;
+    }>`
+      select cc.id, cc.classroom_id, c.name as classroom_name,
+             coalesce(u.name, 'Teacher') as teacher_name,
+             cc.child_name, cc.status, cc.requested_at::text as requested_at
+      from classroom_connections cc
+      join classrooms c on c.id = cc.classroom_id
+      left join "user" u on u.id = c.teacher_id
+      where cc.parent_user_id = ${context.identity.userId}
+        and cc.status <> 'disconnected'
+      order by cc.requested_at desc`;
+    return {
+      connections: rows.map((r) => ({
+        id: r.id,
+        classroomId: r.classroom_id,
+        classroomName: r.classroom_name,
+        teacherName: r.teacher_name,
+        childName: r.child_name,
+        status: r.status,
+        requestedAt: r.requested_at,
+      })),
+    };
+  });
+
+/** Parent's message threads with teachers. */
+export const listParentThreads = createServerFn({ method: "GET" })
+  .middleware([roleMiddleware("parent")])
+  .handler(async ({ context }): Promise<{ threads: ParentThread[] }> => {
+    const userId = context.identity.userId;
+    const sql = await getSql();
+    const threads = await sql<{
+      id: string; parent_name: string; child_name: string;
+      classroom_name: string; teacher_name: string; updated_at: string;
+    }>`
+      select ft.id, ft.parent_name, ft.child_name, c.name as classroom_name,
+             coalesce(u.name, 'Teacher') as teacher_name,
+             ft.updated_at::text as updated_at
+      from family_threads ft
+      join classrooms c on c.id = ft.classroom_id
+      left join "user" u on u.id = ft.teacher_id
+      where ft.parent_user_id = ${userId}
+      order by ft.updated_at desc`;
+    const out: ParentThread[] = [];
+    for (const t of threads) {
+      const msgs = await sql<{ id: string; sender: string; body: string; at: string }>`
+        select id, sender, body, created_at::text as at
+        from thread_messages where thread_id = ${t.id} order by created_at asc`;
+      out.push({
+        id: t.id,
+        parentName: t.parent_name,
+        childName: t.child_name,
+        classroomName: t.classroom_name,
+        teacherName: t.teacher_name,
+        updatedAt: t.updated_at,
+        messages: msgs,
+      });
+    }
+    return { threads: out };
+  });
+
+/** Parent replies in their thread. */
+export const sendParentThreadMessage = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("parent")])
+  .validator((input: { threadId: string; body: string }) => input)
+  .handler(async ({ context, data }): Promise<{ id: string; at: string }> => {
+    const userId = context.identity.userId;
+    const threadId = assertUuid(data.threadId, "threadId");
+    const body = requireNonBlank(data.body, "Message");
+    if (body.length > 2000) throw new Error("Messages are limited to 2000 characters.");
+    const sql = await getSql();
+    const owned = await sql<{ id: string }>`
+      select id from family_threads where id = ${threadId} and parent_user_id = ${userId}`;
+    if (owned.length === 0) throw new Error("Conversation not found.");
+    const id = crypto.randomUUID();
+    const rows = await sql<{ created_at: string | Date }>`
+      insert into thread_messages (id, thread_id, sender, body)
+      values (${id}, ${threadId}, 'parent', ${body})
+      returning created_at`;
+    await sql`update family_threads set updated_at = now() where id = ${threadId}`;
+    return { id, at: toISO(rows[0].created_at) };
   });

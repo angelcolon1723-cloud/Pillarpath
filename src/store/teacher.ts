@@ -96,6 +96,8 @@ export type TeacherConnection = {
   educationalPermissions: boolean;
   unitPermissions: boolean;
   requestedAt: string;
+  parentUserId: string | null;
+  parentAccountName: string | null;
 };
 
 export type TeacherMessage = {
@@ -397,6 +399,7 @@ type TeacherState = TeacherData & {
     classroomId: string,
     parentName: string,
     childName: string,
+    parentUserId?: string | null,
   ) => string | null;
   sendThreadMessage: (
     threadId: string,
@@ -580,6 +583,8 @@ export const useTeacher = create<TeacherState>()(
                   : "pending") as ConnectionStatus,
                 educationalPermissions: c.educationalPermissions,
                 unitPermissions: c.unitPermissions,
+                parentUserId: c.parentUserId ?? null,
+                parentAccountName: c.parentAccountName ?? null,
                 requestedAt: c.requestedAt,
               })),
               messages: w.messages.map((m) => ({
@@ -1205,6 +1210,8 @@ export const useTeacher = create<TeacherState>()(
                 educationalPermissions: true,
                 unitPermissions: false,
                 requestedAt: nowIso(),
+                parentUserId: null,
+                parentAccountName: null,
               };
               set((s) => ({ connections: [connection, ...s.connections] }));
             },
@@ -1292,7 +1299,7 @@ export const useTeacher = create<TeacherState>()(
 
         classroomUnitBalance: (studentId) => get().classroomUnitBalances[studentId] ?? 0,
 
-        startThread: (classroomId, parentName, childName) => {
+        startThread: (classroomId, parentName, childName, parentUserId) => {
           const parent = parentName.trim();
           const child = childName.trim();
           if (!parent || !child) return "Enter the parent and child names";
@@ -1326,6 +1333,7 @@ export const useTeacher = create<TeacherState>()(
                   classroomId,
                   parentName: parent,
                   childName: child,
+                  parentUserId: parentUserId ?? undefined,
                 },
               }),
             "Could not start the conversation",

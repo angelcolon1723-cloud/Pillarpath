@@ -2127,12 +2127,39 @@ function TeacherFamilyThreads({
   activeClassroom: TeacherClassroom | null;
 }) {
   const threads = useTeacher((s) => s.threads);
+  const connections = useTeacher((s) => s.connections);
   const startThread = useTeacher((s) => s.startThread);
   const sendThreadMessage = useTeacher((s) => s.sendThreadMessage);
   const [openId, setOpenId] = useState<string | null>(null);
   const [parentName, setParentName] = useState("");
   const [childName, setChildName] = useState("");
+  const [linkedParentId, setLinkedParentId] = useState<string | null>(null);
   const [reply, setReply] = useState("");
+
+  const linkedFamilies = useMemo(
+    () =>
+      connections.filter(
+        (c) =>
+          c.status === "approved" &&
+          c.parentUserId &&
+          (!activeClassroom || c.classroomId === activeClassroom.id),
+      ),
+    [connections, activeClassroom],
+  );
+
+  function pickFamily(connectionId: string) {
+    if (!connectionId) {
+      setLinkedParentId(null);
+      setParentName("");
+      setChildName("");
+      return;
+    }
+    const c = linkedFamilies.find((x) => x.id === connectionId);
+    if (!c) return;
+    setLinkedParentId(c.parentUserId);
+    setParentName(c.parentAccountName ?? "");
+    setChildName(c.childName);
+  }
 
   const visible = useMemo(
     () =>
@@ -2148,15 +2175,20 @@ function TeacherFamilyThreads({
       toast.error("Choose a classroom first");
       return;
     }
-    const id = startThread(activeClassroom.id, parentName, childName);
+    const id = startThread(activeClassroom.id, parentName, childName, linkedParentId);
     if (!id) {
       toast.error("Enter the parent and child names");
       return;
     }
     setParentName("");
     setChildName("");
+    setLinkedParentId(null);
     setOpenId(id);
-    toast.success("Conversation started");
+    toast.success(
+      linkedParentId
+        ? "Conversation started \u2014 linked to the family's inbox"
+        : "Conversation started",
+    );
   }
 
   function send() {
@@ -2170,6 +2202,22 @@ function TeacherFamilyThreads({
     <div className="space-y-4">
       <Card className="space-y-3 p-4">
         <CardTitle className="text-base">Start a conversation</CardTitle>
+        {linkedFamilies.length > 0 && (
+          <div>
+            <FieldLabel>Connected family (links to their inbox)</FieldLabel>
+            <NativeSelect
+              value={linkedParentId ? linkedFamilies.find((f) => f.parentUserId === linkedParentId)?.id ?? "" : ""}
+              onChange={(e) => pickFamily(e.target.value)}
+            >
+              <option value="">Manual entry…</option>
+              {linkedFamilies.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {f.parentAccountName ?? "Family"} · {f.childName}
+                </option>
+              ))}
+            </NativeSelect>
+          </div>
+        )}
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
             <FieldLabel>Parent name</FieldLabel>

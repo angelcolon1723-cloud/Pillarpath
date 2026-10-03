@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowDownToLine,
   Award,
@@ -31,7 +31,7 @@ import { Input, FieldLabel, NativeSelect } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { AWARD_REASONS } from "@/lib/products";
 import { CHORE_CATEGORIES, type ChoreCategory } from "@/lib/chores";
-import { formatUnits, formatWhen } from "@/lib/utils";
+import { formatUnits, formatWhen, cn } from "@/lib/utils";
 import {
   useLedger,
   type MatchRate,
@@ -45,6 +45,14 @@ import {
   formatDollars,
   payoutRecipientLabel,
 } from "@/store/ledger";
+import {
+  joinClassroomByCode,
+  listMyClassroomConnections,
+  listParentThreads,
+  sendParentThreadMessage,
+  type ParentClassroomConnection,
+  type ParentThread,
+} from "@/lib/teacher-server";
 import { useSocial } from "@/store/social";
 import { PendingGiftRows } from "@/components/kiddo/give";
 import { PendingShopRows } from "@/components/kiddo/creator-shop";
@@ -1473,6 +1481,236 @@ export function ParentHistory() {
         <RotateCcw className="size-4" />
         Reset demo
       </Button>
+      <BackButton />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Classroom — join via code, message with teachers                     */
+/* ------------------------------------------------------------------ */
+
+export function ParentClassroom() {
+  const [connections, setConnections] = useState<ParentClassroomConnection[]>([]);
+  const [threads, setThreads] = useState<ParentThread[]>([]);
+  const [code, setCode] = useState("");
+  const [childName, setChildName] = useState("");
+  const [openThreadId, setOpenThreadId] = useState<string | null>(null);
+  const [reply, setReply] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [busy, setBusy] = useState(false);
+
+  const load = useCallback(async () => {
+    try {
+      const [c, t] = await Promise.all([
+        listMyClassroomConnections(),
+        listParentThreads(),
+      ]);
+      setConnections(c.connections);
+      setThreads(t.threads);
+    } catch {
+      /* not connected yet or offline — show join card */
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  async function join() {
+    if (!code.trim() || !childName.trim()) {
+      toast.error("Enter the join code and your child's name.");
+      return;
+    }
+    setBusy(true);
+    try {
+      const r = await joinClassroomByCode({ data: { code: code.trim(), childName: childName.trim() } });
+      toast.success(
+        r.status === "pending"
+          ? `Request sent to ${r.classroomName} — the teacher will approve it.`
+          : `Connected to ${r.classroomName}.`,
+      );
+      setCode("");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not join the classroom.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function sendReply(threadId: string) {
+    const text = reply.trim();
+    if (!text) return;
+    setBusy(true);
+    try {
+      await sendParentThreadMessage({ data: { threadId, body: text } });
+      setReply("");
+      await load();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not send the message.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const openThread = threads.find((t) => t.id === openThreadId) ?? null;
+  const unreadCount = threads.length;
+
+  return (
+    <div className="screen-enter space-y-4">
+      <header>
+        <p className="text-sm font-medium text-muted">School</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          Classroom
+        </h1>
+        <p className="mt-1 text-sm text-muted">
+          Connect to your child's classroom and message their teacher directly.
+        </p>
+      </header>
+
+      {loading ? (
+        <p className="py-6 text-center text-sm text-muted">Loading…</p>
+      ) : (
+        <>
+          <Card className="space-y-3 p-4">
+            <CardTitle className="text-base">Join a classroom</CardTitle>
+            <p className="text-xs text-muted">
+              Ask your child's teacher for the classroom join code.
+            </p>
+            <div className="grid gap-2">
+              <div>
+                <FieldLabel>Join code</FieldLabel>
+                <Input
+                  value={code}
+                  onChange={(e) => setCode(e.target.value.toUpperCase())}
+                  placeholder="e.g. ABC123"
+                  className="font-mono uppercase"
+                />
+              </div>
+              <div>
+                <FieldLabel>Child's name</FieldLabel>
+                <Input
+                  value={childName}
+                  onChange={(e) => setChildName(e.target.value)}
+                  placeholder="Your child's name"
+                />
+              </div>
+            </div>
+            <Button className="w-full" disabled={busy} onClick={join}>
+              {busy ? "Sending…" : "Request to join"}
+            </Button>
+          </Card>
+
+          {connections.length > 0 && (
+            <Card className="p-4">
+              <CardTitle className="text-base">My classrooms</CardTitle>
+              <div className="mt-3 divide-y divide-white/10">
+                {connections.map((c) => (
+                  <div key={c.id} className="flex items-center justify-between gap-3 py-2.5">
+                    <div>
+                      <p className="text-sm font-semibold">{c.classroomName}</p>
+                      <p className="text-xs text-muted">
+                        {c.childName} · {c.teacherName}
+                      </p>
+                    </div>
+                    <Badge
+                      tone={c.status === "approved" ? "accent" : c.status === "pending" ? "warn" : "muted"}
+                    >
+                      {c.status === "approved" ? "Connected" : c.status}
+                    </Badge>
+                  </div>
+                ))}
+              </div>
+            </Card>
+          )}
+
+          <Card className="p-4">
+            <div className="flex items-center justify-between">
+              <CardTitle className="text-base">Teacher messages</CardTitle>
+              {unreadCount > 0 && (
+                <Badge tone="accent">{unreadCount}</Badge>
+              )}
+            </div>
+            {threads.length === 0 ? (
+              <p className="mt-2 text-sm text-muted">
+                No conversations yet. Once your child's teacher starts one, it will appear here.
+              </p>
+            ) : openThread ? (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => setOpenThreadId(null)}
+                  className="mb-2 text-xs font-medium text-accent"
+                >
+                  ← All conversations
+                </button>
+                <p className="text-sm font-semibold">{openThread.teacherName}</p>
+                <p className="text-xs text-muted">
+                  {openThread.classroomName} · {openThread.childName}
+                </p>
+                <div className="mt-3 max-h-72 space-y-2 overflow-y-auto rounded-lg bg-surface-2/50 p-3">
+                  {openThread.messages.map((m) => {
+                    const mine = m.sender === "parent";
+                    return (
+                      <div key={m.id} className={cn("flex", mine ? "justify-end" : "justify-start")}>
+                        <div
+                          className={cn(
+                            "max-w-[80%] rounded-xl px-3 py-2 text-sm",
+                            mine ? "bg-accent text-accent-foreground" : "bg-surface text-ink",
+                          )}
+                        >
+                          {m.body}
+                        </div>
+                      </div>
+                    );
+                  })}
+                  {openThread.messages.length === 0 && (
+                    <p className="text-center text-xs text-muted">Say hello to start the conversation.</p>
+                  )}
+                </div>
+                <div className="mt-2 flex gap-2">
+                  <Input
+                    value={reply}
+                    onChange={(e) => setReply(e.target.value)}
+                    placeholder="Write a message…"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void sendReply(openThread.id);
+                    }}
+                  />
+                  <Button disabled={busy || !reply.trim()} onClick={() => void sendReply(openThread.id)}>
+                    Send
+                  </Button>
+                </div>
+              </div>
+            ) : (
+              <div className="mt-3 divide-y divide-white/10">
+                {threads.map((t) => {
+                  const last = t.messages[t.messages.length - 1];
+                  return (
+                    <button
+                      key={t.id}
+                      type="button"
+                      onClick={() => setOpenThreadId(t.id)}
+                      className="flex w-full items-center justify-between gap-3 py-2.5 text-left"
+                    >
+                      <div className="min-w-0">
+                        <p className="truncate text-sm font-semibold">{t.teacherName}</p>
+                        <p className="truncate text-xs text-muted">
+                          {last ? last.body : "New conversation"} · {t.classroomName}
+                        </p>
+                      </div>
+                      <span className="shrink-0 text-xs text-muted">→</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </Card>
+        </>
+      )}
       <BackButton />
     </div>
   );
