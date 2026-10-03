@@ -21,6 +21,7 @@ import {
   PiggyBank,
   GraduationCap,
   Lock,
+  ShoppingBag,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -28,7 +29,6 @@ import { Card, CardHint, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input, FieldLabel, NativeSelect } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { ProductIcon } from "@/components/kiddo/product-icon";
 import { AWARD_REASONS } from "@/lib/products";
 import { CHORE_CATEGORIES, type ChoreCategory } from "@/lib/chores";
 import { formatUnits, formatWhen } from "@/lib/utils";
@@ -213,9 +213,17 @@ export function ParentHome() {
           <div className="divide-y divide-border">
             {pendingPurchases.map((p) => (
               <div key={p.id} className="flex items-center gap-3 py-3 first:pt-0 last:pb-0">
-                <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-surface-2 text-ink">
-                  <ProductIcon name={p.icon} className="size-5" />
-                </span>
+                {p.imageUrl ? (
+                  <img
+                    src={p.imageUrl}
+                    alt={p.name}
+                    className="size-10 shrink-0 rounded-md object-cover"
+                  />
+                ) : (
+                  <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-surface-2 text-ink">
+                    <ShoppingBag className="size-5" strokeWidth={1.6} />
+                  </span>
+                )}
                 <div className="min-w-0 flex-1">
                   <div className="truncate text-sm font-medium">{p.name}</div>
                   <div className="text-xs text-muted">

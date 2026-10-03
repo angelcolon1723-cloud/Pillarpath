@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import {
   BookOpen,
   Brain,
@@ -25,8 +25,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardTitle } from "@/components/ui/card";
 import { Input, FieldLabel } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
-import { ProductIcon } from "@/components/kiddo/product-icon";
-import { PRODUCTS } from "@/lib/products";
+import { getMarketplaceProducts, type MarketplaceProduct } from "@/lib/pillarpath-server";
 import { CHORE_CATEGORIES, type ChoreCategory } from "@/lib/chores";
 import { formatUnits } from "@/lib/utils";
 import { useLedger, formatDollars } from "@/store/ledger";
@@ -175,6 +174,13 @@ export function ChildMarket() {
   const selectProduct = useLedger((s) => s.selectProduct);
   const setScreen = useLedger((s) => s.setScreen);
   const balance = useLedger((s) => s.balance);
+  const [products, setProducts] = useState<MarketplaceProduct[] | null>(null);
+
+  useEffect(() => {
+    getMarketplaceProducts()
+      .then((r) => setProducts(r.products))
+      .catch(() => setProducts([]));
+  }, []);
 
   return (
     <div className="screen-enter space-y-4">
@@ -188,26 +194,52 @@ export function ChildMarket() {
         </p>
       </header>
       <FrozenBanner />
-      <div className="grid grid-cols-2 gap-3">
-        {PRODUCTS.map((p) => (
-          <button
-            key={p.id}
-            type="button"
-            onClick={() => selectProduct(p.id)}
-            className="market-card overflow-hidden rounded-xl bg-surface p-0 text-left shadow-[var(--shadow-border)] transition-[scale,box-shadow] duration-150 ease-out active:scale-[0.96]"
-          >
-            <div className="flex h-24 items-center justify-center bg-surface-2 text-ink">
-              <ProductIcon name={p.icon} className="size-9" />
-            </div>
-            <div className="p-3">
-              <div className="text-sm font-medium leading-snug">{p.name}</div>
-              <div className="mt-1 font-mono text-sm tabular-nums text-accent">
-                {p.price} Units
+      {products === null ? (
+        <p className="py-6 text-center text-sm text-muted">Loading the shelves…</p>
+      ) : products.length === 0 ? (
+        <Card className="p-8 text-center">
+          <ShoppingBag className="mx-auto size-10 text-muted" strokeWidth={1.6} />
+          <h2 className="mt-3 font-display text-lg font-semibold">
+            The shelves are being stocked
+          </h2>
+          <p className="mt-1 text-sm text-muted">
+            New kid-safe products are on the way. Check back soon!
+          </p>
+        </Card>
+      ) : (
+        <div className="grid grid-cols-2 gap-3">
+          {products.map((p) => (
+            <button
+              key={p.id}
+              type="button"
+              onClick={() =>
+                selectProduct({
+                  id: p.id,
+                  name: p.name,
+                  price: p.unitPrice,
+                  description: p.description,
+                  imageUrl: p.imageUrl,
+                })
+              }
+              className="market-card overflow-hidden rounded-xl bg-surface p-0 text-left shadow-[var(--shadow-border)] transition-[scale,box-shadow] duration-150 ease-out active:scale-[0.96]"
+            >
+              <div className="flex h-24 items-center justify-center overflow-hidden bg-surface-2 text-ink">
+                {p.imageUrl ? (
+                  <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" loading="lazy" />
+                ) : (
+                  <ShoppingBag className="size-9" strokeWidth={1.6} />
+                )}
               </div>
-            </div>
-          </button>
-        ))}
-      </div>
+              <div className="p-3">
+                <div className="text-sm font-medium leading-snug">{p.name}</div>
+                <div className="mt-1 font-mono text-sm tabular-nums text-accent">
+                  {p.unitPrice} Units
+                </div>
+              </div>
+            </button>
+          ))}
+        </div>
+      )}
       <Button variant="outline" className="w-full" onClick={() => setScreen("home")}>
         Back
       </Button>
@@ -216,10 +248,9 @@ export function ChildMarket() {
 }
 
 export function ChildConfirm() {
-  const selectedProductId = useLedger((s) => s.selectedProductId);
+  const product = useLedger((s) => s.selectedProduct);
   const requestPurchase = useLedger((s) => s.requestPurchase);
   const setScreen = useLedger((s) => s.setScreen);
-  const product = PRODUCTS.find((p) => p.id === selectedProductId);
 
   if (!product) {
     return (
@@ -245,11 +276,21 @@ export function ChildConfirm() {
       </header>
       <FrozenBanner />
       <Card className="flex flex-col items-center py-8 text-center">
-        <span className="flex size-16 items-center justify-center rounded-lg bg-surface-2 text-ink">
-          <ProductIcon name={product.icon} className="size-8" />
-        </span>
+        {product.imageUrl ? (
+          <img
+            src={product.imageUrl}
+            alt={product.name}
+            className="size-16 rounded-lg object-cover"
+          />
+        ) : (
+          <span className="flex size-16 items-center justify-center rounded-lg bg-surface-2 text-ink">
+            <ShoppingBag className="size-8" strokeWidth={1.6} />
+          </span>
+        )}
         <h2 className="mt-4 font-display text-xl font-semibold">{product.name}</h2>
-        <p className="mt-1 text-sm text-muted">{product.blurb}</p>
+        {product.description && (
+          <p className="mt-1 text-sm text-muted">{product.description}</p>
+        )}
         <p className="mt-3 font-display text-3xl font-semibold tabular-nums text-accent">
           {product.price} Units
         </p>
@@ -257,7 +298,7 @@ export function ChildConfirm() {
       <Button
         className="w-full"
         onClick={() => {
-          const err = requestPurchase(product.id);
+          const err = requestPurchase();
           if (err) toast.error(err);
           else toast.success("Request sent to your parent");
         }}

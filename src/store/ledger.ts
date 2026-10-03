@@ -1,8 +1,16 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
-import { PRODUCTS, type Product } from "@/lib/products";
 import { CHORE_SEED, type ChoreCategory, type ChoreTemplate } from "@/lib/chores";
 import { uid } from "@/lib/utils";
+
+/** A real, published storefront product on the kid's marketplace shelf. */
+export type MarketplaceSelection = {
+  id: string;
+  name: string;
+  price: number;
+  description: string | null;
+  imageUrl: string | null;
+};
 
 export type Role = "parent" | "child";
 
@@ -42,7 +50,7 @@ export type PendingPurchase = {
   productId: string;
   name: string;
   price: number;
-  icon: Product["icon"];
+  imageUrl: string | null;
 };
 
 export type PendingChore = {
@@ -192,17 +200,17 @@ type LedgerData = ReturnType<typeof openingState>;
 type LedgerState = LedgerData & {
   role: Role;
   screen: Screen;
-  selectedProductId: string | null;
+  selectedProduct: MarketplaceSelection | null;
   setRole: (role: Role) => void;
   setScreen: (screen: Screen) => void;
-  selectProduct: (id: string) => void;
+  selectProduct: (product: MarketplaceSelection) => void;
   verifyConsent: () => string | null;
   toggleFreeze: () => string;
   loadUnits: (amount: number) => string | null;
   awardUnits: (amount: number, reason: string) => string | null;
   debitUnits: (amount: number, note: string) => string | null;
   creditUnits: (amount: number, note: string) => string | null;
-  requestPurchase: (productId: string) => string | null;
+  requestPurchase: () => string | null;
   approvePurchase: (id: string) => string | null;
   denyPurchase: (id: string) => string | null;
   completeChore: (choreId: string) => string | null;
@@ -269,7 +277,7 @@ export const useLedger = create<LedgerState>()(
       ...openingState(),
       role: "parent",
       screen: "home",
-      selectedProductId: null,
+      selectedProduct: null,
       setRole: (role) => {
         const { consent, frozen } = get();
         if (role === "child" && !consent) {
@@ -279,15 +287,15 @@ export const useLedger = create<LedgerState>()(
         set({
           role,
           screen: "home",
-          selectedProductId: null,
+          selectedProduct: null,
         });
         if (role === "child" && frozen) {
           /* still allow viewing */
         }
       },
       setScreen: (screen) => set({ screen }),
-      selectProduct: (id) =>
-        set({ selectedProductId: id, screen: "confirm" }),
+      selectProduct: (product) =>
+        set({ selectedProduct: product, screen: "confirm" }),
       verifyConsent: () => {
         if (get().consent) return "Consent is already verified";
         set((s) => ({
@@ -357,11 +365,11 @@ export const useLedger = create<LedgerState>()(
         }));
         return null;
       },
-      requestPurchase: (productId) => {
+      requestPurchase: () => {
         const s = get();
         if (s.frozen) return "Access is frozen by your parent";
-        const product = PRODUCTS.find((p) => p.id === productId);
-        if (!product) return "Item not found";
+        const product = s.selectedProduct;
+        if (!product) return "No item selected";
         const reserved = s.pendingPurchases.reduce((sum, p) => sum + p.price, 0);
         const available = s.balance - reserved;
         if (product.price > available) {
@@ -369,7 +377,7 @@ export const useLedger = create<LedgerState>()(
             ? `Only ${available} Units are available after pending requests`
             : "Your available Units are already reserved";
         }
-        if (s.pendingPurchases.some((p) => p.productId === productId)) {
+        if (s.pendingPurchases.some((p) => p.productId === product.id)) {
           return "This request is already waiting";
         }
         set({
@@ -379,12 +387,12 @@ export const useLedger = create<LedgerState>()(
               productId: product.id,
               name: product.name,
               price: product.price,
-              icon: product.icon,
+              imageUrl: product.imageUrl,
             },
             ...s.pendingPurchases,
           ],
           screen: "home",
-          selectedProductId: null,
+          selectedProduct: null,
         });
         return null;
       },
@@ -799,7 +807,7 @@ export const useLedger = create<LedgerState>()(
           ...next,
           role: "parent",
           screen: "home",
-          selectedProductId: null,
+          selectedProduct: null,
         });
       },
       daysRemaining: () => {

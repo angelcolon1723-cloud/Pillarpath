@@ -107,6 +107,34 @@ async function getOrCreateCart(userId: string) {
   return created[0].id;
 }
 
+export interface MarketplaceProduct {
+  id: string;
+  name: string;
+  description: string | null;
+  imageUrl: string | null;
+  unitPrice: number;
+}
+
+/**
+ * The kid's marketplace shelf — only live, screened, published products.
+ * Empty until the Society publishes the first real products.
+ */
+export const getMarketplaceProducts = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async (): Promise<{ products: MarketplaceProduct[] }> => {
+    const sql = await getSql();
+    const rows = await sql<{
+      id: string; name: string; description: string | null;
+      image_url: string | null; unit_price: number;
+    }>`select id, name, description, image_url, unit_price from store_products where active = true order by name`;
+    return {
+      products: rows.map((r) => ({
+        id: r.id, name: r.name, description: r.description,
+        imageUrl: r.image_url, unitPrice: r.unit_price,
+      })),
+    };
+  });
+
 export const addToCart = createServerFn({ method: "POST" })
   .middleware([authMiddleware])
   .validator((input: { productId: string; quantity: number }) => input)
