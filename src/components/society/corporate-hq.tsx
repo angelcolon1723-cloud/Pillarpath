@@ -40,8 +40,10 @@ export function CorporateHQ() {
   const [selectedDept, setSelectedDept] = useState<OrgDepartment | null>(null);
   const [busy, setBusy] = useState(false);
   const [denied, setDenied] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setLoadError(null);
     try {
       const s = await getCorporateStatus();
       setStatus(s);
@@ -51,7 +53,10 @@ export function CorporateHQ() {
       }
       if (!s.needsSeed) {
         const [org, team, pm] = await Promise.all([
-          listOrgStructure().catch(() => null),
+          listOrgStructure().catch((e) => {
+            setLoadError(e instanceof Error ? e.message : "Failed to load organization.");
+            return null;
+          }),
           listTeam().catch(() => null),
           getPermissionMatrix().catch(() => null),
         ]);
@@ -104,29 +109,47 @@ export function CorporateHQ() {
     return <p className="py-8 text-center text-sm text-muted">Opening the Tower…</p>;
   }
 
-  if (status.needsSeed) {
+  // The Tower isn't raised yet — either never initialized, or the structure
+  // failed to load. The CEO raises it with one tap (idempotent).
+  if (status.needsSeed || departments.length === 0) {
     return (
-      <Card className="p-8 text-center">
-        <h2 className="font-display text-xl font-semibold">🏢 Raise the Tower</h2>
-        <p className="mt-2 mx-auto max-w-lg text-sm text-muted">
-          The corporate structure hasn't been initialized yet. As Chief Executive Officer, you can
-          raise it now: 10 departments, {matrix.length > 0 ? matrix.length : "30+"} defined roles,
-          and the full permission matrix — all recorded in the audit log.
+      <div>
+        <p className="text-xs font-semibold uppercase tracking-widest text-muted">
+          PillarPath Tower · Corporate Headquarters
         </p>
-        {status.isCeo ? (
-          <Button
-            className="mt-5"
-            disabled={busy}
-            onClick={() =>
-              void run(() => seedCorporateStructure(), "Corporate structure initialized.")
-            }
-          >
-            Initialize corporate structure
-          </Button>
-        ) : (
-          <p className="mt-4 text-sm text-muted">Ask the CEO to initialize the structure.</p>
-        )}
-      </Card>
+        <h2 className="mt-1 font-display text-2xl font-bold">
+          Welcome{status.displayTitle ? `, ${status.displayTitle}` : ""} 🏢
+        </h2>
+        <Card className="mt-4 p-8 text-center">
+          <h3 className="font-display text-xl font-semibold">🏢 Raise the Tower</h3>
+          <p className="mt-2 mx-auto max-w-lg text-sm text-muted">
+            {loadError ? (
+              <>The organization couldn't be loaded ({loadError}). Re-initializing rebuilds it.</>
+            ) : (
+              <>The corporate structure hasn't been initialized yet.</>
+            )}{" "}
+            As Chief Executive Officer, you can raise it now: 10 departments, 33 defined roles,
+            and the full permission matrix — all recorded in the audit log.
+          </p>
+          {status.isCeo ? (
+            <div className="mt-5 flex flex-wrap justify-center gap-2">
+              <Button
+                disabled={busy}
+                onClick={() =>
+                  void run(() => seedCorporateStructure(), "Corporate structure initialized.")
+                }
+              >
+                Initialize corporate structure
+              </Button>
+              <Button variant="outline" disabled={busy} onClick={() => void load()}>
+                Retry loading
+              </Button>
+            </div>
+          ) : (
+            <p className="mt-4 text-sm text-muted">Ask the CEO to initialize the structure.</p>
+          )}
+        </Card>
+      </div>
     );
   }
 
