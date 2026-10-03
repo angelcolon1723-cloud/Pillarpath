@@ -26,6 +26,7 @@ import {
 import type { StockItem } from "@/lib/suppliers/publish";
 import { suggestRetailPrice } from "@/lib/suppliers/pricing";
 import { cn } from "@/lib/utils";
+import { CorporateHQ } from "@/components/society/corporate-hq";
 
 /**
  * /society — PillarPath Society Network internal stock page.
@@ -64,6 +65,7 @@ function SocietyPage() {
   const [verifications, setVerifications] = useState<TeacherVerificationRequest[] | null>(null);
   const [defaultMargin, setDefaultMargin] = useState(40);
   const [busy, setBusy] = useState(false);
+  const [societyTab, setSocietyTab] = useState<"stockroom" | "hq">("stockroom");
 
   const load = useCallback(async () => {
     try {
@@ -160,6 +162,29 @@ function SocietyPage() {
       )}
 
       {status?.isAdmin && (
+        <div className="mt-8">
+          <div className="flex flex-wrap gap-2">
+            <Button
+              variant={societyTab === "stockroom" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSocietyTab("stockroom")}
+            >
+              📦 Stockroom
+            </Button>
+            <Button
+              variant={societyTab === "hq" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSocietyTab("hq")}
+            >
+              🏢 Corporate HQ
+            </Button>
+          </div>
+
+          {societyTab === "hq" ? (
+            <div className="mt-6">
+              <CorporateHQ />
+            </div>
+          ) : (
         <div className="mt-8 space-y-8">
           <ImportPanel busy={busy} onImported={() => void load()} />
           <TeacherVerificationsPanel
@@ -192,6 +217,8 @@ function SocietyPage() {
             />
           ))}
           </div>
+        </div>
+          )}
         </div>
       )}
     </div>
