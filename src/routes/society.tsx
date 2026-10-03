@@ -126,7 +126,7 @@ function SocietyPage() {
             This area is restricted to PillarPath Society Network admins.
           </p>
           <Button asChild className="mt-5">
-            <Link to="/login">Sign in</Link>
+            <Link to="/login" search={{ redirect: "/society" }}>Sign in</Link>
           </Button>
         </Card>
       )}

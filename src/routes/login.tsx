@@ -25,6 +25,13 @@ export const Route = createFileRoute("/login")({ component: LoginPage });
  * Better Auth redirects here as /login?error=<code> when the provider
  * callback fails (see signInDirect's errorCallbackURL).
  */
+/** Post-login destination: only same-origin paths, never external URLs. */
+function loginRedirect(): string {
+  const raw = new URLSearchParams(window.location.search).get("redirect");
+  if (raw && raw.startsWith("/") && !raw.startsWith("//")) return raw;
+  return "/";
+}
+
 function OAuthErrorBanner() {
   const [code] = useState<string | null>(() => {
     if (typeof window === "undefined") return null;
@@ -164,7 +171,7 @@ function OtpForm({ autoSend }: { autoSend?: boolean }) {
     try {
       await verifyLoginOtp({ data: { code } });
       toast.success("Verified — welcome in.");
-      await navigate({ to: "/" });
+      await navigate({ to: loginRedirect() });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Verification failed");
     } finally {
@@ -320,7 +327,7 @@ function LoginForm() {
         setBusy(false);
         return;
       }
-      await navigate({ to: "/" });
+      await navigate({ to: loginRedirect() });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Account request failed");
     } finally {
