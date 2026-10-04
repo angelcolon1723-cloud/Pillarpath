@@ -208,9 +208,9 @@ export const listOrgStructure = createServerFn({ method: "GET" })
     for (const d of depts) {
       const roles = await sql<{
         slug: string; title: string; level: number; summary: string; responsibilities: string;
-      }>`select slug, title, level, summary, responsibilities from corporate_roles r
+      }>`select r.slug, r.title, r.level, r.summary, r.responsibilities from corporate_roles r
           join corporate_departments dd on dd.id = r.department_id
-          where dd.slug = ${d.slug} order by level desc, title`;
+          where dd.slug = ${d.slug} order by r.level desc, r.title`;
       const outRoles: OrgDepartment["roles"] = [];
       for (const r of roles) {
         const members = await sql<{ name: string; email: string }>`

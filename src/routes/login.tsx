@@ -273,7 +273,7 @@ function LoginForm() {
   async function socialSignIn(provider: SocialProviderInfo) {
     setBusy(true);
     try {
-      await signInDirect(provider, { callbackURL: "/" });
+      await signInDirect(provider, { callbackURL: loginRedirect() });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Sign-in failed");
       setBusy(false);
