@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
+  Armchair,
   Bell,
   BookOpen,
   Check,
@@ -17,6 +18,7 @@ import {
   Palette,
   Pencil,
   Plus,
+  Presentation,
   RotateCcw,
   Settings as SettingsIcon,
   Trash2,
@@ -32,12 +34,15 @@ import { Badge } from "@/components/ui/badge";
 import { Input, FieldLabel, NativeSelect } from "@/components/ui/input";
 import { Progress } from "@/components/ui/progress";
 import { useLedger } from "@/store/ledger";
+import { useCurrentUser } from "@/lib/auth/use-current-user";
 import {
   TeacherLeaderboard,
   ChildLeaderboardCard,
   ParentLeaderboardOptIn,
 } from "@/components/kiddo/leaderboard";
 import { TeacherShowcase } from "@/components/kiddo/showcase";
+import { TeacherChalkboard } from "@/components/kiddo/teacher-chalkboard";
+import { TeacherDeskChart } from "@/components/kiddo/teacher-desk-chart";
 import {
   useTeacher,
   type TeacherAssignment,
@@ -68,6 +73,8 @@ export type TeacherSection =
   | "resources"
   | "records"
   | "messages"
+  | "chalkboard"
+  | "deskchart"
   | "settings";
 
 export function TeacherWorkspace({ section }: { section: TeacherSection }) {
@@ -86,7 +93,9 @@ export function TeacherWorkspace({ section }: { section: TeacherSection }) {
   }, []);
 
   const { status, loading, refresh } = useTeacherVerificationStatus();
-  const gated = !loading && status !== "verified";
+  const user = useCurrentUser();
+  const isAdmin = user?.role === "admin";
+  const gated = !loading && status !== "verified" && !isAdmin;
   // If the teacher gets verified mid-session (e.g. admin approves while the
   // workspace is open), the first load ran unverified and returned no
   // student data — pull the full workspace again on the transition.
@@ -158,6 +167,8 @@ export function TeacherWorkspace({ section }: { section: TeacherSection }) {
           <TeacherMessages activeClassroom={activeClassroom} />
         )
       ) : null}
+      {section === "chalkboard" ? <TeacherChalkboard /> : null}
+      {section === "deskchart" ? <TeacherDeskChart /> : null}
       {section === "settings" ? <TeacherSettings /> : null}
     </div>
   );
@@ -2850,6 +2861,8 @@ export const teacherNavIcons = {
   resources: Library,
   records: FileSpreadsheet,
   messages: MessageSquare,
+  chalkboard: Presentation,
+  deskchart: Armchair,
   settings: SettingsIcon,
 };
 
@@ -2866,5 +2879,7 @@ export const teacherNavLabels: Record<TeacherSection, string> = {
   resources: "Resources",
   records: "Records",
   messages: "Messages",
+  chalkboard: "Chalkboard",
+  deskchart: "Desk Chart",
   settings: "Settings",
 };
