@@ -733,3 +733,26 @@ export const refreshCjTracking = createServerFn({ method: "POST" })
       where order_id = ${data.orderId}`;
     return { ok: true, message: `CJ reports: ${cjStatus}` };
   });
+
+/** Assign the current user (must be CEO) to a role. One-tap "take this seat". */
+export const assignSelfToRole = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { roleSlug: string }) => input)
+  .handler(async ({ context, data }) => {
+    const status = await readStatus(context.userId);
+    if (!status.isCeo) throw new ForbiddenError("corporate:roles:manage");
+    const sql = await getSql();
+    const roles = await sql<{ id: number; title: string }>`
+      select id, title from corporate_roles where slug = ${data.roleSlug}`;
+    if (roles.length === 0) throw new Error("Unknown role.");
+    await sql`update corporate_team set status = 'revoked', revoked_at = now()
+              where user_id = ${context.userId} and status = 'active'`;
+    const ins = await sql<{ id: number }>`
+      insert into corporate_team (user_id, role_id, granted_by, note)
+      values (${context.userId}, ${roles[0].id}, ${context.userId}, 'self-assigned from the Tower')
+      returning id`;
+    await audit(context.userId, "corporate.role.assign_self", String(ins[0].id), {
+      role: data.roleSlug,
+    });
+    return { ok: true, roleTitle: roles[0].title };
+  });

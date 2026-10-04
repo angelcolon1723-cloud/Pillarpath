@@ -25,10 +25,40 @@ export const Route = createFileRoute("/login")({ component: LoginPage });
  * Better Auth redirects here as /login?error=<code> when the provider
  * callback fails (see signInDirect's errorCallbackURL).
  */
+const REDIRECT_KEY = "pillarpath.postLoginRedirect";
+
+/** Remember where to go after login — survives OAuth round-trips. */
+function rememberRedirect(path: string) {
+  try {
+    sessionStorage.setItem(REDIRECT_KEY, path);
+  } catch {
+    /* storage unavailable — the URL param remains the primary path */
+  }
+}
+
+function forgetRedirect() {
+  try {
+    sessionStorage.removeItem(REDIRECT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Post-login destination: only same-origin paths, never external URLs. */
 function loginRedirect(): string {
-  const raw = new URLSearchParams(window.location.search).get("redirect");
-  if (raw && raw.startsWith("/") && !raw.startsWith("//")) return raw;
+  const fromUrl = new URLSearchParams(window.location.search).get("redirect");
+  const raw = fromUrl ?? (() => {
+    try {
+      return sessionStorage.getItem(REDIRECT_KEY);
+    } catch {
+      return null;
+    }
+  })();
+  if (raw && raw.startsWith("/") && !raw.startsWith("//")) {
+    // Persist it: the OAuth trip to Google and back can drop query params.
+    rememberRedirect(raw);
+    return raw;
+  }
   return "/";
 }
 
@@ -61,6 +91,10 @@ function OAuthErrorBanner() {
 }
 
 function LoginPage() {
+  useEffect(() => {
+    const q = new URLSearchParams(window.location.search);
+    if (!q.get("redirect") && !q.get("error")) forgetRedirect();
+  }, []);
   return (
     <>
       <SignedIn>
@@ -171,7 +205,9 @@ function OtpForm({ autoSend }: { autoSend?: boolean }) {
     try {
       await verifyLoginOtp({ data: { code } });
       toast.success("Verified — welcome in.");
-      await navigate({ to: loginRedirect() });
+      const dest = loginRedirect();
+      forgetRedirect();
+      await navigate({ to: dest });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Verification failed");
     } finally {
@@ -273,7 +309,10 @@ function LoginForm() {
   async function socialSignIn(provider: SocialProviderInfo) {
     setBusy(true);
     try {
-      await signInDirect(provider, { callbackURL: loginRedirect() });
+      const dest = loginRedirect();
+      const errorCallbackURL =
+        dest === "/" ? "/login" : `/login?redirect=${encodeURIComponent(dest)}`;
+      await signInDirect(provider, { callbackURL: dest, errorCallbackURL });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Sign-in failed");
       setBusy(false);
@@ -327,7 +366,9 @@ function LoginForm() {
         setBusy(false);
         return;
       }
-      await navigate({ to: loginRedirect() });
+      const dest = loginRedirect();
+      forgetRedirect();
+      await navigate({ to: dest });
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Account request failed");
     } finally {

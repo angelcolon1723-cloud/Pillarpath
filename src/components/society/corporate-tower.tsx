@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import { cn } from "@/lib/utils";
 import type { OrgDepartment } from "@/lib/corporate-server";
 
@@ -132,8 +133,15 @@ export function CorporateTower({
   );
 }
 
-export function DepartmentRoom({ dept }: { dept: OrgDepartment }) {
+export function DepartmentRoom({
+  dept,
+  onAssignSelf,
+}: {
+  dept: OrgDepartment;
+  onAssignSelf: (roleSlug: string) => Promise<void>;
+}) {
   const [openRole, setOpenRole] = useState<string | null>(null);
+  const [assigning, setAssigning] = useState<string | null>(null);
   const totalMembers = dept.roles.reduce((n, r) => n + r.memberCount, 0);
   return (
     <Card className="p-5">
@@ -198,6 +206,23 @@ export function DepartmentRoom({ dept }: { dept: OrgDepartment }) {
                       </div>
                     </>
                   )}
+                  <div className="mt-3">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={assigning === r.slug}
+                      onClick={async () => {
+                        setAssigning(r.slug);
+                        try {
+                          await onAssignSelf(r.slug);
+                        } finally {
+                          setAssigning(null);
+                        }
+                      }}
+                    >
+                      {assigning === r.slug ? "Taking seat…" : "💺 Take this seat"}
+                    </Button>
+                  </div>
                 </div>
               )}
             </div>

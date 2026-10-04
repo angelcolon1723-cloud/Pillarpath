@@ -7,6 +7,7 @@ import { Card } from "@/components/ui/card";
 import { cn } from "@/lib/utils";
 import {
   assignCorporateRole,
+  assignSelfToRole,
   getCorporateStatus,
   getPermissionMatrix,
   listOrgStructure,
@@ -66,7 +67,10 @@ export function CorporateHQ() {
         ]);
         if (org) {
           setDepartments(org.departments);
-          setSelectedDept((prev) => prev ?? org.departments[0] ?? null);
+          setSelectedDept((prev) => {
+            if (!prev) return org.departments[0] ?? null;
+            return org.departments.find((d) => d.slug === prev.slug) ?? org.departments[0] ?? null;
+          });
         }
         if (team) setMembers(team.members);
         if (pm) setMatrix(pm.roles);
@@ -198,7 +202,12 @@ export function CorporateHQ() {
               onSelect={setSelectedDept}
             />
             {selectedDept ? (
-              <DepartmentRoom dept={selectedDept} />
+              <DepartmentRoom
+                dept={selectedDept}
+                onAssignSelf={(roleSlug) =>
+                  run(() => assignSelfToRole({ data: { roleSlug } }), "Seat taken — position lit up. 💺")
+                }
+              />
             ) : (
               <Card className="p-8 text-center text-sm text-muted">
                 Select a floor to step inside.
