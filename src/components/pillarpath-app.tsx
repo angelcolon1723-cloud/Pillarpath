@@ -484,14 +484,26 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
                   );
                 },
               )}
-              <button
-                type="button"
-                onClick={() => pickRole(role === "parent" ? "child" : "parent")}
-                className="flex min-h-14 items-center gap-3 rounded-2xl border border-border bg-bg px-4 text-left text-sm font-semibold"
-              >
-                <Sparkles className="size-4 text-accent" />
-                Switch to {role === "parent" ? "child" : "parent"}
-              </button>
+              <div className="grid grid-cols-3 gap-2">
+                {(["parent", "child", "teacher"] as const).map((r) => (
+                  <button
+                    key={r}
+                    type="button"
+                    onClick={() => {
+                      pickRole(r);
+                      setMoreOpen(false);
+                    }}
+                    className={cn(
+                      "min-h-12 rounded-2xl border px-2 text-xs font-semibold capitalize",
+                      role === r
+                        ? "border-accent/50 bg-accent-soft text-accent"
+                        : "border-border bg-bg",
+                    )}
+                  >
+                    {r}
+                  </button>
+                ))}
+              </div>
               {societyAdmin ? (
                 <a
                   href="/society"
