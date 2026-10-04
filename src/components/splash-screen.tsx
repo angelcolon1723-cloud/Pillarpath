@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
  * full-screen on every cold start, then fades into the app.
  * Tap to skip. Falls back to the logo if the video can't load.
  */
-export function SplashScreen({ onDone }: { onDone: () => void }) {
+export function SplashScreen({ src, onDone }: { src: string; onDone: () => void }) {
   const [fading, setFading] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
   const doneRef = useRef(false);
@@ -61,7 +61,7 @@ export function SplashScreen({ onDone }: { onDone: () => void }) {
         <video
           ref={videoRef}
           className="h-full w-full object-cover"
-          src="/splash-brand.mp4"
+          src={src}
           playsInline
           preload="auto"
           onEnded={dismiss}

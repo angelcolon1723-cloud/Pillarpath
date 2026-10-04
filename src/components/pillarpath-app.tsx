@@ -120,8 +120,8 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
   const [moreOpen, setMoreOpen] = useState(false);
   /** Fresh server-side admin check (DB truth, never the possibly-stale session). */
   const [societyAdmin, setSocietyAdmin] = useState<boolean | null>(null);
-  /** Branded splash — plays when entering the kids' world. */
-  const [showSplash, setShowSplash] = useState(false);
+  /** Branded splashes: cinematic pillar on launch, World tour on kids' entrance. */
+  const [splash, setSplash] = useState<"launch" | "kids" | null>("launch");
 
   useEffect(() => {
     if (!moreOpen || societyAdmin !== null || !user || user.isDevFallback) return;
@@ -221,7 +221,7 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
     setLedgerScreen("home");
     setMoreOpen(false);
     // Entering the kids' world gets the full cinematic intro.
-    if (next === "child") setShowSplash(true);
+    if (next === "child") setSplash("kids");
   }
 
   const activeNav: Array<[string, string, typeof Home]> =
@@ -244,7 +244,13 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
 
   return (
     <div className={cn("min-h-dvh bg-bg text-ink", role === "child" ? "theme-child" : role === "teacher" ? "theme-teacher" : "theme-parent")}>
-      {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
+      {splash && (
+        <SplashScreen
+          key={splash}
+          src={splash === "launch" ? "/splash-launch.mp4" : "/splash-kids.mp4"}
+          onDone={() => setSplash(null)}
+        />
+      )}
       <div className="mx-auto min-h-dvh max-w-[1500px] lg:grid lg:grid-cols-[240px_1fr]">
         <aside className="hidden border-r border-border bg-surface/80 p-4 lg:flex lg:flex-col">
           <div className="mb-8 flex items-center gap-3 px-2">
