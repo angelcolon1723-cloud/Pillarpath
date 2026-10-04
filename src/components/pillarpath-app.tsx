@@ -120,8 +120,8 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
   const [moreOpen, setMoreOpen] = useState(false);
   /** Fresh server-side admin check (DB truth, never the possibly-stale session). */
   const [societyAdmin, setSocietyAdmin] = useState<boolean | null>(null);
-  /** Branded launch splash — plays once per app mount. */
-  const [showSplash, setShowSplash] = useState(true);
+  /** Branded splash — plays when entering the kids' world. */
+  const [showSplash, setShowSplash] = useState(false);
 
   useEffect(() => {
     if (!moreOpen || societyAdmin !== null || !user || user.isDevFallback) return;
@@ -220,6 +220,8 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
     setLedgerRole(next === "teacher" ? "parent" : next);
     setLedgerScreen("home");
     setMoreOpen(false);
+    // Entering the kids' world gets the full cinematic intro.
+    if (next === "child") setShowSplash(true);
   }
 
   const activeNav: Array<[string, string, typeof Home]> =

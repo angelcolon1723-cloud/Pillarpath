@@ -11,6 +11,7 @@ export function SplashScreen({ onDone }: { onDone: () => void }) {
   const [videoFailed, setVideoFailed] = useState(false);
   const doneRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
 
   const dismiss = useCallback(() => {
     if (doneRef.current) return;
@@ -18,6 +19,21 @@ export function SplashScreen({ onDone }: { onDone: () => void }) {
     setFading(true);
     timerRef.current = setTimeout(onDone, 600);
   }, [onDone]);
+
+  // Play WITH sound. The splash is triggered by the user's tap on the
+  // role switch, so the browser should allow unmuted playback. If the
+  // browser still blocks it, fall back to muted rather than silence.
+  useEffect(() => {
+    const v = videoRef.current;
+    if (!v || videoFailed) return;
+    const p = v.play();
+    if (p) {
+      p.catch(() => {
+        v.muted = true;
+        v.play().catch(() => setVideoFailed(true));
+      });
+    }
+  }, [videoFailed]);
 
   useEffect(() => {
     // Hard cap: never trap the user longer than 18s.
@@ -43,10 +59,9 @@ export function SplashScreen({ onDone }: { onDone: () => void }) {
     >
       {!videoFailed ? (
         <video
+          ref={videoRef}
           className="h-full w-full object-cover"
           src="/splash-brand.mp4"
-          autoPlay
-          muted
           playsInline
           preload="auto"
           onEnded={dismiss}
