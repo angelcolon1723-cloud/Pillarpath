@@ -2001,3 +2001,179 @@ export const clearChalkboardSession = createServerFn({ method: "POST" })
     await sql`delete from chalkboard_strokes where session_id = ${data.sessionId}`;
     return { ok: true };
   });
+
+/* ------------------------------------------------------------------ */
+/* Raise-hand queue                                                     */
+/* ------------------------------------------------------------------ */
+
+export interface RaisedHand {
+  id: string;
+  studentId: string;
+  studentName: string;
+  raisedAt: string;
+  position: number;
+}
+
+/** Student raises their hand (one active raise per student per classroom). */
+export const raiseHand = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("parent")])
+  .validator((input: { classroomId: string; studentId: string; studentName: string }) => input)
+  .handler(async ({ data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    await sql`insert into hand_raises (classroom_id, student_id, student_name)
+      values (${data.classroomId}, ${data.studentId}, ${data.studentName})
+      on conflict do nothing`;
+    return { ok: true };
+  });
+
+/** Student lowers their hand. */
+export const lowerHand = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("parent")])
+  .validator((input: { classroomId: string; studentId: string }) => input)
+  .handler(async ({ data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    await sql`update hand_raises set status = 'lowered'
+              where classroom_id = ${data.classroomId} and student_id = ${data.studentId}
+              and status = 'raised'`;
+    return { ok: true };
+  });
+
+/** Teacher sees the queue in order. */
+export const getRaisedHands = createServerFn({ method: "GET" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { classroomId: string }) => input)
+  .handler(async ({ data }): Promise<{ hands: RaisedHand[] }> => {
+    const sql = await getSql();
+    const rows = await sql<{ id: string; student_id: string; student_name: string; raised_at: string }>`
+      select id, student_id, student_name, raised_at::text as raised_at
+      from hand_raises
+      where classroom_id = ${data.classroomId} and status = 'raised'
+      order by raised_at asc`;
+    return {
+      hands: rows.map((r, i) => ({
+        id: r.id, studentId: r.student_id, studentName: r.student_name,
+        raisedAt: r.raised_at, position: i + 1,
+      })),
+    };
+  });
+
+/** Teacher calls on a student — marks them called (clears their raise). */
+export const callOnStudent = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { handId: string }) => input)
+  .handler(async ({ data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    await sql`update hand_raises set status = 'called', called_at = now() where id = ${data.handId}`;
+    return { ok: true };
+  });
+
+/** Student checks: am I currently raising my hand? */
+export const getMyHandStatus = createServerFn({ method: "GET" })
+  .middleware([roleMiddleware("parent")])
+  .validator((input: { classroomId: string; studentId: string }) => input)
+  .handler(async ({ data }): Promise<{ raised: boolean; position: number | null }> => {
+    const sql = await getSql();
+    const rows = await sql<{ id: string; raised_at: string }>`
+      select id, raised_at::text as raised_at from hand_raises
+      where classroom_id = ${data.classroomId} and student_id = ${data.studentId}
+      and status = 'raised'`;
+    if (!rows.length) return { raised: false, position: null };
+    const ahead = await sql<{ n: string }>`
+      select count(*)::text as n from hand_raises
+      where classroom_id = ${data.classroomId} and status = 'raised'
+      and raised_at < ${rows[0].raised_at}`;
+    return { raised: true, position: Number(ahead[0].n) + 1 };
+  });
+
+/* ------------------------------------------------------------------ */
+/* Quick polls / exit tickets                                          */
+/* ------------------------------------------------------------------ */
+
+export interface QuickPoll {
+  id: string;
+  question: string;
+  options: string[];
+  isOpen: boolean;
+  createdAt: string;
+  totalResponses: number;
+  counts: number[];
+  myChoice: number | null;
+}
+
+/** Teacher creates a poll (closes any open one first). */
+export const createQuickPoll = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { classroomId: string; question: string; options: string[] }) => input)
+  .handler(async ({ context, data }): Promise<{ pollId: string }> => {
+    const sql = await getSql();
+    const clean = data.options.map((o) => o.trim()).filter(Boolean).slice(0, 6);
+    if (!data.question.trim() || clean.length < 2) {
+      throw new Error("Give the poll a question and at least 2 options.");
+    }
+    await sql`update quick_polls set is_open = false, closed_at = now()
+              where classroom_id = ${data.classroomId} and is_open = true`;
+    const rows = await sql<{ id: string }>`
+      insert into quick_polls (classroom_id, teacher_id, question, options)
+      values (${data.classroomId}, ${context.userId}, ${data.question.trim()}, ${JSON.stringify(clean)}::jsonb)
+      returning id`;
+    return { pollId: rows[0].id };
+  });
+
+/** Teacher closes the poll. */
+export const closeQuickPoll = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { pollId: string }) => input)
+  .handler(async ({ data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    await sql`update quick_polls set is_open = false, closed_at = now() where id = ${data.pollId}`;
+    return { ok: true };
+  });
+
+/** Open poll for a classroom (students see it, teacher sees live results). */
+export const getOpenPoll = createServerFn({ method: "GET" })
+  .middleware([roleMiddleware("teacher", "parent")])
+  .validator((input: { classroomId: string; studentId?: string }) => input)
+  .handler(async ({ data }): Promise<{ poll: QuickPoll | null }> => {
+    const sql = await getSql();
+    const rows = await sql<{ id: string; question: string; options: string[]; created_at: string }>`
+      select id, question, options, created_at::text as created_at from quick_polls
+      where classroom_id = ${data.classroomId} and is_open = true
+      order by created_at desc limit 1`;
+    if (!rows.length) return { poll: null };
+    const p = rows[0];
+    const options = Array.isArray(p.options) ? p.options : [];
+    const counts = await sql<{ option_index: number; n: string }>`
+      select option_index, count(*)::text as n from poll_responses
+      where poll_id = ${p.id} group by option_index`;
+    const tally = options.map((_, i) => Number(counts.find((c) => c.option_index === i)?.n ?? 0));
+    let myChoice: number | null = null;
+    if (data.studentId) {
+      const mine = await sql<{ option_index: number }>`
+        select option_index from poll_responses
+        where poll_id = ${p.id} and student_id = ${data.studentId}`;
+      myChoice = mine[0]?.option_index ?? null;
+    }
+    return {
+      poll: {
+        id: p.id, question: p.question, options, isOpen: true,
+        createdAt: p.created_at,
+        totalResponses: tally.reduce((a, b) => a + b, 0),
+        counts: tally, myChoice,
+      },
+    };
+  });
+
+/** Student answers the poll (one answer, can change it). */
+export const answerPoll = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("parent")])
+  .validator((input: { pollId: string; studentId: string; studentName: string; optionIndex: number }) => input)
+  .handler(async ({ data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    const open = await sql<{ id: string }>`select id from quick_polls where id = ${data.pollId} and is_open = true`;
+    if (!open.length) throw new Error("This poll is closed.");
+    await sql`insert into poll_responses (poll_id, student_id, student_name, option_index)
+      values (${data.pollId}, ${data.studentId}, ${data.studentName}, ${data.optionIndex})
+      on conflict (poll_id, student_id)
+      do update set option_index = excluded.option_index, created_at = now()`;
+    return { ok: true };
+  });

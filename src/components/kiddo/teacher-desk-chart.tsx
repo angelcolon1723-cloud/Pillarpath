@@ -1,10 +1,21 @@
 import { useEffect, useMemo, useState } from "react";
-import { Shuffle, RotateCcw, MessageSquareText } from "lucide-react";
+import { Shuffle, RotateCcw, MessageSquareText, Hand, BarChart3, X, Plus } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
 import { useTeacher } from "@/store/teacher";
 import { cn } from "@/lib/utils";
+import {
+  getRaisedHands,
+  callOnStudent,
+  createQuickPoll,
+  closeQuickPoll,
+  getOpenPoll,
+  type RaisedHand,
+  type QuickPoll,
+} from "@/lib/teacher-server";
 
 const AVATAR_COLORS = [
   "bg-violet-500/20 text-violet-300 border-violet-400/40",
@@ -53,18 +64,39 @@ export function TeacherDeskChart() {
   const [seatOrder, setSeatOrder] = useState<string[] | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [now, setNow] = useState(() => Date.now());
+  const [hands, setHands] = useState<RaisedHand[]>([]);
+  const [poll, setPoll] = useState<QuickPoll | null>(null);
+  const [showPollForm, setShowPollForm] = useState(false);
+  const [pollQ, setPollQ] = useState("");
+  const [pollOpts, setPollOpts] = useState(["Yes", "No"]);
+  const [creatingPoll, setCreatingPoll] = useState(false);
 
   // Live updates: refresh classroom data on a cadence so response popups
   // appear without the teacher reloading.
+  const classroomId = activeClassroomId ?? classrooms[0]?.id ?? null;
+
   useEffect(() => {
+    const refreshLive = async () => {
+      if (!classroomId) return;
+      try {
+        const h = await getRaisedHands({ data: { classroomId } });
+        setHands(h.hands);
+      } catch { /* offline */ }
+      try {
+        const p = await getOpenPoll({ data: { classroomId } });
+        setPoll(p.poll);
+      } catch { /* offline */ }
+    };
+    void refreshLive();
     const t = setInterval(() => {
       setNow(Date.now());
       void loadFromServer().catch(() => {});
+      void refreshLive();
     }, POLL_MS);
     return () => clearInterval(t);
-  }, [loadFromServer]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [loadFromServer, classroomId]);
 
-  const classroomId = activeClassroomId ?? classrooms[0]?.id ?? null;
   const roster = students.filter((s) => !classroomId || s.classroomId === classroomId);
   const order = seatOrder ?? roster.map((s) => s.id);
   const seats = [...order.filter((id) => roster.some((s) => s.id === id)),
@@ -88,6 +120,52 @@ export function TeacherDeskChart() {
     }
     return map;
   }, [submissions, assignments, now]);
+
+  const handByStudent = useMemo(() => {
+    const m = new Map<string, RaisedHand>();
+    for (const h of hands) m.set(h.studentId, h);
+    return m;
+  }, [hands]);
+
+  const callOn = async (handId: string, name: string) => {
+    try {
+      await callOnStudent({ data: { handId } });
+      toast.success(`🎤 ${name} — you're up!`);
+      const h = await getRaisedHands({ data: { classroomId: classroomId! } });
+      setHands(h.hands);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't call on student.");
+    }
+  };
+
+  const submitPoll = async () => {
+    if (!classroomId) return;
+    setCreatingPoll(true);
+    try {
+      await createQuickPoll({ data: { classroomId, question: pollQ, options: pollOpts } });
+      setPollQ("");
+      setPollOpts(["Yes", "No"]);
+      setShowPollForm(false);
+      const p = await getOpenPoll({ data: { classroomId } });
+      setPoll(p.poll);
+      toast.success("📊 Poll is live — students see it now.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't create poll.");
+    } finally {
+      setCreatingPoll(false);
+    }
+  };
+
+  const endPoll = async () => {
+    if (!poll) return;
+    try {
+      await closeQuickPoll({ data: { pollId: poll.id } });
+      setPoll(null);
+      toast.message("Poll closed.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't close poll.");
+    }
+  };
 
   const shuffle = () => {
     const shuffled = [...seats];
@@ -174,6 +252,15 @@ export function TeacherDeskChart() {
                     resp?.fresh && "animate-pulse border-accent",
                   )}
                 >
+                  {/* raised-hand badge */}
+                  {(() => {
+                    const hand = handByStudent.get(id);
+                    return hand ? (
+                      <span className="absolute -top-2.5 right-1 z-10 flex items-center gap-1 rounded-full bg-amber-400 px-2 py-1 text-[10px] font-bold text-amber-950 shadow-lg">
+                        <Hand className="size-3" />#{hand.position}
+                      </span>
+                    ) : null;
+                  })()}
                   {/* response popup */}
                   {resp && (
                     <span
@@ -223,8 +310,20 @@ export function TeacherDeskChart() {
               </div>
             </div>
             {(() => {
+              const hand = handByStudent.get(selected.id);
               const resp = responses.get(selected.id);
-              return resp ? (
+              return (
+                <>
+                  {hand && (
+                    <Button
+                      size="sm"
+                      className="mb-2 w-full"
+                      onClick={() => callOn(hand.id, selected.name)}
+                    >
+                      🎤 Call on {selected.name} (#{hand.position} in line)
+                    </Button>
+                  )}
+                  {resp ? (
                 <p className="mt-2 rounded-xl bg-accent/10 px-3 py-2 text-xs">
                   💬 Responded to <span className="font-semibold">{resp.assignmentTitle}</span>{" "}
                   {resp.fresh ? "just now" : new Date(resp.at).toLocaleTimeString()} — review it
@@ -234,10 +333,107 @@ export function TeacherDeskChart() {
                 <p className="mt-2 text-xs text-muted">
                   No pending responses. Classroom Units and progress live under Students.
                 </p>
+              )}
+                </>
               );
             })()}
           </div>
         )}
+
+        {/* quick poll */}
+        <Card className="mt-4 p-4">
+          <div className="mb-2 flex items-center justify-between">
+            <p className="flex items-center gap-2 text-sm font-semibold">
+              <BarChart3 className="size-4 text-accent" /> Quick poll
+            </p>
+            {poll ? (
+              <Button size="sm" variant="outline" onClick={endPoll}>
+                <X className="size-3" /> Close
+              </Button>
+            ) : (
+              <Button size="sm" variant="outline" onClick={() => setShowPollForm((v) => !v)}>
+                <Plus className="size-3" /> New poll
+              </Button>
+            )}
+          </div>
+          {poll ? (
+            <div>
+              <p className="font-semibold">{poll.question}</p>
+              <div className="mt-3 space-y-2">
+                {poll.options.map((opt, i) => {
+                  const pct = poll.totalResponses
+                    ? Math.round((poll.counts[i] / poll.totalResponses) * 100)
+                    : 0;
+                  return (
+                    <div key={i} className="relative overflow-hidden rounded-xl border border-border">
+                      <div
+                        className="absolute inset-y-0 left-0 bg-accent/25 transition-all"
+                        style={{ width: `${pct}%` }}
+                      />
+                      <div className="relative flex items-center justify-between px-3 py-2 text-sm">
+                        <span className="font-medium">{opt}</span>
+                        <span className="text-xs text-muted">
+                          {poll.counts[i]} · {pct}%
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+              <p className="mt-2 text-[11px] text-muted">
+                {poll.totalResponses} {poll.totalResponses === 1 ? "vote" : "votes"} — live
+              </p>
+            </div>
+          ) : showPollForm ? (
+            <div className="space-y-2">
+              <Input
+                placeholder="Question — e.g. Thumbs up if you finished?"
+                value={pollQ}
+                onChange={(e) => setPollQ(e.target.value)}
+              />
+              {pollOpts.map((opt, i) => (
+                <div key={i} className="flex gap-2">
+                  <Input
+                    placeholder={`Option ${i + 1}`}
+                    value={opt}
+                    onChange={(e) =>
+                      setPollOpts((prev) => prev.map((o, j) => (j === i ? e.target.value : o)))
+                    }
+                  />
+                  {pollOpts.length > 2 && (
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={() => setPollOpts((prev) => prev.filter((_, j) => j !== i))}
+                    >
+                      <X className="size-4" />
+                    </Button>
+                  )}
+                </div>
+              ))}
+              {pollOpts.length < 6 && (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  onClick={() => setPollOpts((prev) => [...prev, ""])}
+                >
+                  <Plus className="size-3" /> Add option
+                </Button>
+              )}
+              <Button
+                className="w-full"
+                disabled={creatingPoll || !pollQ.trim() || pollOpts.filter((o) => o.trim()).length < 2}
+                onClick={submitPoll}
+              >
+                {creatingPoll ? "Going live…" : "📊 Go live with poll"}
+              </Button>
+            </div>
+          ) : (
+            <p className="text-xs text-muted">
+              Ask the class anything — answers stream in live on your screen.
+            </p>
+          )}
+        </Card>
       </Card>
     </div>
   );
