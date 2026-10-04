@@ -29,6 +29,7 @@ import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { PillarMark } from "@/components/kiddo/mark";
+import { SplashScreen } from "@/components/splash-screen";
 import {
   ParentAward,
   ParentHistory,
@@ -119,6 +120,8 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
   const [moreOpen, setMoreOpen] = useState(false);
   /** Fresh server-side admin check (DB truth, never the possibly-stale session). */
   const [societyAdmin, setSocietyAdmin] = useState<boolean | null>(null);
+  /** Branded launch splash — plays once per app mount. */
+  const [showSplash, setShowSplash] = useState(true);
 
   useEffect(() => {
     if (!moreOpen || societyAdmin !== null || !user || user.isDevFallback) return;
@@ -239,6 +242,7 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
 
   return (
     <div className={cn("min-h-dvh bg-bg text-ink", role === "child" ? "theme-child" : role === "teacher" ? "theme-teacher" : "theme-parent")}>
+      {showSplash && <SplashScreen onDone={() => setShowSplash(false)} />}
       <div className="mx-auto min-h-dvh max-w-[1500px] lg:grid lg:grid-cols-[240px_1fr]">
         <aside className="hidden border-r border-border bg-surface/80 p-4 lg:flex lg:flex-col">
           <div className="mb-8 flex items-center gap-3 px-2">
