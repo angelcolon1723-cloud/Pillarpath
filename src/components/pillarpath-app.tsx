@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   BarChart3,
+  ChevronRight,
   CreditCard,
   Gift,
   GraduationCap,
@@ -438,82 +439,95 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
       </div>
 
       {moreOpen ? (
-        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="More menu">
-          <button
-            type="button"
-            aria-label="Close menu"
-            className="absolute inset-0 bg-black/70"
-            onClick={() => setMoreOpen(false)}
-          />
-          <div className="more-sheet absolute inset-x-0 bottom-0 rounded-t-[1.75rem] border-t border-border bg-surface p-5 pt-3 pb-[max(1.25rem,env(safe-area-inset-bottom))]">
-            <div className="mx-auto mb-3 h-1 w-10 rounded-full bg-border" aria-hidden="true" />
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="font-display text-xl font-semibold">More</h2>
-              <button
-                type="button"
-                onClick={() => setMoreOpen(false)}
-                aria-label="Close menu"
-                className="grid size-11 place-items-center rounded-xl border border-border"
-              >
-                <X className="size-5" />
-              </button>
-            </div>
-            <div className="grid grid-cols-2 gap-2">
-              {(role === "parent" ? parentNav.slice(4) : teacherNav.slice(4)).map(
-                ([id, label, Icon]) => {
-                  const isActive = activeSection === id;
-                  return (
+        <div className="fixed inset-0 z-50 lg:hidden" role="dialog" aria-modal="true" aria-label="Menu">
+          <div className="absolute inset-0 bg-bg">
+            <div className="mx-auto flex h-full w-full max-w-[520px] flex-col">
+              <div className="flex items-center justify-between border-b border-border px-5 py-4">
+                <h2 className="font-display text-xl font-semibold">Menu</h2>
+                <button
+                  type="button"
+                  onClick={() => setMoreOpen(false)}
+                  aria-label="Close menu"
+                  className="grid size-11 place-items-center rounded-xl border border-border"
+                >
+                  <X className="size-5" />
+                </button>
+              </div>
+              <div className="flex-1 overflow-y-auto px-5 py-5">
+                {/* Workspace switcher */}
+                <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
+                  Workspace
+                </p>
+                <div className="grid grid-cols-3 gap-2 rounded-2xl border border-border bg-surface p-2">
+                  {(["parent", "child", "teacher"] as const).map((r) => (
                     <button
-                      key={id}
+                      key={r}
                       type="button"
-                      aria-current={isActive ? "page" : undefined}
                       onClick={() => {
-                        navigate(id);
+                        pickRole(r);
                         setMoreOpen(false);
                       }}
                       className={cn(
-                        "flex min-h-14 items-center gap-3 rounded-2xl border px-4 text-left text-sm font-semibold",
-                        isActive
-                          ? "border-accent/50 bg-accent-soft text-accent"
-                          : "border-border bg-bg",
+                        "min-h-12 rounded-xl px-2 text-sm font-semibold capitalize",
+                        role === r
+                          ? "bg-accent text-accent-foreground"
+                          : "text-muted",
                       )}
                     >
-                      <Icon className="size-4 text-accent" />
-                      {label}
+                      {r}
                     </button>
-                  );
-                },
-              )}
-              <div className="grid grid-cols-3 gap-2">
-                {(["parent", "child", "teacher"] as const).map((r) => (
-                  <button
-                    key={r}
-                    type="button"
-                    onClick={() => {
-                      pickRole(r);
-                      setMoreOpen(false);
-                    }}
-                    className={cn(
-                      "min-h-12 rounded-2xl border px-2 text-xs font-semibold capitalize",
-                      role === r
-                        ? "border-accent/50 bg-accent-soft text-accent"
-                        : "border-border bg-bg",
-                    )}
-                  >
-                    {r}
-                  </button>
-                ))}
+                  ))}
+                </div>
+
+                {/* Sections */}
+                <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-widest text-muted">
+                  {role === "parent" ? "Parent" : "Teacher"} sections
+                </p>
+                <div className="overflow-hidden rounded-2xl border border-border bg-surface">
+                  {(role === "parent" ? parentNav.slice(4) : teacherNav.slice(4)).map(
+                    ([id, label, Icon], i, arr) => {
+                      const isActive = activeSection === id;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          aria-current={isActive ? "page" : undefined}
+                          onClick={() => {
+                            navigate(id);
+                            setMoreOpen(false);
+                          }}
+                          className={cn(
+                            "flex w-full items-center gap-3 px-4 py-4 text-left text-sm font-semibold",
+                            i > 0 && "border-t border-border",
+                            isActive ? "bg-accent-soft text-accent" : "text-ink",
+                          )}
+                        >
+                          <Icon className="size-5 shrink-0 text-accent" />
+                          <span className="flex-1">{label}</span>
+                          <ChevronRight className="size-4 text-muted" />
+                        </button>
+                      );
+                    },
+                  )}
+                </div>
+
+                {societyAdmin ? (
+                  <>
+                    <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-widest text-muted">
+                      Company
+                    </p>
+                    <a
+                      href="/society"
+                      onClick={() => setMoreOpen(false)}
+                      className="flex w-full items-center gap-3 rounded-2xl border border-accent/40 bg-accent-soft px-4 py-4 text-left text-sm font-semibold text-accent"
+                    >
+                      <LayoutDashboard className="size-5 shrink-0" />
+                      <span className="flex-1">Society Network</span>
+                      <ChevronRight className="size-4" />
+                    </a>
+                  </>
+                ) : null}
               </div>
-              {societyAdmin ? (
-                <a
-                  href="/society"
-                  onClick={() => setMoreOpen(false)}
-                  className="flex min-h-14 items-center gap-3 rounded-2xl border border-accent/40 bg-accent-soft px-4 text-left text-sm font-semibold text-accent"
-                >
-                  <LayoutDashboard className="size-4" />
-                  Society Network
-                </a>
-              ) : null}
             </div>
           </div>
         </div>
