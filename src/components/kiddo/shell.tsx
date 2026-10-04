@@ -7,6 +7,7 @@ import {
   ShieldCheck,
   Sparkles,
   GraduationCap,
+  Package,
 } from "lucide-react";
 import { Toaster, toast } from "sonner";
 import { PillarMark } from "@/components/kiddo/mark";
@@ -17,6 +18,7 @@ import {
   ParentHistory,
   ParentHome,
   ParentLoad,
+  ParentOrders,
   ParentVault,
 } from "@/components/kiddo/parent-views";
 import {
@@ -90,6 +92,7 @@ function BottomNav() {
       ? [
           { id: "home" as Screen, label: "Home", icon: Home },
           { id: "classroom" as Screen, label: "School", icon: GraduationCap },
+          { id: "orders" as Screen, label: "Orders", icon: Package },
           { id: "history" as Screen, label: "History", icon: History, badge: pending },
           { id: "vault" as Screen, label: "Vault", icon: Landmark },
         ]
@@ -154,6 +157,8 @@ function ScreenBody() {
         return <ParentChores />;
       case "classroom":
         return <ParentClassroom />;
+      case "orders":
+        return <ParentOrders />;
       default:
         return <ParentHome />;
     }

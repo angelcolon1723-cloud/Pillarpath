@@ -25,6 +25,7 @@ export type Screen =
   | "studio"
   | "learn"
   | "classroom"
+  | "orders"
   | "chores"
   | "gallery"
   | "give"

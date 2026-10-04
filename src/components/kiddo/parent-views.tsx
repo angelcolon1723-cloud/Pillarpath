@@ -54,6 +54,13 @@ import {
   type ParentThread,
 } from "@/lib/teacher-server";
 import { useSocial } from "@/store/social";
+import {
+  fulfillUnitPurchase,
+  getShippingAddress,
+  listMyOrders,
+  saveShippingAddress,
+  type FulfillmentOrder,
+} from "@/lib/fulfillment-server";
 import { PendingGiftRows } from "@/components/kiddo/give";
 import { PendingShopRows } from "@/components/kiddo/creator-shop";
 import { PendingGalleryRows } from "@/components/kiddo/showcase";
@@ -96,6 +103,45 @@ export function ParentHome() {
   const toggleFreeze = useLedger((s) => s.toggleFreeze);
   const approvePurchase = useLedger((s) => s.approvePurchase);
   const denyPurchase = useLedger((s) => s.denyPurchase);
+  const [addressGate, setAddressGate] = useState<null | { purchaseId: string; productId: string; name: string }>(null);
+  const [fulfilling, setFulfilling] = useState(false);
+
+  async function approveWithFulfillment(purchase: { id: string; productId: string; name: string; price: number }) {
+    // Units check happens in the store; address check happens server-side.
+    try {
+      const { address } = await getShippingAddress();
+      if (!address) {
+        // Capture the shipping address first, then complete approval.
+        setAddressGate({ purchaseId: purchase.id, productId: purchase.productId, name: purchase.name });
+        return;
+      }
+      await completeApproval(purchase);
+    } catch {
+      // If the address lookup fails (offline?), fall back to local approval.
+      const err = approvePurchase(purchase.id);
+      if (err) toast.error(err);
+      else toast.success("Purchase approved");
+    }
+  }
+
+  async function completeApproval(purchase: { id: string; productId: string; name: string }) {
+    const err = approvePurchase(purchase.id);
+    if (err) {
+      toast.error(err);
+      return;
+    }
+    setFulfilling(true);
+    try {
+      const { orderId } = await fulfillUnitPurchase({ data: { productId: purchase.productId } });
+      toast.success(`Approved — order #${orderId} is on its way!`);
+    } catch (e) {
+      // Units were deducted; the order will be retried from the stockroom.
+      toast.message(`Approved. Fulfillment queued — ${e instanceof Error ? e.message : "will retry"}`);
+    } finally {
+      setFulfilling(false);
+      setAddressGate(null);
+    }
+  }
   const approveChore = useLedger((s) => s.approveChore);
   const denyChore = useLedger((s) => s.denyChore);
 
@@ -213,6 +259,17 @@ export function ParentHome() {
           </div>
           {allPending > 0 ? <Badge tone="danger">{allPending}</Badge> : null}
         </div>
+        {addressGate && (
+          <ShippingAddressGate
+            purchaseName={addressGate.name}
+            onCancel={() => setAddressGate(null)}
+            onSaved={() => {
+              const gate = addressGate;
+              setAddressGate(null);
+              if (gate) void completeApproval({ id: gate.purchaseId, productId: gate.productId, name: gate.name });
+            }}
+          />
+        )}
         {allPending === 0 ? (
           <p className="py-4 text-center text-sm text-muted">
             No requests right now.
@@ -243,11 +300,8 @@ export function ParentHome() {
                     variant="success"
                     size="icon-sm"
                     aria-label="Approve"
-                    onClick={() => {
-                      const err = approvePurchase(p.id);
-                      if (err) toast.error(err);
-                      else toast.success("Purchase approved");
-                    }}
+                    onClick={() => void approveWithFulfillment(p)}
+                    disabled={fulfilling}
                   >
                     <Check className="size-4" />
                   </Button>
@@ -1710,6 +1764,161 @@ export function ParentClassroom() {
             )}
           </Card>
         </>
+      )}
+      <BackButton />
+    </div>
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Shipping address gate + order history                                */
+/* ------------------------------------------------------------------ */
+
+function ShippingAddressGate({
+  purchaseName,
+  onCancel,
+  onSaved,
+}: {
+  purchaseName: string;
+  onCancel: () => void;
+  onSaved: () => void;
+}) {
+  const [recipientName, setRecipientName] = useState("");
+  const [street, setStreet] = useState("");
+  const [city, setCity] = useState("");
+  const [state, setState] = useState("");
+  const [zip, setZip] = useState("");
+  const [phone, setPhone] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function save() {
+    setBusy(true);
+    try {
+      await saveShippingAddress({
+        data: { recipientName, street, city, state, zip, phone },
+      });
+      toast.success("Address saved");
+      onSaved();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not save the address.");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <Card className="space-y-3 border-accent/40 p-4">
+      <CardTitle className="text-base">Where should it ship?</CardTitle>
+      <p className="text-xs text-muted">
+        Approving “{purchaseName}” places a real order. Enter the delivery
+        address once — we’ll reuse it next time.
+      </p>
+      <div className="grid gap-2">
+        <div>
+          <FieldLabel>Recipient name</FieldLabel>
+          <Input value={recipientName} onChange={(e) => setRecipientName(e.target.value)} placeholder="Jane Appleseed" />
+        </div>
+        <div>
+          <FieldLabel>Street address</FieldLabel>
+          <Input value={street} onChange={(e) => setStreet(e.target.value)} placeholder="123 Maple St, Apt 4" />
+        </div>
+        <div className="grid grid-cols-3 gap-2">
+          <div className="col-span-1">
+            <FieldLabel>City</FieldLabel>
+            <Input value={city} onChange={(e) => setCity(e.target.value)} placeholder="Springfield" />
+          </div>
+          <div>
+            <FieldLabel>State</FieldLabel>
+            <Input value={state} onChange={(e) => setState(e.target.value.toUpperCase())} placeholder="IL" maxLength={2} />
+          </div>
+          <div>
+            <FieldLabel>ZIP</FieldLabel>
+            <Input value={zip} onChange={(e) => setZip(e.target.value)} placeholder="62701" inputMode="numeric" />
+          </div>
+        </div>
+        <div>
+          <FieldLabel>Phone (for delivery updates)</FieldLabel>
+          <Input value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="(optional)" inputMode="tel" />
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button variant="outline" className="flex-1" onClick={onCancel} disabled={busy}>
+          Cancel
+        </Button>
+        <Button className="flex-1" onClick={save} disabled={busy}>
+          {busy ? "Saving…" : "Save & approve"}
+        </Button>
+      </div>
+    </Card>
+  );
+}
+
+export function ParentOrders() {
+  const [orders, setOrders] = useState<FulfillmentOrder[] | null>(null);
+
+  useEffect(() => {
+    listMyOrders()
+      .then((r) => setOrders(r.orders))
+      .catch(() => setOrders([]));
+  }, []);
+
+  const statusLabel = (o: FulfillmentOrder) => {
+    if (o.trackingNumber) return "Shipped";
+    switch (o.fulfillmentStatus) {
+      case "submitted": return "With the supplier";
+      case "failed": return "Needs attention";
+      case "queued": return "Preparing";
+      default: return "Order placed";
+    }
+  };
+
+  return (
+    <div className="screen-enter space-y-4">
+      <header>
+        <p className="text-sm font-medium text-muted">Store</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">Orders</h1>
+        <p className="mt-1 text-sm text-muted">
+          Everything approved from the marketplace, on its way to your door.
+        </p>
+      </header>
+      {orders === null ? (
+        <p className="py-6 text-center text-sm text-muted">Loading orders…</p>
+      ) : orders.length === 0 ? (
+        <Card className="p-8 text-center">
+          <p className="font-display text-lg font-semibold">No orders yet</p>
+          <p className="mt-1 text-sm text-muted">
+            Approved marketplace purchases will show up here with tracking.
+          </p>
+        </Card>
+      ) : (
+        <div className="space-y-3">
+          {orders.map((o) => (
+            <Card key={o.id} className="p-4">
+              <div className="flex items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Order #{o.id}</p>
+                  <p className="text-xs text-muted">
+                    {o.items.map((i) => `${i.quantity}× ${i.productName}`).join(", ")}
+                  </p>
+                </div>
+                <Badge tone={o.trackingNumber ? "accent" : o.fulfillmentStatus === "failed" ? "danger" : "muted"}>
+                  {statusLabel(o)}
+                </Badge>
+              </div>
+              {o.items[0]?.imageUrl && (
+                <img src={o.items[0].imageUrl} alt="" className="mt-3 h-16 w-16 rounded-lg object-cover" />
+              )}
+              {o.trackingNumber && (
+                <p className="mt-2 font-mono text-xs text-muted">
+                  Tracking: {o.trackingNumber}
+                </p>
+              )}
+              <p className="mt-1 text-xs text-muted">
+                ${(o.totalCents / 100).toFixed(2)} · {new Date(o.createdAt).toLocaleDateString()}
+              </p>
+            </Card>
+          ))}
+        </div>
       )}
       <BackButton />
     </div>
