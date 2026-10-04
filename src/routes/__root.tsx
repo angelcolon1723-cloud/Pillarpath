@@ -52,6 +52,8 @@ export const Route = createRootRoute({
     ],
     links: [
       { rel: "icon", type: "image/svg+xml", href: "/favicon.svg" },
+      { rel: "preload", href: "/splash-launch.mp4", as: "video", type: "video/mp4" },
+      { rel: "preload", href: "/splash-kids.mp4", as: "video", type: "video/mp4" },
       { rel: "stylesheet", href: appCss },
       { rel: "manifest", href: "/__grok/manifest.webmanifest" },
       { rel: "apple-touch-icon", href: "/__grok/icon-180.png" },

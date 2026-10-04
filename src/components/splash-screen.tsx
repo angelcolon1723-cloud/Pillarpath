@@ -1,14 +1,23 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { Volume2, VolumeX } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /**
- * Branded launch splash — plays the PillarPath World tour video
- * full-screen on every cold start, then fades into the app.
- * Tap to skip. Falls back to the logo if the video can't load.
+ * Branded cinematic splash.
+ *
+ * - Shows an instant branded placeholder (no black screen, no waiting).
+ * - Video crossfades in the moment it can play.
+ * - Tries to play WITH sound. Browsers block unmuted autoplay without a
+ *   user gesture, so if blocked we start muted with a "tap for sound"
+ *   button — one tap unmutes (a real gesture, always allowed).
+ * - Tap anywhere else to skip. Logo fallback if the video fails.
  */
 export function SplashScreen({ src, onDone }: { src: string; onDone: () => void }) {
   const [fading, setFading] = useState(false);
   const [videoFailed, setVideoFailed] = useState(false);
+  const [canPlay, setCanPlay] = useState(false);
+  const [muted, setMuted] = useState(false);
+  const [soundBlocked, setSoundBlocked] = useState(false);
   const doneRef = useRef(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -20,25 +29,44 @@ export function SplashScreen({ src, onDone }: { src: string; onDone: () => void 
     timerRef.current = setTimeout(onDone, 600);
   }, [onDone]);
 
-  // Play WITH sound. The splash is triggered by the user's tap on the
-  // role switch, so the browser should allow unmuted playback. If the
-  // browser still blocks it, fall back to muted rather than silence.
+  // Attempt unmuted playback as soon as the video element exists.
+  // Works when a user gesture (e.g. tapping the role switch) got us here.
   useEffect(() => {
     const v = videoRef.current;
     if (!v || videoFailed) return;
+    v.muted = false;
     const p = v.play();
     if (p) {
-      p.catch(() => {
+      p.then(() => setSoundBlocked(false)).catch(() => {
+        // Autoplay with sound blocked — play muted, offer sound on tap.
         v.muted = true;
+        setMuted(true);
+        setSoundBlocked(true);
         v.play().catch(() => setVideoFailed(true));
       });
     }
-  }, [videoFailed]);
+  }, [videoFailed, src]);
+
+  const unmute = useCallback(
+    (e: React.MouseEvent) => {
+      e.stopPropagation();
+      const v = videoRef.current;
+      if (!v) return;
+      v.muted = false;
+      setMuted(false);
+      setSoundBlocked(false);
+      v.play().catch(() => {
+        v.muted = true;
+        setMuted(true);
+        setSoundBlocked(true);
+      });
+    },
+    [],
+  );
 
   useEffect(() => {
-    // Hard cap: never trap the user longer than 18s.
-    const cap = setTimeout(dismiss, 18000);
-    // If the video failed, show the logo briefly then dismiss.
+    // Hard cap: never trap the user longer than 20s.
+    const cap = setTimeout(dismiss, 20000);
     let fallback: ReturnType<typeof setTimeout> | null = null;
     if (videoFailed) fallback = setTimeout(dismiss, 2200);
     return () => {
@@ -57,23 +85,47 @@ export function SplashScreen({ src, onDone }: { src: string; onDone: () => void 
       onClick={dismiss}
       aria-label="PillarPath intro — tap to skip"
     >
-      {!videoFailed ? (
+      {/* Instant branded placeholder — visible immediately, video fades over it */}
+      <div
+        className={cn(
+          "absolute inset-0 flex flex-col items-center justify-center gap-4 px-8 text-center transition-opacity duration-700",
+          canPlay && !videoFailed ? "opacity-0" : "opacity-100",
+        )}
+      >
+        <img src="/logo.png" alt="PillarPath" className="size-20 animate-pulse" />
+        <p className="font-display text-2xl font-semibold text-white">PillarPath</p>
+        <p className="text-sm text-white/60">Better than yesterday.</p>
+      </div>
+
+      {!videoFailed && (
         <video
           ref={videoRef}
-          className="h-full w-full object-cover"
+          className={cn(
+            "h-full w-full object-cover transition-opacity duration-700",
+            canPlay ? "opacity-100" : "opacity-0",
+          )}
           src={src}
           playsInline
           preload="auto"
+          onCanPlay={() => setCanPlay(true)}
           onEnded={dismiss}
           onError={() => setVideoFailed(true)}
         />
-      ) : (
-        <div className="flex flex-col items-center gap-4 px-8 text-center">
-          <img src="/logo.png" alt="PillarPath" className="size-20" />
-          <p className="font-display text-2xl font-semibold text-white">PillarPath</p>
-          <p className="text-sm text-white/60">Better than yesterday.</p>
-        </div>
       )}
+
+      {/* Sound toggle — appears only when the browser blocked unmuted autoplay */}
+      {soundBlocked && !videoFailed && canPlay && !fading && (
+        <button
+          type="button"
+          onClick={unmute}
+          className="absolute bottom-16 flex items-center gap-2 rounded-full border border-white/20 bg-black/60 px-4 py-2.5 text-sm font-medium text-white backdrop-blur"
+          aria-label="Turn sound on"
+        >
+          {muted ? <VolumeX className="size-4" /> : <Volume2 className="size-4" />}
+          Tap for sound
+        </button>
+      )}
+
       {!fading && (
         <p className="absolute bottom-8 text-[11px] tracking-wide text-white/40">
           tap to skip
