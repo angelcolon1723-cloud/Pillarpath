@@ -22,14 +22,16 @@ import {
 import { hasGrant } from "@/lib/corporate-structure";
 import { CorporateTower, DepartmentRoom } from "./corporate-tower";
 import { TowerMessages } from "./tower-messages";
+import { FulfillmentCenter } from "./fulfillment-center";
 
-type Tab = "tower" | "org" | "team" | "messages" | "permissions";
+type Tab = "tower" | "org" | "team" | "messages" | "fulfillment" | "permissions";
 
 const TABS: { id: Tab; label: string }[] = [
   { id: "tower", label: "🏢 Tower" },
   { id: "org", label: "🌳 Org Chart" },
   { id: "team", label: "👥 Team" },
   { id: "messages", label: "💬 Messages" },
+  { id: "fulfillment", label: "📦 Fulfillment" },
   { id: "permissions", label: "🔑 Permissions" },
 ];
 
@@ -218,6 +220,7 @@ export function CorporateHQ() {
           />
         )}
         {tab === "messages" && <TowerMessages />}
+        {tab === "fulfillment" && <FulfillmentCenter />}
         {tab === "permissions" && <PermissionMatrix roles={matrix} />}
       </div>
     </div>

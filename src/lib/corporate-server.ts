@@ -16,6 +16,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware, ForbiddenError } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
+import { createCjClientFromEnv } from "@/lib/suppliers/cjdropshipping";
 import {
   DEPARTMENTS,
   ROLES,
@@ -592,4 +593,143 @@ export const openTowerDirectMessage = createServerFn({ method: "POST" })
       values (${channelId}, ${context.userId}), (${channelId}, ${peerId})`;
     await audit(context.userId, "corporate.dm.open", channelId, { peer: data.email.trim() });
     return { channelId };
+  });
+
+/* ------------------------------------------------------------------ */
+/* Fulfillment operations — CJ order management                         */
+/* ------------------------------------------------------------------ */
+/*
+ * Admin view into every physical order: CJ submission status, payment,
+ * tracking. Orders are created unpaid (payType 3) so the founder reviews
+ * each one before real money moves to CJ.
+ */
+
+export interface AdminFulfillmentOrder {
+  orderId: number;
+  customerEmail: string;
+  totalCents: number;
+  status: string;
+  createdAt: string;
+  items: { productName: string; quantity: number }[];
+  shipTo: string;
+  cjStatus: string | null;
+  cjOrderId: string | null;
+  trackingNumber: string | null;
+  cjError: string | null;
+}
+
+/** All physical orders for the admin dashboard. */
+export const listFulfillmentOrders = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<{ orders: AdminFulfillmentOrder[] }> => {
+    const status = await readStatus(context.userId);
+    if (!status.isCorporate || !hasGrant(status.permissions, "orders", "view")) {
+      throw new ForbiddenError("corporate:orders:view");
+    }
+    const sql = await getSql();
+    const rows = await sql<{
+      id: number; shipping_email: string; total_cents: number; status: string;
+      created_at: string; shipping_address: Record<string, string>;
+      cj_status: string | null; cj_order_id: string | null;
+      tracking_number: string | null; cj_payload: Record<string, unknown>;
+    }>`
+      select o.id, o.shipping_email, o.total_cents, o.status, o.created_at::text as created_at,
+             o.shipping_address,
+             so.status as cj_status, so.supplier_order_id as cj_order_id,
+             so.tracking_number, so.payload as cj_payload
+      from orders o
+      left join supplier_orders so on so.order_id = o.id
+      order by o.id desc limit 100`;
+    const orders: AdminFulfillmentOrder[] = [];
+    for (const r of rows) {
+      const items = await sql<{ product_name: string; quantity: number }>`
+        select product_name, quantity from order_items where order_id = ${r.id}`;
+      const addr = r.shipping_address ?? {};
+      orders.push({
+        orderId: r.id,
+        customerEmail: r.shipping_email,
+        totalCents: r.total_cents,
+        status: r.status,
+        createdAt: r.created_at,
+        items: items.map((i) => ({ productName: i.product_name, quantity: i.quantity })),
+        shipTo: [addr.line1, addr.city, addr.state, addr.postalCode].filter(Boolean).join(", "),
+        cjStatus: r.cj_status,
+        cjOrderId: r.cj_order_id,
+        trackingNumber: r.tracking_number,
+        cjError: (r.cj_payload as { error?: string })?.error ?? null,
+      });
+    }
+    return { orders };
+  });
+
+/** Pay a CJ order from the CJ account balance. Moves real money. */
+export const payCjOrder = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { orderId: number }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean; message: string }> => {
+    const status = await readStatus(context.userId);
+    if (!status.isCorporate || !hasGrant(status.permissions, "orders", "manage")) {
+      throw new ForbiddenError("corporate:orders:manage");
+    }
+    const sql = await getSql();
+    const rows = await sql<{ supplier_order_id: string | null; status: string }>`
+      select supplier_order_id, status from supplier_orders where order_id = ${data.orderId}`;
+    if (!rows.length || !rows[0].supplier_order_id) {
+      throw new Error("No CJ order exists for this yet — submit it first.");
+    }
+    const client = createCjClientFromEnv();
+    if (!client) throw new Error("CJ_API_KEY is not configured.");
+    const ok = await client.payOrderWithBalance(rows[0].supplier_order_id);
+    if (ok) {
+      await sql`update supplier_orders set status = 'paid', updated_at = now() where order_id = ${data.orderId}`;
+      await sql`update fulfillments set status = 'paid' where order_id = ${data.orderId}`;
+      await audit(context.userId, "corporate.cj.pay", String(data.orderId), {
+        cjOrderId: rows[0].supplier_order_id,
+      });
+      return { ok: true, message: "Paid from CJ balance — fulfillment will proceed." };
+    }
+    throw new Error("CJ rejected the payment. Check your CJ account balance.");
+  });
+
+/** Retry a failed CJ submission. */
+export const retryCjFulfillment = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { orderId: number }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean; message: string }> => {
+    const status = await readStatus(context.userId);
+    if (!status.isCorporate || !hasGrant(status.permissions, "orders", "manage")) {
+      throw new ForbiddenError("corporate:orders:manage");
+    }
+    // Reuse the fulfillment module's submission logic via dynamic import
+    // to avoid a hard dependency cycle.
+    const { retryFulfillmentSubmission } = await import("@/lib/fulfillment-server");
+    const result = await retryFulfillmentSubmission(data.orderId);
+    await audit(context.userId, "corporate.cj.retry", String(data.orderId), { ok: result.ok });
+    return result;
+  });
+
+/** Pull the latest tracking status from CJ for an order. */
+export const refreshCjTracking = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { orderId: number }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean; message: string }> => {
+    const status = await readStatus(context.userId);
+    if (!status.isCorporate || !hasGrant(status.permissions, "orders", "view")) {
+      throw new ForbiddenError("corporate:orders:view");
+    }
+    const sql = await getSql();
+    const rows = await sql<{ tracking_number: string | null }>`
+      select tracking_number from supplier_orders where order_id = ${data.orderId}`;
+    const tracking = rows[0]?.tracking_number;
+    if (!tracking) throw new Error("No tracking number yet — the order hasn't shipped.");
+    const client = createCjClientFromEnv();
+    if (!client) throw new Error("CJ_API_KEY is not configured.");
+    const detail = await client.trackOrder(tracking);
+    const cjStatus = String(detail.orderStatus ?? detail.status ?? "unknown");
+    await sql`
+      update supplier_orders
+      set payload = payload || ${JSON.stringify({ lastTrackingCheck: new Date().toISOString(), cjTrackingStatus: cjStatus })}::jsonb,
+          updated_at = now()
+      where order_id = ${data.orderId}`;
+    return { ok: true, message: `CJ reports: ${cjStatus}` };
   });

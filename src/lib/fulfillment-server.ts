@@ -279,3 +279,36 @@ async function submitCjFulfillment(orderId: number): Promise<void> {
     where order_id = ${orderId}`;
   await sql`update fulfillments set status = 'submitted', supplier_order_reference = ${cjOrder.orderId} where order_id = ${orderId}`;
 }
+
+/* ------------------------------------------------------------------ */
+/* Retry (called from the corporate admin side)                         */
+/* ------------------------------------------------------------------ */
+
+/** Retry a failed CJ submission for an order. Exported for the admin API. */
+export async function retryFulfillmentSubmission(orderId: number): Promise<{ ok: boolean; message: string }> {
+  const sql = await getSql();
+  const existing = await sql<{ status: string }>`
+    select status from supplier_orders where order_id = ${orderId}`;
+  if (!existing.length) throw new Error("Order not found.");
+  if (existing[0].status === "submitted" || existing[0].status === "paid") {
+    return { ok: true, message: "Already submitted to CJ." };
+  }
+  await sql`
+    update supplier_orders
+    set status = 'pending', payload = payload || '{"retried":true}'::jsonb, updated_at = now()
+    where order_id = ${orderId}`;
+  try {
+    await submitCjFulfillment(orderId);
+    const after = await sql<{ status: string }>`
+      select status from supplier_orders where order_id = ${orderId}`;
+    if (after[0]?.status === "submitted") {
+      return { ok: true, message: "Submitted to CJ successfully." };
+    }
+    const errRow = await sql<{ payload: Record<string, unknown> }>`
+      select payload from supplier_orders where order_id = ${orderId}`;
+    const err = (errRow[0]?.payload as { error?: string })?.error ?? "unknown error";
+    return { ok: false, message: `Still failing: ${err}` };
+  } catch (e) {
+    return { ok: false, message: e instanceof Error ? e.message : "Submission failed." };
+  }
+}
