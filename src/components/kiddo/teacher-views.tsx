@@ -43,6 +43,7 @@ import {
 import { TeacherShowcase } from "@/components/kiddo/showcase";
 import { TeacherChalkboard } from "@/components/kiddo/teacher-chalkboard";
 import { TeacherDeskChart } from "@/components/kiddo/teacher-desk-chart";
+import { LiveChalkboardBanner } from "@/components/kiddo/live-chalkboard";
 import {
   useTeacher,
   type TeacherAssignment,
@@ -2444,6 +2445,8 @@ export function ChildClassroom() {
           from your family Units.
         </p>
       </header>
+
+      <LiveChalkboardBanner />
 
       <Card className="bg-vault p-5 text-vault-foreground">
         <p className="text-xs font-medium uppercase tracking-wider text-vault-foreground/60">

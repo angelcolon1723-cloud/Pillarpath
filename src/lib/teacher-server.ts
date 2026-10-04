@@ -1859,3 +1859,145 @@ export const sendParentThreadMessage = createServerFn({ method: "POST" })
     await sql`update family_threads set updated_at = now() where id = ${threadId}`;
     return { id, at: toISO(rows[0].created_at) };
   });
+
+/* ------------------------------------------------------------------ */
+/* Live chalkboard broadcast                                           */
+/* ------------------------------------------------------------------ */
+/*
+ * Teacher draws -> strokes are batched to the server -> students poll
+ * for new strokes and watch the board fill in near-real-time.
+ * Coordinates are normalized 0-1 so any screen size renders correctly.
+ */
+
+export interface ChalkboardStroke {
+  seq: number;
+  color: string;
+  size: number;
+  eraser: boolean;
+  points: [number, number][];
+}
+
+export interface LiveChalkboardSession {
+  id: string;
+  classroomId: string;
+  teacherName: string;
+  title: string;
+  startedAt: string;
+}
+
+/** Teacher starts a live session for a classroom (ends any previous live one). */
+export const startChalkboardSession = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { classroomId: string; title?: string }) => input)
+  .handler(async ({ context, data }): Promise<{ session: LiveChalkboardSession }> => {
+    const sql = await getSql();
+    const me = await sql<{ name: string }>`select name from "user" where id = ${context.userId}`;
+    const teacherName = me[0]?.name ?? "Teacher";
+    await sql`update chalkboard_sessions set is_live = false, ended_at = now()
+              where classroom_id = ${data.classroomId} and is_live = true`;
+    const rows = await sql<{ id: string; started_at: string }>`
+      insert into chalkboard_sessions (classroom_id, teacher_id, teacher_name, title)
+      values (${data.classroomId}, ${context.userId}, ${teacherName}, ${data.title ?? "Live lesson"})
+      returning id, started_at::text as started_at`;
+    return {
+      session: {
+        id: rows[0].id,
+        classroomId: data.classroomId,
+        teacherName,
+        title: data.title ?? "Live lesson",
+        startedAt: rows[0].started_at,
+      },
+    };
+  });
+
+/** Teacher ends the live session. */
+export const endChalkboardSession = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { sessionId: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    await sql`update chalkboard_sessions set is_live = false, ended_at = now()
+              where id = ${data.sessionId} and teacher_id = ${context.userId}`;
+    return { ok: true };
+  });
+
+/** Teacher pushes a batch of strokes. */
+export const pushChalkboardStrokes = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { sessionId: string; strokes: Omit<ChalkboardStroke, "seq">[] }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean; nextSeq: number }> => {
+    const sql = await getSql();
+    const sess = await sql<{ id: string }>`
+      select id from chalkboard_sessions
+      where id = ${data.sessionId} and teacher_id = ${context.userId} and is_live = true`;
+    if (!sess.length) throw new Error("Session is not live.");
+    const maxRow = await sql<{ m: number | null }>`
+      select max(seq)::int as m from chalkboard_strokes where session_id = ${data.sessionId}`;
+    let seq = (maxRow[0]?.m ?? -1) + 1;
+    for (const st of data.strokes.slice(0, 200)) {
+      await sql`insert into chalkboard_strokes (session_id, seq, color, size, eraser, points)
+        values (${data.sessionId}, ${seq}, ${st.color}, ${st.size}, ${st.eraser},
+                ${JSON.stringify(st.points)}::jsonb)
+        on conflict (session_id, seq) do nothing`;
+      seq++;
+    }
+    return { ok: true, nextSeq: seq };
+  });
+
+/** Anyone in the classroom: is there a live session right now? */
+export const getLiveChalkboardSession = createServerFn({ method: "GET" })
+  .middleware([roleMiddleware("teacher", "parent")])
+  .validator((input: { classroomIds: string[] }) => input)
+  .handler(async ({ data }): Promise<{ session: LiveChalkboardSession | null }> => {
+    if (!data.classroomIds.length) return { session: null };
+    const sql = await getSql();
+    const rows = await sql<{ id: string; classroom_id: string; teacher_name: string; title: string; started_at: string }>`
+      select id, classroom_id, teacher_name, title, started_at::text as started_at
+      from chalkboard_sessions
+      where is_live = true and classroom_id = any(${data.classroomIds})
+      order by started_at desc limit 1`;
+    if (!rows.length) return { session: null };
+    const r = rows[0];
+    return {
+      session: {
+        id: r.id, classroomId: r.classroom_id, teacherName: r.teacher_name,
+        title: r.title, startedAt: r.started_at,
+      },
+    };
+  });
+
+/** Fetch strokes after a sequence number (polling). */
+export const getChalkboardStrokes = createServerFn({ method: "GET" })
+  .middleware([roleMiddleware("teacher", "parent")])
+  .validator((input: { sessionId: string; afterSeq: number }) => input)
+  .handler(async ({ data }): Promise<{ strokes: ChalkboardStroke[]; live: boolean }> => {
+    const sql = await getSql();
+    const sess = await sql<{ is_live: boolean }>`
+      select is_live from chalkboard_sessions where id = ${data.sessionId}`;
+    const rows = await sql<{ seq: number; color: string; size: number; eraser: boolean; points: [number, number][] }>`
+      select seq, color, size, eraser, points
+      from chalkboard_strokes
+      where session_id = ${data.sessionId} and seq > ${data.afterSeq}
+      order by seq asc limit 500`;
+    return {
+      strokes: rows.map((r) => ({
+        seq: r.seq, color: r.color, size: r.size, eraser: r.eraser,
+        points: Array.isArray(r.points) ? r.points : [],
+      })),
+      live: sess[0]?.is_live ?? false,
+    };
+  });
+
+/** Clear the board mid-session (teacher). Pushes a clear marker. */
+export const clearChalkboardSession = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { sessionId: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    const sess = await sql<{ id: string }>`
+      select id from chalkboard_sessions
+      where id = ${data.sessionId} and teacher_id = ${context.userId} and is_live = true`;
+    if (!sess.length) throw new Error("Session is not live.");
+    await sql`delete from chalkboard_strokes where session_id = ${data.sessionId}`;
+    return { ok: true };
+  });
