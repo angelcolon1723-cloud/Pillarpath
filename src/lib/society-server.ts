@@ -452,3 +452,77 @@ export const reviewTeacherVerification = createServerFn({ method: "POST" })
     );
     return { ok: true };
   });
+
+/* ------------------------------------------------------------------ */
+/* CJ product sourcing — live catalog search + import to stockroom       */
+/* ------------------------------------------------------------------ */
+
+import { createCjClientFromEnv } from "@/lib/suppliers/cjdropshipping";
+import {
+  cjDetailToImport,
+  upsertSupplierProduct,
+} from "@/lib/suppliers/catalog";
+
+export interface CjSearchHit {
+  pid: string;
+  name: string;
+  image: string;
+  price: number;
+  nowPrice: number | null;
+  category: string | null;
+  usStock: number;
+  deliveryCycle: string | null;
+}
+
+/** Admin-only: search CJ's live catalog. US warehouse preferred for kids' products. */
+export const searchCjProducts = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("admin")])
+  .validator((input: { keyword: string; usOnly?: boolean; maxPrice?: number }) => input)
+  .handler(async ({ data }): Promise<{ hits: CjSearchHit[]; total: number }> => {
+    const client = createCjClientFromEnv();
+    if (!client) throw new Error("CJ API key not configured.");
+    const kw = data.keyword.trim();
+    if (!kw) return { hits: [], total: 0 };
+    const page = await client.searchProducts({
+      keyWord: kw,
+      size: 24,
+      countryCode: data.usOnly === false ? undefined : "US",
+      endSellPrice: data.maxPrice,
+      orderBy: 4, // inventory — prefer stocked items
+      sort: "desc",
+    });
+    return {
+      total: page.total,
+      hits: page.items.map((p) => ({
+        pid: p.pid,
+        name: p.nameEn,
+        image: p.bigImage,
+        price: p.sellPrice,
+        nowPrice: p.nowPrice,
+        category: p.categoryName,
+        usStock: p.countryCode === "US" ? p.warehouseInventoryNum : 0,
+        deliveryCycle: p.deliveryCycle,
+      })),
+    };
+  });
+
+/** Admin-only: import chosen CJ products through kid-safety screening into the stockroom. */
+export const importCjSelection = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("admin")])
+  .validator((input: { pids: string[] }) => input)
+  .handler(async ({ data }): Promise<{ imported: number; verdicts: string[] }> => {
+    const client = createCjClientFromEnv();
+    if (!client) throw new Error("CJ API key not configured.");
+    const pids = [...new Set(data.pids)].slice(0, 12);
+    if (!pids.length) throw new Error("Pick at least one product.");
+    const verdicts: string[] = [];
+    let imported = 0;
+    for (const pid of pids) {
+      const detail = await client.getProductDetail(pid);
+      const payload = cjDetailToImport(detail, { shipFromCountry: "US" });
+      const row = await upsertSupplierProduct(payload);
+      imported += 1;
+      verdicts.push(`${detail.nameEn.slice(0, 40)}… → ${row.screening_status}`);
+    }
+    return { imported, verdicts };
+  });

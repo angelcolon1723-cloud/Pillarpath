@@ -27,6 +27,7 @@ import type { StockItem } from "@/lib/suppliers/publish";
 import { suggestRetailPrice } from "@/lib/suppliers/pricing";
 import { cn } from "@/lib/utils";
 import { CorporateHQ } from "@/components/society/corporate-hq";
+import { CjSourcingPanel } from "@/components/society/cj-sourcing-panel";
 
 /**
  * /society — PillarPath Society Network internal stock page.
@@ -65,7 +66,7 @@ function SocietyPage() {
   const [verifications, setVerifications] = useState<TeacherVerificationRequest[] | null>(null);
   const [defaultMargin, setDefaultMargin] = useState(40);
   const [busy, setBusy] = useState(false);
-  const [societyTab, setSocietyTab] = useState<"stockroom" | "hq">("stockroom");
+  const [societyTab, setSocietyTab] = useState<"stockroom" | "sourcing" | "hq">("stockroom");
 
   const load = useCallback(async () => {
     try {
@@ -172,6 +173,13 @@ function SocietyPage() {
               📦 Stockroom
             </Button>
             <Button
+              variant={societyTab === "sourcing" ? "default" : "outline"}
+              size="sm"
+              onClick={() => setSocietyTab("sourcing")}
+            >
+              🔍 Sourcing
+            </Button>
+            <Button
               variant={societyTab === "hq" ? "default" : "outline"}
               size="sm"
               onClick={() => setSocietyTab("hq")}
@@ -183,6 +191,10 @@ function SocietyPage() {
           {societyTab === "hq" ? (
             <div className="mt-6">
               <CorporateHQ />
+            </div>
+          ) : societyTab === "sourcing" ? (
+            <div className="mt-6">
+              <CjSourcingPanel onImported={() => void load()} />
             </div>
           ) : (
         <div className="mt-8 space-y-8">

@@ -15,17 +15,34 @@ const LOG = "[session-cookie-fix]";
  * swallows every failure silently and leaves no diagnostics.
  *
  * This plugin runs on the endpoints that mint sessions (email sign-in/sign-up
- * and every OAuth callback) and forwards whatever the bag holds through
- * TanStack's `setCookie`, logging loudly when the bag is unexpectedly empty so
- * a dropped session cookie becomes a visible server log instead of a mystery
- * landing-page bounce.
+ * and every OAuth callback) AND on the OAuth initiation endpoints
+ * (`/sign-in/social`, `/sign-in/oauth2`), which set the signed `state` cookie
+ * the callback later checks. A dropped `state` Set-Cookie on initiation fails
+ * the callback as `state_mismatch` even though the server-side verification
+ * row exists — the exact intermittent failure seen on 2026-10-04. Forwarding
+ * whatever the bag holds through TanStack's `setCookie`, and logging loudly
+ * when the bag is unexpectedly empty, turns a dropped auth cookie into a
+ * visible server log instead of a mystery `state_mismatch`.
  */
-const COOKIE_PATHS = new Set(["/sign-in/email", "/sign-up/email"]);
+const COOKIE_PATHS = new Set([
+  "/sign-in/email",
+  "/sign-up/email",
+  // OAuth initiation endpoints: set the signed `state` cookie.
+  "/sign-in/social",
+  "/sign-in/oauth2",
+]);
 
 function isAuthCookiePath(path: string | undefined): boolean {
   if (!path) return false;
-  return COOKIE_PATHS.has(path) || path.startsWith("/callback/");
+  return (
+    COOKIE_PATHS.has(path) ||
+    path.startsWith("/callback/") ||
+    path.startsWith("/oauth2/callback/")
+  );
 }
+
+// Exported for unit tests (pure matcher, no server I/O).
+export { isAuthCookiePath };
 
 export function sessionCookieFix() {
   return {

@@ -73,7 +73,7 @@ function OAuthErrorBanner() {
     account_not_linked:
       "That Google account isn't linked to a PillarPath account yet.",
     state_mismatch:
-      "Sign-in was started more than once — close any other PillarPath tabs, then tap your sign-in button just once.",
+      "Your sign-in didn't finish on Google's side — tap your sign-in button once to try again.",
   };
   return (
     <div
