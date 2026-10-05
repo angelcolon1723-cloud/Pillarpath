@@ -14,6 +14,7 @@ import {
   ShoppingBag,
   Sparkles,
   Store,
+  Target,
   Users,
   X,
 } from "lucide-react";
@@ -41,6 +42,7 @@ import {
 import {
   ChildChores,
   ChildConfirm,
+  ChildGoals,
   ChildHome,
   ChildLearn,
   ChildMarket,
@@ -59,6 +61,7 @@ import {
   type TeacherSection,
 } from "@/components/kiddo/teacher-views";
 import { ChildGallery, ParentShowcase } from "@/components/kiddo/showcase";
+import { SavingsGoals } from "@/components/kiddo/savings-goals";
 import { ChildGive, ParentGive } from "@/components/kiddo/give";
 import { useTeacher } from "@/store/teacher";
 import { useSocial } from "@/store/social";
@@ -84,6 +87,7 @@ const parentNav: Array<[ParentSection, string, typeof Home]> = [
   ["store", "Store", Store],
   ["orders", "Orders", PackageCheck],
   ["family", "Family", Users],
+  ["goals", "Goals", Target],
   ["teachers", "Teachers", GraduationCap],
   ["future-units", "Future Units", BarChart3],
   ["unit-market", "Unit Market", LineChart],
@@ -599,6 +603,18 @@ function ParentWorkspace({
       </section>
     );
   }
+  if (section === "goals") {
+    return (
+      <section className="mx-auto max-w-3xl space-y-5">
+        <SectionIntro
+          eyebrow="Savings goals"
+          title="Save toward something big"
+          text="Set a goal with your kid, save Units together, and celebrate when you get there."
+        />
+        <SavingsGoals kids={data.children.map((c) => ({ id: c.id, name: c.name, units: c.units }))} />
+      </section>
+    );
+  }
   if (section === "family") {
     return (
       <section className="space-y-5">
@@ -672,6 +688,7 @@ function ChildWorkspace() {
   if (screen === "gallery") return <ChildGallery />;
   if (screen === "give") return <ChildGive />;
   if (screen === "chores") return <ChildChores />;
+  if (screen === "goals") return <ChildGoals />;
   return <ChildHome />;
 }
 

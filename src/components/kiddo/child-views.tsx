@@ -31,6 +31,7 @@ import { formatUnits } from "@/lib/utils";
 import { useLedger, formatDollars } from "@/store/ledger";
 import { bandForAge, missionProgress } from "@/lib/studio-path";
 import { WorldMap } from "@/components/kiddo/world/WorldMap";
+import { SavingsGoals } from "@/components/kiddo/savings-goals";
 
 const CHORE_ICON: Record<string, typeof Home> = {
   "rs-homework": BookOpen,
@@ -167,6 +168,23 @@ export function ChildChores() {
 
 export function ChildHome() {
   return <WorldMap />;
+}
+
+export function ChildGoals() {
+  return (
+    <div className="screen-enter space-y-4">
+      <header>
+        <p className="text-sm font-medium text-muted">Goal Garden</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          Dreams grow here 🌱
+        </h1>
+        <p className="mt-1 text-sm text-muted">
+          Save Units toward your goals. Ask your parent to start a new one!
+        </p>
+      </header>
+      <SavingsGoals kids={[]} readOnly />
+    </div>
+  );
 }
 
 

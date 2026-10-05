@@ -45,6 +45,7 @@ export type ParentSection =
   | "marketing"
   | "fulfillment"
   | "family"
+  | "goals"
   | "teachers"
   | "future-units"
   | "unit-market"

@@ -408,3 +408,136 @@ export const createStudioCheckout = createServerFn({ method: "POST" })
     const session = (await response.json()) as { url: string };
     return { mode: "stripe" as const, checkoutUrl: session.url };
   });
+
+/* ------------------------------------------------------------------ */
+/* Savings goals — parent + kid save toward something together          */
+/* ------------------------------------------------------------------ */
+
+export interface SavingsGoal {
+  id: string;
+  childId: number;
+  childName: string;
+  title: string;
+  emoji: string;
+  targetUnits: number;
+  savedUnits: number;
+  status: "active" | "completed" | "released";
+  createdAt: string;
+  progressPct: number;
+}
+
+function toSavingsGoal(r: {
+  id: string; child_id: number; child_name: string; title: string; emoji: string;
+  target_units: number; saved_units: number; status: string; created_at: string;
+}): SavingsGoal {
+  const pct = r.target_units > 0 ? Math.min(100, Math.round((r.saved_units / r.target_units) * 100)) : 0;
+  return {
+    id: r.id, childId: r.child_id, childName: r.child_name, title: r.title,
+    emoji: r.emoji, targetUnits: r.target_units, savedUnits: r.saved_units,
+    status: r.status as SavingsGoal["status"], createdAt: r.created_at, progressPct: pct,
+  };
+}
+
+/** Parent creates a savings goal for one of their children. */
+export const createSavingsGoal = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number; title: string; emoji?: string; targetUnits: number }) => input)
+  .handler(async ({ context, data }): Promise<{ goal: SavingsGoal }> => {
+    const sql = await getSql();
+    const title = data.title.trim().slice(0, 60);
+    const target = Math.floor(Number(data.targetUnits));
+    if (!title) throw new Error("Give the goal a name.");
+    if (!Number.isFinite(target) || target < 10) throw new Error("Target must be at least 10 Units.");
+    const kids = await sql<{ id: number; name: string }>`
+      select id, name from children where id = ${data.childId} and user_id = ${context.userId}`;
+    if (!kids.length) throw new Error("Child not found.");
+    const rows = await sql<{
+      id: string; child_id: number; child_name: string; title: string; emoji: string;
+      target_units: number; saved_units: number; status: string; created_at: string;
+    }>`
+      insert into savings_goals (user_id, child_id, title, emoji, target_units)
+      values (${context.userId}, ${data.childId}, ${title}, ${data.emoji ?? "🎯"}, ${target})
+      returning id, child_id,
+        (select name from children where id = ${data.childId}) as child_name,
+        title, emoji, target_units, saved_units, status, created_at::text as created_at`;
+    return { goal: toSavingsGoal(rows[0]) };
+  });
+
+/** List savings goals — parent sees all, child sees their own. */
+export const listSavingsGoals = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator((input: { childId?: number } = {}) => input)
+  .handler(async ({ context, data }): Promise<{ goals: SavingsGoal[] }> => {
+    const sql = await getSql();
+    const rows = await sql<{
+      id: string; child_id: number; child_name: string; title: string; emoji: string;
+      target_units: number; saved_units: number; status: string; created_at: string;
+    }>`
+      select g.id, g.child_id, c.name as child_name, g.title, g.emoji,
+             g.target_units, g.saved_units, g.status, g.created_at::text as created_at
+      from savings_goals g
+      join children c on c.id = g.child_id
+      where g.user_id = ${context.userId}
+        ${data.childId ? sql`and g.child_id = ${data.childId}` : sql``}
+      order by g.status asc, g.created_at desc`;
+    return { goals: rows.map(toSavingsGoal) };
+  });
+
+/**
+ * Move Units from the child's spendable balance into the goal's escrow.
+ * Atomic: the debit only happens if the child can cover it.
+ */
+export const contributeToGoal = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { goalId: string; amount: number }) => input)
+  .handler(async ({ context, data }): Promise<{ goal: SavingsGoal }> => {
+    const sql = await getSql();
+    const amount = Math.floor(Number(data.amount));
+    if (!Number.isFinite(amount) || amount < 1) throw new Error("Amount must be at least 1 Unit.");
+    const goals = await sql<{ id: string; child_id: number }>`
+      select id, child_id from savings_goals
+      where id = ${data.goalId} and user_id = ${context.userId} and status = 'active'`;
+    if (!goals.length) throw new Error("Goal not found or no longer active.");
+    const childId = goals[0].child_id;
+    // Atomic debit: only succeeds if the child has enough.
+    const debited = await sql<{ id: number }>`
+      update children set units = units - ${amount}
+      where id = ${childId} and user_id = ${context.userId} and units >= ${amount}
+      returning id`;
+    if (!debited.length) throw new Error("Not enough Units in the child's balance.");
+    const rows = await sql<{
+      id: string; child_id: number; child_name: string; title: string; emoji: string;
+      target_units: number; saved_units: number; status: string; created_at: string;
+    }>`
+      update savings_goals
+      set saved_units = saved_units + ${amount},
+          status = case when saved_units + ${amount} >= target_units then 'completed' else 'active' end,
+          completed_at = case when saved_units + ${amount} >= target_units then now() else completed_at end
+      where id = ${data.goalId}
+      returning id, child_id,
+        (select name from children where id = ${childId}) as child_name,
+        title, emoji, target_units, saved_units, status, created_at::text as created_at`;
+    return { goal: toSavingsGoal(rows[0]) };
+  });
+
+/**
+ * Parent releases a goal: escrow returns to the child's spendable balance.
+ * Use when the goal is achieved (they go buy the thing) or cancelled.
+ */
+export const releaseSavingsGoal = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { goalId: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean; releasedUnits: number }> => {
+    const sql = await getSql();
+    const goals = await sql<{ id: string; child_id: number; saved_units: number }>`
+      select id, child_id, saved_units from savings_goals
+      where id = ${data.goalId} and user_id = ${context.userId} and status != 'released'`;
+    if (!goals.length) throw new Error("Goal not found or already released.");
+    const g = goals[0];
+    if (g.saved_units > 0) {
+      await sql`update children set units = units + ${g.saved_units}
+                where id = ${g.child_id} and user_id = ${context.userId}`;
+    }
+    await sql`update savings_goals set saved_units = 0, status = 'released' where id = ${data.goalId}`;
+    return { ok: true, releasedUnits: g.saved_units };
+  });

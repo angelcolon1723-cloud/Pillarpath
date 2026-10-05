@@ -27,6 +27,7 @@ export type Screen =
   | "classroom"
   | "orders"
   | "chores"
+  | "goals"
   | "gallery"
   | "give"
   | "showcase";

@@ -1,15 +1,16 @@
 import { useMemo } from "react";
 import {
-  Sprout,
+  ChevronRight,
+  GraduationCap,
+  HeartHandshake,
+  Images,
   Mountain,
   Palette,
-  ShoppingBag,
-  GraduationCap,
-  Images,
-  HeartHandshake,
   School,
+  ShoppingBag,
   Sparkles,
-  ChevronRight,
+  Sprout,
+  Target,
   Trophy,
 } from "lucide-react";
 import { Card } from "@/components/ui/card";
@@ -122,6 +123,16 @@ function useRealms(): Realm[] {
         biome: "from-sky-500/25 via-sky-400/10 to-transparent",
         glow: "shadow-sky-400/20",
         badge: () => `${Math.round(vaultPct * 100)}% of goal`,
+      },
+      {
+        id: "goals",
+        screen: "goals",
+        name: "Goal Garden",
+        tagline: "Dreams grow here",
+        icon: Target,
+        biome: "from-lime-500/25 via-lime-400/10 to-transparent",
+        glow: "shadow-lime-400/20",
+        badge: () => null,
       },
       {
         id: "studio",
