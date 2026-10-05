@@ -479,18 +479,36 @@ export const searchCjProducts = createServerFn({ method: "POST" })
   .middleware([roleMiddleware("admin")])
   .validator((input: { keyword: string; usOnly?: boolean; maxPrice?: number }) => input)
   .handler(async ({ data }): Promise<{ hits: CjSearchHit[]; total: number }> => {
-    const client = await createCachedCjClient();
-    if (!client) throw new Error("CJ API key not configured.");
     const kw = data.keyword.trim();
     if (!kw) return { hits: [], total: 0 };
-    const page = await client.searchProducts({
+    const params = {
       keyWord: kw,
       size: 24,
       countryCode: data.usOnly === false ? undefined : "US",
       endSellPrice: data.maxPrice,
       orderBy: 4, // inventory — prefer stocked items
-      sort: "desc",
-    });
+      sort: "desc" as const,
+    };
+    const client = await createCachedCjClient();
+    if (!client) throw new Error("CJ API key not configured.");
+    let page;
+    try {
+      page = await client.searchProducts(params);
+    } catch (e) {
+      const { CjApiError } = await import("@/lib/suppliers/cjdropshipping");
+      const cjErr = e instanceof CjApiError ? e : null;
+      // Same stale-token trap as the connection test: nuke the DB cache
+      // and retry with a brand-new client on 1600001.
+      if (cjErr && String(cjErr.code) === "1600001") {
+        const { clearCjToken } = await import("@/lib/suppliers/cj-token-store");
+        await clearCjToken().catch(() => {});
+        const fresh = await createCachedCjClient();
+        if (!fresh) throw e;
+        page = await fresh.searchProducts(params);
+      } else {
+        throw e;
+      }
+    }
     return {
       total: page.total,
       hits: page.items.map((p) => ({
