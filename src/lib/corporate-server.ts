@@ -835,7 +835,7 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
       }
       // Minimal probe: listV2 with size 1.
       const probe = await fetch(
-        "https://developers.cjdropshipping.com/api2.0/v1/product/listV2?page=1&size=5",
+        "https://developers.cjdropshipping.com/api2.0/v1/product/listV2?keyWord=toy&page=1&size=5&countryCode=US&orderBy=4&sort=desc",
         { headers: { "CJ-Access-Token": String(token), "Content-Type": "application/json" } },
       );
       const pbody = (await probe.json().catch(() => null)) as any;
