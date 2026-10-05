@@ -885,18 +885,32 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
           { headers: { "CJ-Access-Token": String(token), "Content-Type": "application/json" } },
         );
         const rawBody = await rawProbe.json().catch(() => null) as any;
+        // Dump full structure without assumptions.
+        out.rawFullKeys = rawBody && typeof rawBody === "object" ? Object.keys(rawBody).join(",") : "null";
         const rawData = rawBody?.data;
-        const rawContent = rawData?.content;
-        const rawList = Array.isArray(rawContent?.productList) ? rawContent.productList
-          : Array.isArray(rawData?.productList) ? rawData.productList
-          : Array.isArray(rawData?.list) ? rawData.list : [];
-        const rawFirst = rawList[0];
-        if (rawFirst && typeof rawFirst === "object") {
-          out.rawItemKeys = Object.keys(rawFirst).slice(0, 30).join(",");
-          out.rawItemSample = JSON.stringify(rawFirst).slice(0, 600);
-        } else {
-          out.rawItemKeys = "empty list";
+        out.rawDataFullKeys = rawData && typeof rawData === "object" ? Object.keys(rawData).join(",") : String(typeof rawData);
+        // Check every possible location for the product array.
+        const candidates: Record<string, unknown> = {
+          "data.content": rawData?.content,
+          "data.result": rawBody?.result,
+          "data.list": rawData?.list,
+          "data.productList": rawData?.productList,
+        };
+        for (const [label, val] of Object.entries(candidates)) {
+          if (Array.isArray(val) && val.length > 0) {
+            out.rawItemKeys = `${label}: ` + Object.keys(val[0]).slice(0, 30).join(",");
+            out.rawItemSample = JSON.stringify(val[0]).slice(0, 600);
+            break;
+          } else if (val && typeof val === "object" && !Array.isArray(val)) {
+            const inner = val as any;
+            if (Array.isArray(inner.productList) && inner.productList.length > 0) {
+              out.rawItemKeys = `${label}.productList: ` + Object.keys(inner.productList[0]).slice(0, 30).join(",");
+              out.rawItemSample = JSON.stringify(inner.productList[0]).slice(0, 600);
+              break;
+            }
+          }
         }
+        if (!out.rawItemKeys) out.rawItemKeys = "no products found in any location";
       } catch (e) {
         out.rawItemKeys = "fetch failed";
       }
