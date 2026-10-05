@@ -336,9 +336,21 @@ export class CjDropshippingClient {
         retryable,
       });
     }
-    // CJ wraps payloads in `result` or `data` depending on the endpoint.
-    return (body.result ?? body.data ?? {}) as T;
+    // CJ wraps payloads in `result` or `data` depending on the endpoint —
+    // and sometimes sends BOTH with one of them empty. Prefer whichever
+    // is a non-empty object (getAccessToken puts the token in `data`
+    // while `result` comes back empty).
+    return unwrapCjEnvelope(body) as T;
   }
+
+/** Pick the non-empty payload out of CJ's result/data envelope. */
+function unwrapCjEnvelope(body: { result?: unknown; data?: unknown }): unknown {
+  const isEmpty = (v: unknown) =>
+    v == null || (typeof v === "object" && Object.keys(v as object).length === 0);
+  if (!isEmpty(body.result)) return body.result;
+  if (!isEmpty(body.data)) return body.data;
+  return body.result ?? body.data ?? {};
+}
 
   private isAuthError(err: unknown): boolean {
     if (!(err instanceof CjApiError)) return false;
