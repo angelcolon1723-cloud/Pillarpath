@@ -414,8 +414,12 @@ export class CjDropshippingClient {
   async searchProducts(params: CjProductSearchParams = {}): Promise<CjPage<CjProductSummary>> {
     const raw = await this.request<{
       list?: unknown[];
+      productList?: unknown[];
+      content?: { productList?: unknown[] } | unknown[];
       total?: number;
+      totalRecords?: number;
       pageNum?: number;
+      pageNumber?: number;
       pageSize?: number;
     }>("GET", "/product/listV2", {
       query: {
@@ -430,13 +434,25 @@ export class CjDropshippingClient {
         sort: params.sort ?? "desc",
       },
     });
-    const items = Array.isArray(raw.list)
-      ? (raw.list as Record<string, unknown>[]).map(mapProductSummary)
-      : [];
+    // CJ listV2 nests the array at data.content.productList (content is an
+    // object); older docs/sandboxes used a flat list/productList array.
+    const content = raw.content;
+    const listArray = Array.isArray(content)
+      ? content
+      : Array.isArray((content as { productList?: unknown } | undefined)?.productList)
+        ? (content as { productList: unknown[] }).productList
+        : undefined;
+    const items = (
+      Array.isArray(raw.list)
+        ? raw.list
+        : Array.isArray(raw.productList)
+          ? raw.productList
+          : (listArray ?? [])
+    ) as Record<string, unknown>[];
     return {
-      items,
-      total: toNumber(raw.total),
-      page: toNumber(raw.pageNum, 1),
+      items: items.map(mapProductSummary),
+      total: toNumber(raw.total ?? raw.totalRecords),
+      page: toNumber(raw.pageNum ?? raw.pageNumber, 1),
       pageSize: toNumber(raw.pageSize, items.length),
     };
   }
