@@ -385,7 +385,7 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
             ) : role === "child" ? (
               <ChildWorkspace />
             ) : (
-              <TeacherWorkspace section={teacherSection} />
+              <TeacherWorkspace section={teacherSection} onNavigateSection={setTeacherSection} />
             )}
           </main>
         </div>

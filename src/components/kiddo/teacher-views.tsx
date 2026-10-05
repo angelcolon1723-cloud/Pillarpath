@@ -10,6 +10,7 @@ import {
   Copy,
   Download,
   FileSpreadsheet,
+  FolderOpen,
   GraduationCap,
   LayoutDashboard,
   Library,
@@ -74,14 +75,22 @@ export type TeacherSection =
   | "leaderboard"
   | "studio"
   | "resources"
+  | "library"
   | "records"
   | "messages"
   | "chalkboard"
   | "deskchart"
   | "settings";
 
-export function TeacherWorkspace({ section }: { section: TeacherSection }) {
+export function TeacherWorkspace({
+  section,
+  onNavigateSection,
+}: {
+  section: TeacherSection;
+  onNavigateSection?: (section: TeacherSection) => void;
+}) {
   const [classroomId, setClassroomId] = useState<string | null>(null);
+  const [libraryMaterialId, setLibraryMaterialId] = useState<string | null>(null);
   const classrooms = useTeacher((s) => s.classrooms);
   const activeClassroom =
     classrooms.find((c) => c.id === classroomId) ?? classrooms[0] ?? null;
@@ -155,7 +164,20 @@ export function TeacherWorkspace({ section }: { section: TeacherSection }) {
           <TeacherShowcase activeClassroom={activeClassroom} />
         </>
       ) : null}
-      {section === "resources" ? <TeacherResources /> : null}
+      {section === "resources" ? (
+        <TeacherResources
+          externalOpenId={libraryMaterialId}
+          onExternalOpenConsumed={() => setLibraryMaterialId(null)}
+        />
+      ) : null}
+      {section === "library" ? (
+        <TeacherLibrary
+          onOpenMaterial={(resourceId: string) => {
+            setLibraryMaterialId(resourceId);
+            onNavigateSection?.("resources");
+          }}
+        />
+      ) : null}
       {section === "records" ? (
         lockedSection(section) ? (
           <VerificationLockedSection title={teacherNavLabels.records} />
@@ -206,7 +228,7 @@ function ClassroomPicker({
   );
 }
 
-function SectionHeader({
+export function SectionHeader({
   eyebrow,
   title,
   text,
@@ -1774,6 +1796,7 @@ import { SavingsPlan } from "@/components/kiddo/teacher-resources/savings-plan";
 import { MarketSim } from "@/components/kiddo/teacher-resources/market-sim";
 import { BusinessPlan } from "@/components/kiddo/teacher-resources/business-plan";
 import { DiscussionPrompts } from "@/components/kiddo/teacher-resources/discussion-prompts";
+import { TeacherLibrary } from "@/components/kiddo/teacher-library";
 
 const RESOURCE_CONTENT: Record<string, () => React.JSX.Element> = {
   "res-1": NeedsWantsDeck,
@@ -1784,9 +1807,21 @@ const RESOURCE_CONTENT: Record<string, () => React.JSX.Element> = {
   "res-6": DiscussionPrompts,
 };
 
-function TeacherResources() {
+function TeacherResources({
+  externalOpenId,
+  onExternalOpenConsumed,
+}: {
+  externalOpenId?: string | null;
+  onExternalOpenConsumed?: () => void;
+} = {}) {
   const resources = useTeacher((s) => s.resources);
   const [openId, setOpenId] = useState<string | null>(null);
+  useEffect(() => {
+    if (externalOpenId) {
+      setOpenId(externalOpenId);
+      onExternalOpenConsumed?.();
+    }
+  }, [externalOpenId]);
   const open = resources.find((r) => r.id === openId);
   const Content = open ? RESOURCE_CONTENT[open.id] : null;
 
@@ -2917,6 +2952,7 @@ export const teacherNavIcons = {
   leaderboard: Trophy,
   studio: Palette,
   resources: Library,
+  library: FolderOpen,
   records: FileSpreadsheet,
   messages: MessageSquare,
   chalkboard: Presentation,
@@ -2935,6 +2971,7 @@ export const teacherNavLabels: Record<TeacherSection, string> = {
   leaderboard: "Leaderboard",
   studio: "Creative Studio",
   resources: "Resources",
+  library: "Library",
   records: "Records",
   messages: "Messages",
   chalkboard: "Chalkboard",

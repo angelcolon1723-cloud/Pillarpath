@@ -2177,3 +2177,146 @@ export const answerPoll = createServerFn({ method: "POST" })
       do update set option_index = excluded.option_index, created_at = now()`;
     return { ok: true };
   });
+
+/* ------------------------------------------------------------------ */
+/* Teacher Library — folders for materials, notes, and quick links     */
+/* ------------------------------------------------------------------ */
+
+export interface LibraryItem {
+  id: string;
+  kind: "material" | "note" | "link";
+  title: string;
+  refId: string | null;
+  body: string | null;
+  createdAt: string;
+}
+
+export interface LibraryFolder {
+  id: string;
+  name: string;
+  items: LibraryItem[];
+  createdAt: string;
+}
+
+const DEFAULT_FOLDERS = ["Teaching Materials", "Student Work", "Progress & Records"];
+
+async function ensureLibrarySeed(sql: any, userId: string) {
+  const existing = await sql<{ count: number }>`
+    select count(*)::int as count from teacher_folders where user_id = ${userId}`;
+  if ((existing[0]?.count ?? 0) > 0) return;
+  for (const name of DEFAULT_FOLDERS) {
+    await sql`insert into teacher_folders (user_id, name) values (${userId}, ${name})`;
+  }
+  // Seed quick links: Student Work -> assignments, Progress & Records -> progress
+  const folders = await sql<{ id: string; name: string }>`
+    select id, name from teacher_folders where user_id = ${userId}`;
+  for (const f of folders) {
+    if (f.name === "Student Work") {
+      await sql`insert into teacher_library_items (user_id, folder_id, kind, title, ref_id, body)
+        values (${userId}, ${f.id}, 'link', 'Assignment submissions', 'assignments',
+                'Review and grade what students turned in.')`;
+    }
+    if (f.name === "Progress & Records") {
+      await sql`insert into teacher_library_items (user_id, folder_id, kind, title, ref_id, body)
+        values (${userId}, ${f.id}, 'link', 'Student progress', 'progress',
+                'Per-student progress across lessons and Units.'),
+               (${userId}, ${f.id}, 'link', 'Classroom records', 'records',
+                'Import/export rosters and records.')`;
+    }
+  }
+}
+
+export const listLibrary = createServerFn({ method: "GET" })
+  .middleware([roleMiddleware("teacher")])
+  .handler(async ({ context }): Promise<{ folders: LibraryFolder[] }> => {
+    const sql = await getSql();
+    await ensureLibrarySeed(sql, context.userId);
+    const folders = await sql<{ id: string; name: string; created_at: string }>`
+      select id, name, created_at::text as created_at from teacher_folders
+      where user_id = ${context.userId} order by created_at`;
+    const items = await sql<{
+      id: string; folder_id: string; kind: string; title: string;
+      ref_id: string | null; body: string | null; created_at: string;
+    }>`
+      select id, folder_id, kind, title, ref_id, body, created_at::text as created_at
+      from teacher_library_items
+      where user_id = ${context.userId} order by created_at`;
+    return {
+      folders: folders.map((f) => ({
+        id: f.id,
+        name: f.name,
+        createdAt: f.created_at,
+        items: items
+          .filter((i) => i.folder_id === f.id)
+          .map((i) => ({
+            id: i.id,
+            kind: i.kind as LibraryItem["kind"],
+            title: i.title,
+            refId: i.ref_id,
+            body: i.body,
+            createdAt: i.created_at,
+          })),
+      })),
+    };
+  });
+
+export const createFolder = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { name: string }) => input)
+  .handler(async ({ context, data }): Promise<{ id: string }> => {
+    const sql = await getSql();
+    const name = data.name.trim().slice(0, 40);
+    if (!name) throw new Error("Folder needs a name.");
+    const rows = await sql<{ id: string }>`
+      insert into teacher_folders (user_id, name) values (${context.userId}, ${name})
+      returning id`;
+    return { id: rows[0].id };
+  });
+
+export const renameFolder = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { id: string; name: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    const name = data.name.trim().slice(0, 40);
+    if (!name) throw new Error("Folder needs a name.");
+    await sql`update teacher_folders set name = ${name}
+              where id = ${data.id} and user_id = ${context.userId}`;
+    return { ok: true };
+  });
+
+export const deleteFolder = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { id: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    await sql`delete from teacher_folders where id = ${data.id} and user_id = ${context.userId}`;
+    return { ok: true };
+  });
+
+export const addLibraryItem = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { folderId: string; kind: "material" | "note" | "link"; title: string; refId?: string; body?: string }) => input)
+  .handler(async ({ context, data }): Promise<{ id: string }> => {
+    const sql = await getSql();
+    const folders = await sql<{ id: string }>`
+      select id from teacher_folders where id = ${data.folderId} and user_id = ${context.userId}`;
+    if (!folders.length) throw new Error("Folder not found.");
+    const title = data.title.trim().slice(0, 80);
+    if (!title) throw new Error("Item needs a title.");
+    const rows = await sql<{ id: string }>`
+      insert into teacher_library_items (user_id, folder_id, kind, title, ref_id, body)
+      values (${context.userId}, ${data.folderId}, ${data.kind}, ${title},
+              ${data.refId ?? null}, ${data.body ?? null})
+      returning id`;
+    return { id: rows[0].id };
+  });
+
+export const removeLibraryItem = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { id: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    await sql`delete from teacher_library_items where id = ${data.id} and user_id = ${context.userId}`;
+    return { ok: true };
+  });
