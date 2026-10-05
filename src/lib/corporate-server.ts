@@ -835,7 +835,7 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
       }
       // Minimal probe: listV2 with size 1.
       const probe = await fetch(
-        "https://developers.cjdropshipping.com/api2.0/v1/product/listV2?page=1&size=1",
+        "https://developers.cjdropshipping.com/api2.0/v1/product/listV2?keyWord=squishy&page=1&size=1",
         { headers: { "CJ-Access-Token": String(token), "Content-Type": "application/json" } },
       );
       const pbody = (await probe.json().catch(() => null)) as any;
@@ -845,10 +845,24 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
       // Expose the raw listV2 shape so we can fix the product mapping.
       const probeData = (pbody as any)?.data ?? (pbody as any)?.result ?? null;
       out.probeDataKeys = probeData && typeof probeData === "object" ? Object.keys(probeData).join(",") : String(probeData ?? "null");
-      const firstItem = Array.isArray((probeData as any)?.list) ? (probeData as any).list[0]
-        : Array.isArray((probeData as any)?.productList) ? (probeData as any).productList[0]
-        : Array.isArray((probeData as any)?.content) ? (probeData as any).content[0] : null;
-      out.probeItemKeys = firstItem && typeof firstItem === "object" ? Object.keys(firstItem).slice(0, 12).join(",") : "no items";
+      const contentObj = (probeData as any)?.content;
+      const productList = Array.isArray(contentObj?.productList) ? contentObj.productList
+        : Array.isArray((probeData as any)?.productList) ? (probeData as any).productList
+        : Array.isArray((probeData as any)?.list) ? (probeData as any).list : [];
+      const firstItem = productList[0];
+      out.probeItemKeys = firstItem && typeof firstItem === "object" ? Object.keys(firstItem).slice(0, 25).join(",") : "no items";
+      // Sample values for key fields to nail the mapping.
+      if (firstItem) {
+        const fi = firstItem as any;
+        out.probeItemSample = JSON.stringify({
+          id: fi.id ?? fi.pid ?? fi.productId,
+          name: (fi.productNameEn ?? fi.nameEn ?? fi.productName ?? "").slice(0, 40),
+          image: fi.productImage ?? fi.bigImage ?? fi.image,
+          price: fi.sellPrice ?? fi.productSellPrice ?? fi.price,
+          sku: fi.productSku ?? fi.sku,
+          warehouse: fi.warehouse ?? fi.countryCode,
+        }).slice(0, 300);
+      }
       // Side-by-side: run the real client's searchProducts with the SAME
       // freshly-fetched token (no second getAccessToken — CJ rate-limits it).
       try {
