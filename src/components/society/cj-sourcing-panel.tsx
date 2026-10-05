@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Search, Loader2, Check, ShieldCheck } from "lucide-react";
+import { Search, Loader2, Check, ShieldCheck, ChevronDown, ClipboardCheck } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -83,8 +83,52 @@ export function CjSourcingPanel({ onImported }: { onImported: () => void }) {
     }
   };
 
+  const [showGates, setShowGates] = useState(false);
+
   return (
     <div className="space-y-4">
+      <Card className="border-accent/30 p-4">
+        <button
+          type="button"
+          onClick={() => setShowGates((v) => !v)}
+          className="flex w-full items-center gap-2 text-left text-sm font-semibold"
+        >
+          <ClipboardCheck className="size-4 shrink-0 text-accent" />
+          <span className="flex-1">From search to live shelf — your 5 gates 🧸</span>
+          <ChevronDown className={cn("size-4 text-muted transition-transform", showGates && "rotate-180")} />
+        </button>
+        {showGates && (
+          <div className="mt-3 space-y-3 text-xs leading-relaxed">
+            <div>
+              <p className="font-semibold text-accent">Gate 1 — Pick</p>
+              <p className="text-muted">Search or tap a quick chip with the US-warehouse filter ON (2–7 day delivery, simpler compliance). Favor clear photos, real reviews, steady stock.</p>
+            </div>
+            <div>
+              <p className="font-semibold text-accent">Gate 2 — Screen (automatic)</p>
+              <p className="text-muted">"Import to stockroom" runs each pick through kid-safety screening. Auto-quarantined: unlicensed character IP, uncertified baby/toddler items, anything adult or dangerous.</p>
+            </div>
+            <div>
+              <p className="font-semibold text-accent">Gate 3 — Comply (per product, before samples)</p>
+              <ul className="list-disc space-y-1 pl-4 text-muted">
+                <li>Get the CPSC-accepted lab report: ASTM F963-23 (lead + phthalates minimum); squishies also need flammability + small-parts tests.</li>
+                <li>US-warehouse stock → ask the supplier for <span className="font-semibold text-ink">their</span> CPC + lab report and file it (they were the importer, not you).</li>
+                <li>Direct-from-China → <span className="font-semibold text-ink">you</span> issue the Children's Product Certificate as importer of record — their cert alone doesn't cover you.</li>
+                <li>Permanent tracking labels on product + packaging (maker, location, date, batch) — not stickers. Keep every record 5 years, one compliance folder.</li>
+                <li>Stakes: up to $100k per violation, $15M for a series. CBP can hold shipments over missing paperwork.</li>
+              </ul>
+            </div>
+            <div>
+              <p className="font-semibold text-accent">Gate 4 — Sample</p>
+              <p className="text-muted">Order physical samples of finalists before anything publishes — the photo and the real product are often two different things.</p>
+            </div>
+            <div>
+              <p className="font-semibold text-accent">Gate 5 — Publish</p>
+              <p className="text-muted">Approve in the stockroom → set retail (cost + margin, .99 endings) → publish → live on the kids' shelf.</p>
+            </div>
+          </div>
+        )}
+      </Card>
+
       <Card className="p-4">
         <p className="text-sm font-semibold">🔍 Source from CJ Dropshipping</p>
         <p className="mt-1 text-xs text-muted">
