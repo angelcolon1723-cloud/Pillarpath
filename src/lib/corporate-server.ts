@@ -842,6 +842,13 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
       out.probeCode = String(pbody?.code ?? probe.status);
       out.probeMessage = String(pbody?.message ?? "no message").slice(0, 120);
       out.probeRequestId = String(pbody?.requestId ?? "none");
+      // Expose the raw listV2 shape so we can fix the product mapping.
+      const probeData = (pbody as any)?.data ?? (pbody as any)?.result ?? null;
+      out.probeDataKeys = probeData && typeof probeData === "object" ? Object.keys(probeData).join(",") : String(probeData ?? "null");
+      const firstItem = Array.isArray((probeData as any)?.list) ? (probeData as any).list[0]
+        : Array.isArray((probeData as any)?.productList) ? (probeData as any).productList[0]
+        : Array.isArray((probeData as any)?.content) ? (probeData as any).content[0] : null;
+      out.probeItemKeys = firstItem && typeof firstItem === "object" ? Object.keys(firstItem).slice(0, 12).join(",") : "no items";
       // Side-by-side: run the real client's searchProducts with the SAME
       // freshly-fetched token (no second getAccessToken — CJ rate-limits it).
       try {
