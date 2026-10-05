@@ -895,7 +895,7 @@ export function FamilyProfiles({
   onRefresh: () => Promise<void>;
 }) {
   const [childName, setChildName] = useState("");
-  const [childAge, setChildAge] = useState(10);
+  const [childAge, setChildAge] = useState("10");
   const [invites, setInvites] = useState<FamilyInvite[]>([]);
   const [generating, setGenerating] = useState(false);
   const setStudioAge = useLedger((s) => s.setChildAge);
@@ -915,11 +915,13 @@ export function FamilyProfiles({
 
   async function generateCode() {
     if (!childName.trim() || generating) return;
+    const age = Math.max(3, Math.min(18, parseInt(childAge, 10) || 10));
     setGenerating(true);
     try {
-      await createFamilyInvite({ data: { name: childName, age: childAge } });
-      setStudioAge(childAge);
+      await createFamilyInvite({ data: { name: childName, age } });
+      setStudioAge(age);
       setChildName("");
+      setChildAge("10");
       await loadInvites();
       await onRefresh();
       toast.success("Pairing code created — enter it on your child's device");
@@ -1100,7 +1102,7 @@ export function FamilyProfiles({
               min={3}
               max={18}
               value={childAge}
-              onChange={(e) => setChildAge(Number(e.target.value))}
+              onChange={(e) => setChildAge(e.target.value)}
             />
             <Button onClick={generateCode} disabled={generating || !childName.trim()}>
               {generating ? "Creating…" : "Generate pairing code"}
