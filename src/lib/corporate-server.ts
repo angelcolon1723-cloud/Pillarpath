@@ -835,6 +835,16 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
       out.probeCode = String(pbody?.code ?? probe.status);
       out.probeMessage = String(pbody?.message ?? "no message").slice(0, 120);
       out.probeRequestId = String(pbody?.requestId ?? "none");
+      // Side-by-side: run the real client's searchProducts with a FRESH
+      // (never-cached) token to see if the client itself is the problem.
+      try {
+        const { CjDropshippingClient } = await import("@/lib/suppliers/cjdropshipping");
+        const freshClient = new CjDropshippingClient({ apiKey: apiKey.trim() });
+        const page = await freshClient.searchProducts({ keyWord: "squishy", size: 1 });
+        out.clientProbe = `OK — ${page.total} total, ${page.items.length} items`;
+      } catch (ce) {
+        out.clientProbe = `FAIL — ${ce instanceof Error ? ce.message.slice(0, 160) : "unknown"}`;
+      }
     } catch (e) {
       out.error = e instanceof Error ? e.message.slice(0, 120) : "unknown";
     }
