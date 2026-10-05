@@ -29,6 +29,7 @@ export function NeedsWantsDeck() {
     <ResourceShell
       title="Needs vs. Wants card deck"
       subtitle="20 printable sorting cards — the foundation of every spending decision."
+      resourceId="res-1"
     >
       <HowToUse
         steps={[

@@ -6,6 +6,7 @@ export function BusinessPlan() {
     <ResourceShell
       title="Business plan one-pager"
       subtitle="From idea to profit — on a single page."
+      resourceId="res-5"
     >
       <HowToUse
         steps={[

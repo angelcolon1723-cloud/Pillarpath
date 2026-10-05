@@ -14,6 +14,7 @@ export function MarketSim() {
     <ResourceShell
       title="Market simulation board"
       subtitle="A 5-round classroom game — supply, demand, and why prices move."
+      resourceId="res-4"
     >
       <HowToUse
         steps={[

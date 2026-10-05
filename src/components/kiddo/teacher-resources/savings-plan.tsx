@@ -6,6 +6,7 @@ export function SavingsPlan() {
     <ResourceShell
       title="Savings plan template"
       subtitle="Turn 'I want that' into a plan with a number and a date."
+      resourceId="res-3"
     >
       <HowToUse
         steps={[

@@ -12,6 +12,7 @@ export function BudgetGrid() {
     <ResourceShell
       title="Weekly budget grid"
       subtitle="A 100-Unit allocation worksheet — every Unit gets a job."
+      resourceId="res-2"
     >
       <HowToUse
         steps={[

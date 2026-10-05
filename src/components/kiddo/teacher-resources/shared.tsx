@@ -1,6 +1,9 @@
-import { Printer } from "lucide-react";
+import { useEffect, useState } from "react";
+import { Printer, FolderInput, Loader2, Check } from "lucide-react";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { listLibrary, addLibraryItem } from "@/lib/teacher-server";
 
 export function PrintButton() {
   return (
@@ -15,13 +18,78 @@ export function PrintButton() {
   );
 }
 
+export function SaveToLibraryButton({ resourceId, title }: { resourceId: string; title: string }) {
+  const [folders, setFolders] = useState<Array<{ id: string; name: string }> | null>(null);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [savedId, setSavedId] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (open && folders === null) {
+      listLibrary()
+        .then((r) => setFolders(r.folders.map((f) => ({ id: f.id, name: f.name }))))
+        .catch(() => setFolders([]));
+    }
+  }, [open, folders]);
+
+  const save = async (folderId: string, folderName: string) => {
+    setBusy(true);
+    try {
+      await addLibraryItem({ data: { folderId, kind: "material", title, refId: resourceId } });
+      setSavedId(folderId);
+      toast.success(`📁 Saved to "${folderName}"`);
+      setTimeout(() => setOpen(false), 800);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't save.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="relative print:hidden">
+      <Button variant="outline" size="sm" onClick={() => setOpen((v) => !v)}>
+        <FolderInput className="size-3.5" /> Save to Library
+      </Button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-2 w-56 rounded-xl border border-border bg-surface p-2 shadow-lg">
+          {folders === null ? (
+            <p className="p-2 text-xs text-muted">Loading folders…</p>
+          ) : folders.length === 0 ? (
+            <p className="p-2 text-xs text-muted">No folders yet — create one in the Library.</p>
+          ) : (
+            folders.map((f) => (
+              <button
+                key={f.id}
+                type="button"
+                disabled={busy}
+                onClick={() => save(f.id, f.name)}
+                className="flex w-full items-center justify-between rounded-lg px-3 py-2 text-left text-sm hover:bg-surface-2"
+              >
+                <span className="truncate">📁 {f.name}</span>
+                {busy ? (
+                  <Loader2 className="size-3.5 animate-spin text-muted" />
+                ) : savedId === f.id ? (
+                  <Check className="size-3.5 text-emerald-500" />
+                ) : null}
+              </button>
+            ))
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function ResourceShell({
   title,
   subtitle,
+  resourceId,
   children,
 }: {
   title: string;
   subtitle: string;
+  resourceId?: string;
   children: React.ReactNode;
 }) {
   return (
@@ -31,7 +99,10 @@ export function ResourceShell({
           <h1 className="font-display text-2xl font-semibold tracking-tight">{title}</h1>
           <p className="mt-1 text-sm text-muted">{subtitle}</p>
         </div>
-        <PrintButton />
+        <div className="flex gap-2">
+          {resourceId && <SaveToLibraryButton resourceId={resourceId} title={title} />}
+          <PrintButton />
+        </div>
       </div>
       <div className="print-content space-y-4">{children}</div>
     </div>

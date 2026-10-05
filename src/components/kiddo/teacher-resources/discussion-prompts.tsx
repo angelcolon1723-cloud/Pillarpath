@@ -49,6 +49,7 @@ export function DiscussionPrompts() {
     <ResourceShell
       title="Discussion prompts: spending choices"
       subtitle="Ten circle-time conversations about tradeoffs — the thinking behind the spending."
+      resourceId="res-6"
     >
       <HowToUse
         steps={[
