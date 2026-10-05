@@ -30,6 +30,8 @@ import { Input, FieldLabel, NativeSelect } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ProductIcon } from "@/components/kiddo/product-icon";
 import { SpendingInsightsPanel } from "@/components/kiddo/spending-insights";
+import { MoneyMomentsPanel } from "@/components/kiddo/money-moments";
+import { GiftModePanel } from "@/components/kiddo/gift-mode";
 import type { ProductIcon as ProductIconId } from "@/lib/products";
 import { bandForAge } from "@/lib/studio-path";
 import { cn } from "@/lib/utils";
@@ -207,6 +209,8 @@ export function Dashboard({
         />
       </div>
       <SpendingInsightsPanel />
+      <MoneyMomentsPanel />
+      <GiftModePanel kids={data.children.map((c) => ({ id: c.id, name: c.name }))} />
       <div className="grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
         <Card className="overflow-hidden p-0">
           <div className="flex items-center justify-between border-b border-border px-5 py-4">

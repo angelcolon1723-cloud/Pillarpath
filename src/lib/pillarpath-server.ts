@@ -648,3 +648,233 @@ export const getSpendingInsights = createServerFn({ method: "GET" })
     if (kids.length > 1) insights.unshift(build(null, "Whole family"));
     return { insights };
   });
+
+/* ------------------------------------------------------------------ */
+/* Money Moments — conversation starters for parents                    */
+/* ------------------------------------------------------------------ */
+
+export interface MoneyMoment {
+  id: string;
+  icon: string;
+  headline: string;
+  prompt: string;
+  at: string;
+}
+
+/**
+ * Turn recent Units activity into conversation starters.
+ * Financial literacy sticks through dialogue, not dashboards.
+ */
+export const getMoneyMoments = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<{ moments: MoneyMoment[] }> => {
+    const sql = await getSql();
+    const txs = await sql<{
+      id: string; child_id: number | null; kind: string; amount: number;
+      note: string | null; created_at: string; child_name: string | null;
+    }>`
+      select t.id, t.child_id, t.kind, t.amount, t.note,
+             t.created_at::text as created_at, c.name as child_name
+      from units_transactions t
+      left join children c on c.id = t.child_id
+      where t.user_id = ${context.userId}
+        and t.created_at > now() - interval '7 days'
+      order by t.created_at desc
+      limit 50`;
+
+    const moments: MoneyMoment[] = [];
+    const seen = new Set<string>();
+    const name = (t: { child_name: string | null }) => t.child_name ?? "Your kid";
+
+    for (const t of txs) {
+      const n = name(t);
+      if (t.kind === "give" && !seen.has(`give-${t.child_id}`)) {
+        seen.add(`give-${t.child_id}`);
+        moments.push({
+          id: `m-${t.id}`,
+          icon: "❤️",
+          headline: `${n} gave ${Math.abs(t.amount).toLocaleString()} Units`,
+          prompt: `Ask ${n}: "What made you want to give? How did it feel after?" Generosity noticed is generosity repeated.`,
+          at: t.created_at,
+        });
+      }
+      if (t.kind === "goal" && !seen.has(`goal-${t.child_id}`)) {
+        seen.add(`goal-${t.child_id}`);
+        moments.push({
+          id: `m-${t.id}`,
+          icon: "🎯",
+          headline: `${n} saved toward a goal`,
+          prompt: `Ask ${n}: "What's the thing you're saving for — and what will it feel like when you get there?"`,
+          at: t.created_at,
+        });
+      }
+      if (t.kind === "earn" && t.amount >= 50 && !seen.has(`earn-${t.child_id}`)) {
+        seen.add(`earn-${t.child_id}`);
+        moments.push({
+          id: `m-${t.id}`,
+          icon: "💪",
+          headline: `${n} earned ${t.amount.toLocaleString()} Units${t.note ? ` (${t.note})` : ""}`,
+          prompt: `Celebrate the work first — then ask: "What's your plan for these Units: save, spend, or share?"`,
+          at: t.created_at,
+        });
+      }
+      if (t.kind === "spend" && Math.abs(t.amount) >= 100 && !seen.has(`spend-${t.child_id}`)) {
+        seen.add(`spend-${t.child_id}`);
+        moments.push({
+          id: `m-${t.id}`,
+          icon: "🛒",
+          headline: `${n} spent ${Math.abs(t.amount).toLocaleString()} Units`,
+          prompt: `No judgment — ask: "Was it worth it? What would you do differently?" Reflection beats lectures.`,
+          at: t.created_at,
+        });
+      }
+      if (t.kind === "vault" && !seen.has(`vault-${t.child_id}`)) {
+        seen.add(`vault-${t.child_id}`);
+        moments.push({
+          id: `m-${t.id}`,
+          icon: "🏦",
+          headline: `${n} put Units in the vault`,
+          prompt: `Ask ${n}: "Do you know what those Units will be worth later? Let's look at the Vault together."`,
+          at: t.created_at,
+        });
+      }
+      if (moments.length >= 5) break;
+    }
+
+    return { moments };
+  });
+
+/* ------------------------------------------------------------------ */
+/* Gift Mode — wishes, occasions, family contributions                  */
+/* ------------------------------------------------------------------ */
+
+export interface GiftContribution {
+  id: string;
+  contributorName: string;
+  amountUnits: number;
+  message: string | null;
+  createdAt: string;
+}
+
+export interface GiftWish {
+  id: string;
+  childId: number;
+  childName: string;
+  title: string;
+  emoji: string;
+  costUnits: number;
+  fundedUnits: number;
+  occasion: string | null;
+  status: "open" | "gifted";
+  createdAt: string;
+  progressPct: number;
+  contributions: GiftContribution[];
+}
+
+function toGiftWish(r: {
+  id: string; child_id: number; child_name: string; title: string; emoji: string;
+  cost_units: number; funded_units: number; occasion: string | null;
+  status: string; created_at: string;
+}, contributions: GiftContribution[]): GiftWish {
+  return {
+    id: r.id, childId: r.child_id, childName: r.child_name, title: r.title,
+    emoji: r.emoji, costUnits: r.cost_units, fundedUnits: r.funded_units,
+    occasion: r.occasion, status: r.status as GiftWish["status"],
+    createdAt: r.created_at,
+    progressPct: r.cost_units > 0 ? Math.min(100, Math.round((r.funded_units / r.cost_units) * 100)) : 0,
+    contributions,
+  };
+}
+
+export const createGiftWish = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number; title: string; emoji?: string; costUnits: number; occasion?: string }) => input)
+  .handler(async ({ context, data }): Promise<{ id: string }> => {
+    const sql = await getSql();
+    const title = data.title.trim().slice(0, 60);
+    const cost = Math.floor(Number(data.costUnits));
+    if (!title) throw new Error("Name the wish.");
+    if (!Number.isFinite(cost) || cost < 1) throw new Error("Cost must be at least 1 Unit.");
+    const kids = await sql<{ id: number }>`
+      select id from children where id = ${data.childId} and user_id = ${context.userId}`;
+    if (!kids.length) throw new Error("Child not found.");
+    const rows = await sql<{ id: string }>`
+      insert into gift_wishes (user_id, child_id, title, emoji, cost_units, occasion)
+      values (${context.userId}, ${data.childId}, ${title}, ${data.emoji ?? "🎁"}, ${cost},
+              ${data.occasion?.trim().slice(0, 40) || null})
+      returning id`;
+    return { id: rows[0].id };
+  });
+
+export const listGiftWishes = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<{ wishes: GiftWish[] }> => {
+    const sql = await getSql();
+    const wishes = await sql<{
+      id: string; child_id: number; child_name: string; title: string; emoji: string;
+      cost_units: number; funded_units: number; occasion: string | null;
+      status: string; created_at: string;
+    }>`
+      select w.id, w.child_id, c.name as child_name, w.title, w.emoji,
+             w.cost_units, w.funded_units, w.occasion, w.status,
+             w.created_at::text as created_at
+      from gift_wishes w
+      join children c on c.id = w.child_id
+      where w.user_id = ${context.userId}
+      order by w.status asc, w.created_at desc`;
+    const contribs = await sql<{
+      id: string; wish_id: string; contributor_name: string;
+      amount_units: number; message: string | null; created_at: string;
+    }>`
+      select gc.id, gc.wish_id, gc.contributor_name, gc.amount_units, gc.message,
+             gc.created_at::text as created_at
+      from gift_contributions gc
+      join gift_wishes w on w.id = gc.wish_id
+      where w.user_id = ${context.userId}
+      order by gc.created_at`;
+    return {
+      wishes: wishes.map((w) =>
+        toGiftWish(w, contribs
+          .filter((c) => c.wish_id === w.id)
+          .map((c) => ({
+            id: c.id, contributorName: c.contributor_name,
+            amountUnits: c.amount_units, message: c.message, createdAt: c.created_at,
+          }))),
+      ),
+    };
+  });
+
+/** Family member pledges toward a wish (no Units move — fulfilled in real life). */
+export const contributeToWish = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { wishId: string; contributorName: string; amountUnits: number; message?: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    const amount = Math.floor(Number(data.amountUnits));
+    const name = data.contributorName.trim().slice(0, 40);
+    if (!name) throw new Error("Who's contributing?");
+    if (!Number.isFinite(amount) || amount < 1) throw new Error("Amount must be at least 1.");
+    const wishes = await sql<{ id: string; funded_units: number; cost_units: number }>`
+      select id, funded_units, cost_units from gift_wishes
+      where id = ${data.wishId} and user_id = ${context.userId} and status = 'open'`;
+    if (!wishes.length) throw new Error("Wish not found or already gifted.");
+    await sql`
+      insert into gift_contributions (user_id, wish_id, contributor_name, amount_units, message)
+      values (${context.userId}, ${data.wishId}, ${name}, ${amount},
+              ${data.message?.trim().slice(0, 120) || null})`;
+    await sql`
+      update gift_wishes
+      set funded_units = funded_units + ${amount},
+          status = case when funded_units + ${amount} >= cost_units then 'gifted' else 'open' end
+      where id = ${data.wishId}`;
+    return { ok: true };
+  });
+
+export const deleteGiftWish = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { wishId: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    await sql`delete from gift_wishes where id = ${data.wishId} and user_id = ${context.userId}`;
+    return { ok: true };
+  });
