@@ -78,6 +78,11 @@ export async function primeCjClientFromCache(
     orig(t);
     void saveCjToken(t).catch(() => {});
   };
+  // If CJ rejects the token, drop the DB row so the next invocation fetches
+  // fresh instead of retrying a known-bad token.
+  client.onAuthFailure = async () => {
+    await clearCjToken().catch(() => {});
+  };
 }
 
 /**

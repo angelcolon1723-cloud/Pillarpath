@@ -220,6 +220,12 @@ export class CjDropshippingClient {
     this.tokenPromise = null;
   }
 
+  /**
+   * Hook fired when CJ rejects the token. The DB-cache wrapper sets this to
+   * clear the cached (bad) token so the next invocation fetches fresh.
+   */
+  onAuthFailure: (() => Promise<void>) | null = null;
+
   /* ---------------- auth ---------------- */
 
   private async fetchToken(): Promise<string> {
@@ -358,10 +364,16 @@ export class CjDropshippingClient {
         return await this.parseEnvelope<T>(res, `${method} ${path}`);
       } catch (err) {
         if (this.isAuthError(err) && !refreshed) {
-          // Token went stale mid-flight — drop it and retry once.
+          // Token rejected by CJ. Do NOT re-fetch: CJ server-side-caches the
+          // token for 24h, so getAccessToken would return the same rejected
+          // token and just burn the 1 QPS limit. Drop it and fail honestly —
+          // the next invocation fetches fresh after the cache is cleared.
           refreshed = true;
           this.token = null;
-          continue;
+          if (this.onAuthFailure) {
+            await this.onAuthFailure().catch(() => {});
+          }
+          throw err;
         }
         if (err instanceof CjApiError && err.retryable && attempt < MAX_RETRIES) {
           attempt += 1;
