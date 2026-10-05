@@ -369,7 +369,25 @@ export const testCjConnection = createServerFn({ method: "POST" })
       }
       // Prove the token actually opens product data — token issuance alone is
       // NOT enough (keys can authenticate yet lack product access).
-      const probe = await client.searchProducts({ size: 1 });
+      let probe;
+      try {
+        probe = await client.searchProducts({ size: 1 });
+      } catch (e) {
+        const cjErr = e instanceof CjApiError ? (e as CjApiError) : null;
+        // 1600001 with a cached token = stale scoped-down token. CJ
+        // server-side-caches tokens for 24h, so the in-client logout+retry can
+        // still get the same bad token. Nuke the DB cache and retry with a
+        // brand-new client that fetches completely fresh.
+        if (cjErr && String(cjErr.code) === "1600001") {
+          const { clearCjToken } = await import("@/lib/suppliers/cj-token-store");
+          await clearCjToken().catch(() => {});
+          const fresh = await createCachedCjClient();
+          if (!fresh) throw e;
+          probe = await fresh.searchProducts({ size: 1 });
+        } else {
+          throw e;
+        }
+      }
       await audit(context.userId, "corporate.cj.test", undefined, { ok: true });
       return {
         ok: true,
