@@ -4,6 +4,7 @@ import {
   Bell,
   BookOpen,
   Check,
+  ChevronRight,
   ClipboardList,
   Coins,
   Copy,
@@ -1767,29 +1768,67 @@ function TeacherProgress({
 /* Resources                                                           */
 /* ------------------------------------------------------------------ */
 
+import { NeedsWantsDeck } from "@/components/kiddo/teacher-resources/needs-wants";
+import { BudgetGrid } from "@/components/kiddo/teacher-resources/budget-grid";
+import { SavingsPlan } from "@/components/kiddo/teacher-resources/savings-plan";
+import { MarketSim } from "@/components/kiddo/teacher-resources/market-sim";
+import { BusinessPlan } from "@/components/kiddo/teacher-resources/business-plan";
+import { DiscussionPrompts } from "@/components/kiddo/teacher-resources/discussion-prompts";
+
+const RESOURCE_CONTENT: Record<string, () => React.JSX.Element> = {
+  "res-1": NeedsWantsDeck,
+  "res-2": BudgetGrid,
+  "res-3": SavingsPlan,
+  "res-4": MarketSim,
+  "res-5": BusinessPlan,
+  "res-6": DiscussionPrompts,
+};
+
 function TeacherResources() {
   const resources = useTeacher((s) => s.resources);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const open = resources.find((r) => r.id === openId);
+  const Content = open ? RESOURCE_CONTENT[open.id] : null;
+
+  if (open && Content) {
+    return (
+      <div className="space-y-4">
+        <button
+          type="button"
+          onClick={() => setOpenId(null)}
+          className="text-sm font-semibold text-accent hover:underline print:hidden"
+        >
+          ← All teaching materials
+        </button>
+        <Content />
+      </div>
+    );
+  }
+
   return (
     <div className="space-y-5">
       <SectionHeader
         eyebrow="Resources"
         title="Teaching materials"
-        text="Lesson plans, worksheets, and classroom activities included with PillarPath."
+        text="Lesson plans, worksheets, and classroom activities included with PillarPath. Tap one to open the full material — then print it."
       />
       <div className="grid gap-3">
         {resources.map((r) => (
-          <Card key={r.id} className="flex gap-3 p-4">
-            <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
-              <Library className="size-5" />
-            </span>
-            <div>
-              <div className="flex items-center gap-2">
-                <h2 className="font-semibold">{r.title}</h2>
-                <Badge tone="muted">{r.kind}</Badge>
+          <button key={r.id} type="button" onClick={() => setOpenId(r.id)} className="text-left">
+            <Card className="flex items-center gap-3 p-4 transition-shadow hover:shadow-md">
+              <span className="flex size-10 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
+                <Library className="size-5" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <h2 className="font-semibold">{r.title}</h2>
+                  <Badge tone="muted">{r.kind}</Badge>
+                </div>
+                <p className="mt-1 text-sm text-muted">{r.description}</p>
               </div>
-              <p className="mt-1 text-sm text-muted">{r.description}</p>
-            </div>
-          </Card>
+              <ChevronRight className="size-5 shrink-0 text-muted" />
+            </Card>
+          </button>
         ))}
       </div>
     </div>
