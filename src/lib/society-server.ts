@@ -457,7 +457,7 @@ export const reviewTeacherVerification = createServerFn({ method: "POST" })
 /* CJ product sourcing — live catalog search + import to stockroom       */
 /* ------------------------------------------------------------------ */
 
-import { createCjClientFromEnv } from "@/lib/suppliers/cjdropshipping";
+import { createCachedCjClient } from "@/lib/suppliers/cj-token-store";
 import {
   cjDetailToImport,
   upsertSupplierProduct,
@@ -479,7 +479,7 @@ export const searchCjProducts = createServerFn({ method: "POST" })
   .middleware([roleMiddleware("admin")])
   .validator((input: { keyword: string; usOnly?: boolean; maxPrice?: number }) => input)
   .handler(async ({ data }): Promise<{ hits: CjSearchHit[]; total: number }> => {
-    const client = createCjClientFromEnv();
+    const client = await createCachedCjClient();
     if (!client) throw new Error("CJ API key not configured.");
     const kw = data.keyword.trim();
     if (!kw) return { hits: [], total: 0 };
@@ -511,7 +511,7 @@ export const importCjSelection = createServerFn({ method: "POST" })
   .middleware([roleMiddleware("admin")])
   .validator((input: { pids: string[] }) => input)
   .handler(async ({ data }): Promise<{ imported: number; verdicts: string[] }> => {
-    const client = createCjClientFromEnv();
+    const client = await createCachedCjClient();
     if (!client) throw new Error("CJ API key not configured.");
     const pids = [...new Set(data.pids)].slice(0, 12);
     if (!pids.length) throw new Error("Pick at least one product.");

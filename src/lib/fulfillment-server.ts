@@ -1,7 +1,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware, roleMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
-import { createCjClientFromEnv } from "@/lib/suppliers/cjdropshipping";
+import { createCachedCjClient } from "@/lib/suppliers/cj-token-store";
 
 /* ------------------------------------------------------------------ */
 /* Physical fulfillment: Units approval -> doorstep delivery             */
@@ -220,7 +220,7 @@ export const listMyOrders = createServerFn({ method: "GET" })
 
 async function submitCjFulfillment(orderId: number): Promise<void> {
   const sql = await getSql();
-  const client = createCjClientFromEnv();
+  const client = await createCachedCjClient();
   if (!client) {
     await sql`update supplier_orders set status = 'failed', payload = payload || '{"error":"CJ_API_KEY not configured"}'::jsonb, updated_at = now() where order_id = ${orderId}`;
     return;

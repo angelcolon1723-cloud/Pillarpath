@@ -16,7 +16,7 @@
 import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware, ForbiddenError } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
-import { createCjClientFromEnv } from "@/lib/suppliers/cjdropshipping";
+import { createCachedCjClient } from "@/lib/suppliers/cj-token-store";
 import {
   DEPARTMENTS,
   ROLES,
@@ -360,46 +360,32 @@ export const testCjConnection = createServerFn({ method: "POST" })
     if (!status.isCorporate || !hasGrant(status.permissions, "suppliers", "manage")) {
       throw new ForbiddenError("corporate:suppliers:manage");
     }
-    const apiKey = process.env.CJ_API_KEY;
-    if (!apiKey) {
-      return { ok: false, message: "CJ_API_KEY is not set on the server." };
-    }
     try {
-      // Phase 1: token issuance proves the key exists.
-      const res = await fetch("https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apiKey }),
-      });
-      const body = (await res.json().catch(() => null)) as {
-        code?: number; message?: string; data?: { accessToken?: string; accessTokenExpiryDate?: string };
-      } | null;
-      const token = body?.data?.accessToken;
-      if (!token) {
-        return { ok: false, message: `CJ rejected the key: ${body?.message ?? `HTTP ${res.status}`}` };
+      // Uses the DB token cache — no redundant getAccessToken call, no QPS burn.
+      const client = await createCachedCjClient();
+      if (!client) {
+        return { ok: false, message: "CJ_API_KEY is not set on the server." };
       }
-      // Phase 2: prove the token actually opens product data — token issuance
-      // alone is NOT enough (keys can authenticate yet lack product access).
-      const probe = await fetch(
-        "https://developers.cjdropshipping.com/api2.0/v1/product/getCategory",
-        { headers: { "CJ-Access-Token": token } },
-      );
-      const probeBody = (await probe.json().catch(() => null)) as {
-        code?: number; message?: string;
-      } | null;
-      if (probeBody && (probeBody.code === 200 || probeBody.code === "200" as unknown as number)) {
-        await audit(context.userId, "corporate.cj.test", undefined, { ok: true });
-        return {
-          ok: true,
-          message: `CJ fully verified — token issued AND product data accessible (valid until ${body.data?.accessTokenExpiryDate ?? "unknown"}).`,
-        };
-      }
+      // Prove the token actually opens product data — token issuance alone is
+      // NOT enough (keys can authenticate yet lack product access).
+      const probe = await client.searchProducts({ size: 1 });
+      await audit(context.userId, "corporate.cj.test", undefined, { ok: true });
       return {
-        ok: false,
-        message: `Key connects but product access is blocked: ${probeBody?.message ?? `HTTP ${probe.status}`}. In your CJ dashboard, open Apps → API and confirm the key's Status is "Activated" with product permissions enabled.`,
+        ok: true,
+        message: `CJ fully verified — token issued AND product catalog accessible (${probe.total.toLocaleString()} products indexed).`,
       };
     } catch (e) {
-      return { ok: false, message: `Could not reach CJ's API: ${e instanceof Error ? e.message : "network error"}` };
+      const msg = e instanceof Error ? e.message : "network error";
+      if (/too many requests|qps/i.test(msg)) {
+        return { ok: false, message: "CJ rate limit hit (1 call/sec) — wait a few seconds and tap again." };
+      }
+      if (/invalid api key|access token/i.test(msg)) {
+        return {
+          ok: false,
+          message: "Key connects but product access is blocked. In your CJ dashboard: Apps → API → confirm the key's Status is “Activated”.",
+        };
+      }
+      return { ok: false, message: `CJ test failed: ${msg}` };
     }
   });
 
@@ -694,7 +680,7 @@ export const payCjOrder = createServerFn({ method: "POST" })
     if (!rows.length || !rows[0].supplier_order_id) {
       throw new Error("No CJ order exists for this yet — submit it first.");
     }
-    const client = createCjClientFromEnv();
+    const client = await createCachedCjClient();
     if (!client) throw new Error("CJ_API_KEY is not configured.");
     const ok = await client.payOrderWithBalance(rows[0].supplier_order_id);
     if (ok) {
@@ -739,7 +725,7 @@ export const refreshCjTracking = createServerFn({ method: "POST" })
       select tracking_number from supplier_orders where order_id = ${data.orderId}`;
     const tracking = rows[0]?.tracking_number;
     if (!tracking) throw new Error("No tracking number yet — the order hasn't shipped.");
-    const client = createCjClientFromEnv();
+    const client = await createCachedCjClient();
     if (!client) throw new Error("CJ_API_KEY is not configured.");
     const detail = await client.trackOrder(tracking);
     const cjStatus = String(detail.orderStatus ?? detail.status ?? "unknown");

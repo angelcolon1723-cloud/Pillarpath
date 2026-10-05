@@ -180,7 +180,7 @@ export class CjApiError extends Error {
 /* Client                                                              */
 /* ------------------------------------------------------------------ */
 
-interface TokenState {
+export interface TokenState {
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
@@ -212,6 +212,12 @@ export class CjDropshippingClient {
     if (!config.apiKey) throw new Error("CjDropshippingClient requires an API key");
     this.apiKey = config.apiKey;
     this.baseUrl = (config.baseUrl ?? CJ_BASE_URL).replace(/\/$/, "");
+  }
+
+  /** Seed or replace the in-memory token (e.g. from a DB cache). */
+  setToken(token: TokenState): void {
+    this.token = token;
+    this.tokenPromise = null;
   }
 
   /* ---------------- auth ---------------- */
@@ -246,8 +252,8 @@ export class CjDropshippingClient {
         this.token = {
           accessToken: payload.accessToken,
           refreshToken: payload.refreshToken,
-          // CJ access tokens live 15 days; refresh a day early.
-          expiresAt: now + 14 * 24 * 3600 * 1000,
+          // CJ access tokens live 180 days per docs; refresh a day early.
+          expiresAt: now + 179 * 24 * 3600 * 1000,
         };
         return this.token.accessToken;
       } finally {
@@ -270,7 +276,7 @@ export class CjDropshippingClient {
     this.token = {
       accessToken: payload.accessToken,
       refreshToken: payload.refreshToken ?? this.token?.refreshToken ?? "",
-      expiresAt: Date.now() + 14 * 24 * 3600 * 1000,
+      expiresAt: Date.now() + 179 * 24 * 3600 * 1000,
     };
   }
 
