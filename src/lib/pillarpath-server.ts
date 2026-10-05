@@ -99,6 +99,221 @@ export const createChild = createServerFn({ method: "POST" })
     return { id: rows[0]?.id };
   });
 
+/**
+ * Family device linking (pairing codes).
+ *
+ * The parent generates a short code shown on their device; the child enters
+ * it on their own device to link the two. Until the code is redeemed the
+ * child row exists but is unlinked (linked_at is null) — the profile is
+ * real, not a phantom row.
+ */
+
+function generatePairingCode(): string {
+  // 6 digits, no ambiguous characters issues since digits only.
+  const n = Math.floor(100000 + Math.random() * 900000);
+  return String(n);
+}
+
+export interface FamilyInvite {
+  id: number;
+  code: string;
+  childId: number;
+  childName: string;
+  childAge: number | null;
+  status: string;
+  expiresAt: string;
+  deviceInfo: string | null;
+  ipAddress: string | null;
+}
+
+export const createFamilyInvite = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { name: string; age: number }) => input)
+  .handler(async ({ context, data }): Promise<{ invite: FamilyInvite }> => {
+    const sql = await getSql();
+    const name = data.name.trim();
+    if (!name) throw new Error("Child name is required.");
+    const age = Math.max(3, Math.min(18, Math.floor(data.age) || 10));
+
+    // Expire any stale pending invites for this parent first.
+    await sql`update family_invites set status = 'expired' where user_id = ${context.userId} and status = 'pending' and expires_at < now()`;
+
+    const childRows = await sql<{ id: number }>`
+      insert into children (user_id, name, age, avatar) values (${context.userId}, ${name}, ${age}, 'star') returning id
+    `;
+    const childId = childRows[0].id;
+
+    // Retry on the astronomically unlikely code collision.
+    let code = generatePairingCode();
+    for (let i = 0; i < 3; i++) {
+      try {
+        const rows = await sql<{ id: number; expires_at: string }>`
+          insert into family_invites (user_id, child_id, code, expires_at)
+          values (${context.userId}, ${childId}, ${code}, now() + interval '30 minutes')
+          returning id, expires_at
+        `;
+        return {
+          invite: {
+            id: rows[0].id,
+            code,
+            childId,
+            childName: name,
+            childAge: age,
+            status: "pending",
+            expiresAt: rows[0].expires_at,
+            deviceInfo: null,
+            ipAddress: null,
+          },
+        };
+      } catch {
+        code = generatePairingCode();
+      }
+    }
+    // Clean up the orphaned child row if we couldn't mint a code.
+    await sql`delete from children where id = ${childId}`;
+    throw new Error("Couldn't generate a pairing code — try again.");
+  });
+
+export const listFamilyInvites = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<{ invites: FamilyInvite[] }> => {
+    const sql = await getSql();
+    await sql`update family_invites set status = 'expired' where user_id = ${context.userId} and status = 'pending' and expires_at < now()`;
+    const rows = await sql<{
+      id: number; code: string; child_id: number; status: string; expires_at: string;
+      child_name: string; child_age: number | null;
+      device_info: string | null; ip_address: string | null;
+    }>`
+      select fi.id, fi.code, fi.child_id, fi.status, fi.expires_at, c.name as child_name, c.age as child_age,
+             fi.device_info, fi.ip_address
+      from family_invites fi join children c on c.id = fi.child_id
+      where fi.user_id = ${context.userId} and fi.status in ('pending', 'awaiting_approval')
+      order by fi.created_at desc
+    `;
+    return {
+      invites: rows.map((r) => ({
+        id: r.id,
+        code: r.code,
+        childId: r.child_id,
+        childName: r.child_name,
+        childAge: r.child_age,
+        status: r.status,
+        expiresAt: r.expires_at,
+        deviceInfo: r.device_info,
+        ipAddress: r.ip_address,
+      })),
+    };
+  });
+
+export const cancelFamilyInvite = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { inviteId: number }) => input)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const rows = await sql<{ id: number; child_id: number }>`
+      update family_invites set status = 'cancelled'
+      where id = ${data.inviteId} and user_id = ${context.userId} and status = 'pending'
+      returning id, child_id
+    `;
+    if (rows[0]) {
+      // Remove the unlinked child row — it was never a real connection.
+      await sql`delete from children where id = ${rows[0].child_id}`;
+    }
+    return { ok: true };
+  });
+
+/**
+ * Parent approves a device that redeemed the pairing code.
+ * This is the moment the two devices become genuinely connected —
+ * the parent has seen the actual device (model, OS, network) and said yes.
+ */
+export const approveDeviceLink = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { inviteId: number }) => input)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const rows = await sql<{ id: number; child_id: number }>`
+      update family_invites set status = 'linked'
+      where id = ${data.inviteId} and user_id = ${context.userId} and status = 'awaiting_approval'
+      returning id, child_id
+    `;
+    if (!rows[0]) throw new Error("No device waiting for approval.");
+    await sql`update children set linked_at = now() where id = ${rows[0].child_id}`;
+    return { ok: true };
+  });
+
+export const denyDeviceLink = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { inviteId: number }) => input)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const rows = await sql<{ id: number; child_id: number }>`
+      update family_invites set status = 'denied'
+      where id = ${data.inviteId} and user_id = ${context.userId} and status = 'awaiting_approval'
+      returning id, child_id
+    `;
+    if (rows[0]) {
+      await sql`delete from children where id = ${rows[0].child_id}`;
+    }
+    return { ok: true };
+  });
+
+/**
+ * Redeem a pairing code from the child's device.
+ * Captures the device fingerprint + network info so the parent can
+ * verify the actual device before approving the connection.
+ * Built for the kid-side "Join my family" screen (lands with independent
+ * kid login); parent-gated until then.
+ */
+export const redeemFamilyInvite = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { code: string; deviceLabel?: string }) => input)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const code = data.code.trim();
+
+    // Capture what we can about the requesting device.
+    let ip: string | null = null;
+    let userAgent: string | null = null;
+    try {
+      const { getRequest } = await import("@tanstack/react-start/server");
+      const req = getRequest();
+      const h = req.headers;
+      const fwd = h.get("x-forwarded-for");
+      ip = (fwd ? fwd.split(",")[0].trim() : h.get("x-real-ip")) || null;
+      userAgent = h.get("user-agent");
+    } catch {
+      /* headers unavailable — device info stays null */
+    }
+    const deviceInfo =
+      data.deviceLabel?.trim() ||
+      (userAgent ? parseDeviceLabel(userAgent) : null);
+
+    const rows = await sql<{ id: number; child_id: number }>`
+      update family_invites
+      set status = 'awaiting_approval', device_info = ${deviceInfo}, ip_address = ${ip}
+      where code = ${code} and status = 'pending' and expires_at > now()
+      returning id, child_id
+    `;
+    if (!rows[0]) throw new Error("That code isn't valid or has expired.");
+    return { ok: true, inviteId: rows[0].id };
+  });
+
+/** Turn a raw user-agent into a human-readable device label. */
+function parseDeviceLabel(ua: string): string {
+  const android = ua.match(/Android [\d.]+; ([^;)]+)/);
+  if (android) return `${android[1].trim()} · Android`;
+  const iphone = /iPhone/.test(ua);
+  if (iphone) return "iPhone · iOS";
+  const ipad = /iPad/.test(ua);
+  if (ipad) return "iPad · iOS";
+  const windows = /Windows NT/.test(ua);
+  if (windows) return "Windows PC · Browser";
+  const mac = /Macintosh/.test(ua);
+  if (mac) return "Mac · Browser";
+  return "Unknown device · Browser";
+}
+
 async function getOrCreateCart(userId: string) {
   const sql = await getSql();
   const existing = await sql<{ id: number }>`select id from carts where user_id = ${userId} and status = 'open' limit 1`;

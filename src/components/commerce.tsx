@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   ArrowDownToLine,
   BarChart3,
@@ -18,6 +18,7 @@ import {
   Plus,
   Settings,
   ShoppingBag,
+  Smartphone,
   Star,
   Store,
   Target,
@@ -29,7 +30,12 @@ import { toast } from "sonner";
 import {
   addToCart,
   createCampaign,
-  createChild,
+  createFamilyInvite,
+  listFamilyInvites,
+  cancelFamilyInvite,
+  approveDeviceLink,
+  denyDeviceLink,
+  type FamilyInvite,
   createPromoCode,
   saveProfile,
 } from "@/lib/pillarpath-server";
@@ -890,76 +896,221 @@ export function FamilyProfiles({
 }) {
   const [childName, setChildName] = useState("");
   const [childAge, setChildAge] = useState(10);
+  const [invites, setInvites] = useState<FamilyInvite[]>([]);
+  const [generating, setGenerating] = useState(false);
   const setStudioAge = useLedger((s) => s.setChildAge);
 
+  const loadInvites = useCallback(async () => {
+    try {
+      const r = await listFamilyInvites();
+      setInvites(r.invites);
+    } catch {
+      /* invites are progressive enhancement */
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadInvites();
+  }, [loadInvites]);
+
+  async function generateCode() {
+    if (!childName.trim() || generating) return;
+    setGenerating(true);
+    try {
+      await createFamilyInvite({ data: { name: childName, age: childAge } });
+      setStudioAge(childAge);
+      setChildName("");
+      await loadInvites();
+      await onRefresh();
+      toast.success("Pairing code created — enter it on your child's device");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't create a code.");
+    } finally {
+      setGenerating(false);
+    }
+  }
+
   return (
-    <div className="grid gap-4 lg:grid-cols-3">
-      {data.children.map((child) => (
-        <Card key={child.id} className="relative overflow-hidden">
-          <div className="flex items-start justify-between">
-            <div className="grid size-12 place-items-center rounded-2xl bg-accent-soft text-accent">
-              <Star className="size-5" />
-            </div>
-            <Badge tone={child.frozen ? "danger" : "accent"}>
-              {child.frozen ? "Frozen" : "Active"}
-            </Badge>
+    <div className="space-y-4">
+      {/* Smarter empty state — explains what Family is for */}
+      {data.children.length === 0 && invites.length === 0 ? (
+        <Card className="p-6 text-center">
+          <div className="mx-auto grid size-14 place-items-center rounded-2xl bg-accent-soft text-accent">
+            <Smartphone className="size-7" strokeWidth={1.8} />
           </div>
-          <h3 className="mt-5 font-display text-2xl font-semibold">{child.name}</h3>
-          <p className="text-sm text-muted">
-            Age {child.age ?? "—"} · {child.units} Units · {child.vault_units} Vault
+          <h3 className="mt-4 font-display text-xl font-semibold">
+            Connect your family
+          </h3>
+          <p className="mx-auto mt-2 max-w-sm text-sm text-muted">
+            Link your child's device with a pairing code. Once connected you
+            can approve chores, load Units, track savings goals, and see
+            everything they're earning — all from here.
           </p>
-          <p className="mt-2 text-xs text-accent">
-            Studio track · {bandForAge(child.age ?? 10).name} ({bandForAge(child.age ?? 10).ages})
-          </p>
-          <div className="mt-5 h-2 rounded-full bg-surface-2">
-            <div
-              className="h-full rounded-full bg-accent"
-              style={{
-                width: `${Math.min(100, (child.vault_units / 70) * 100)}%`,
-              }}
-            />
+          <div className="mx-auto mt-4 grid max-w-sm grid-cols-3 gap-2 text-center">
+            {[
+              { icon: CheckCircle2, label: "Approve chores" },
+              { icon: ArrowDownToLine, label: "Load Units" },
+              { icon: PiggyBank, label: "Track goals" },
+            ].map(({ icon: Icon, label }) => (
+              <div key={label} className="rounded-xl bg-surface-2 p-3">
+                <Icon className="mx-auto size-5 text-accent" strokeWidth={1.8} />
+                <p className="mt-1.5 text-[11px] font-medium">{label}</p>
+              </div>
+            ))}
           </div>
         </Card>
-      ))}
-      <Card className="border border-dashed border-border bg-transparent shadow-none">
-        <div className="flex items-center gap-3">
-          <div className="grid size-11 place-items-center rounded-2xl bg-surface-2">
-            <Plus className="size-5" />
+      ) : null}
+
+      {/* Pending pairing codes */}
+      {invites.map((invite) =>
+        invite.status === "awaiting_approval" ? (
+          <Card key={invite.id} className="border-accent/50">
+            <div className="flex items-center gap-3">
+              <span className="grid size-11 shrink-0 place-items-center rounded-2xl bg-accent-soft text-accent">
+                <Smartphone className="size-5" strokeWidth={1.8} />
+              </span>
+              <div className="min-w-0 flex-1">
+                <CardTitle className="text-base">Is this {invite.childName}'s device?</CardTitle>
+                <CardHint className="mt-0.5">
+                  A device just entered the pairing code — verify it's really theirs.
+                </CardHint>
+              </div>
+            </div>
+            <div className="mt-4 space-y-2 rounded-xl bg-surface-2 p-4 text-sm">
+              <div className="flex justify-between">
+                <span className="text-muted">Device</span>
+                <span className="font-medium">{invite.deviceInfo ?? "Unknown device"}</span>
+              </div>
+              {invite.ipAddress ? (
+                <div className="flex justify-between">
+                  <span className="text-muted">Network</span>
+                  <span className="font-mono text-xs">{invite.ipAddress}</span>
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-4 grid grid-cols-2 gap-2">
+              <Button
+                onClick={async () => {
+                  try {
+                    await approveDeviceLink({ data: { inviteId: invite.id } });
+                    await loadInvites();
+                    await onRefresh();
+                    toast.success(`${invite.childName}'s device connected`);
+                  } catch (e) {
+                    toast.error(e instanceof Error ? e.message : "Couldn't approve.");
+                  }
+                }}
+              >
+                <CheckCircle2 className="size-4" />
+                Approve
+              </Button>
+              <Button
+                variant="outline"
+                onClick={async () => {
+                  await denyDeviceLink({ data: { inviteId: invite.id } });
+                  await loadInvites();
+                  await onRefresh();
+                  toast.message("Device rejected");
+                }}
+              >
+                Deny
+              </Button>
+            </div>
+          </Card>
+        ) : (
+          <Card key={invite.id} className="border-accent/40">
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="text-base">
+                  Linking {invite.childName}
+                </CardTitle>
+                <CardHint className="mt-0.5">
+                  Enter this code on your child's device in PillarPath
+                </CardHint>
+              </div>
+              <Badge tone="accent">Waiting</Badge>
+            </div>
+            <p className="mt-4 text-center font-mono text-5xl font-bold tracking-[0.3em] text-accent tabular-nums">
+              {invite.code}
+            </p>
+            <p className="mt-2 text-center text-xs text-muted">
+              Expires {new Date(invite.expiresAt).toLocaleTimeString([], { hour: "numeric", minute: "2-digit" })}
+            </p>
+            <Button
+              variant="outline"
+              className="mt-4 w-full"
+              onClick={async () => {
+                await cancelFamilyInvite({ data: { inviteId: invite.id } });
+                await loadInvites();
+                await onRefresh();
+              }}
+            >
+              Cancel code
+            </Button>
+          </Card>
+        ),
+      )}
+
+      <div className="grid gap-4 lg:grid-cols-3">
+        {data.children.map((child) => (
+          <Card key={child.id} className="relative overflow-hidden">
+            <div className="flex items-start justify-between">
+              <div className="grid size-12 place-items-center rounded-2xl bg-accent-soft text-accent">
+                <Star className="size-5" />
+              </div>
+              <Badge tone={child.frozen ? "danger" : "accent"}>
+                {child.frozen ? "Frozen" : "Active"}
+              </Badge>
+            </div>
+            <h3 className="mt-5 font-display text-2xl font-semibold">{child.name}</h3>
+            <p className="text-sm text-muted">
+              Age {child.age ?? "—"} · {child.units} Units · {child.vault_units} Vault
+            </p>
+            <p className="mt-2 text-xs text-accent">
+              Studio track · {bandForAge(child.age ?? 10).name} ({bandForAge(child.age ?? 10).ages})
+            </p>
+            <div className="mt-5 h-2 rounded-full bg-surface-2">
+              <div
+                className="h-full rounded-full bg-accent"
+                style={{
+                  width: `${Math.min(100, (child.vault_units / 70) * 100)}%`,
+                }}
+              />
+            </div>
+          </Card>
+        ))}
+        <Card className="border border-dashed border-border bg-transparent shadow-none">
+          <div className="flex items-center gap-3">
+            <div className="grid size-11 place-items-center rounded-2xl bg-surface-2">
+              <Smartphone className="size-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold">Link a child's device</h3>
+              <p className="text-xs text-muted">Pair with a 6-digit code.</p>
+            </div>
           </div>
-          <div>
-            <h3 className="font-semibold">Add a child</h3>
-            <p className="text-xs text-muted">Create another supervised profile.</p>
+          <div className="mt-4 grid gap-3">
+            <Input
+              placeholder="Child name"
+              value={childName}
+              onChange={(e) => setChildName(e.target.value)}
+            />
+            <Input
+              type="number"
+              min={3}
+              max={18}
+              value={childAge}
+              onChange={(e) => setChildAge(Number(e.target.value))}
+            />
+            <Button onClick={generateCode} disabled={generating || !childName.trim()}>
+              {generating ? "Creating…" : "Generate pairing code"}
+            </Button>
+            <p className="text-xs text-muted">
+              Your child enters the code on their device — that's what links the two.
+            </p>
           </div>
-        </div>
-        <div className="mt-4 grid gap-3">
-          <Input
-            placeholder="Child name"
-            value={childName}
-            onChange={(e) => setChildName(e.target.value)}
-          />
-          <Input
-            type="number"
-            min={3}
-            max={18}
-            value={childAge}
-            onChange={(e) => setChildAge(Number(e.target.value))}
-          />
-          <Button
-            onClick={async () => {
-              if (!childName.trim()) return;
-              await createChild({
-                data: { name: childName, age: childAge, avatar: "star" },
-              });
-              setStudioAge(childAge);
-              setChildName("");
-              await onRefresh();
-              toast.success("Child profile created");
-            }}
-          >
-            Create profile
-          </Button>
-        </div>
-      </Card>
+        </Card>
+      </div>
     </div>
   );
 }
