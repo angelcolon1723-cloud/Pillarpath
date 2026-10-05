@@ -89,7 +89,8 @@ export function roleMiddleware(...allowed: IdentityKind[]) {
       const { requireIdentity } = await import("./verify.server");
       assertSameSiteRequest();
       const identity = await requireIdentity(context.bearerToken);
-      if (!allowed.includes(identity.kind)) {
+      // Platform admins (CEO) hold full permissions across all roles.
+      if (identity.kind !== "admin" && !allowed.includes(identity.kind)) {
         throw new ForbiddenError(identity.kind);
       }
       return next({ context: { identity, userId: identity.userId } });
