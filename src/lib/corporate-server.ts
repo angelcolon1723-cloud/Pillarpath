@@ -878,6 +878,28 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
       } catch (ce) {
         out.clientProbe = `FAIL — ${ce instanceof Error ? ce.message.slice(0, 160) : "unknown"}`;
       }
+      // Raw fetch with the client's exact params to see unmapped fields.
+      try {
+        const rawProbe = await fetch(
+          "https://developers.cjdropshipping.com/api2.0/v1/product/listV2?keyWord=squishy&page=1&size=1",
+          { headers: { "CJ-Access-Token": String(token), "Content-Type": "application/json" } },
+        );
+        const rawBody = await rawProbe.json().catch(() => null) as any;
+        const rawData = rawBody?.data;
+        const rawContent = rawData?.content;
+        const rawList = Array.isArray(rawContent?.productList) ? rawContent.productList
+          : Array.isArray(rawData?.productList) ? rawData.productList
+          : Array.isArray(rawData?.list) ? rawData.list : [];
+        const rawFirst = rawList[0];
+        if (rawFirst && typeof rawFirst === "object") {
+          out.rawItemKeys = Object.keys(rawFirst).slice(0, 30).join(",");
+          out.rawItemSample = JSON.stringify(rawFirst).slice(0, 600);
+        } else {
+          out.rawItemKeys = "empty list";
+        }
+      } catch (e) {
+        out.rawItemKeys = "fetch failed";
+      }
     } catch (e) {
       out.error = e instanceof Error ? e.message.slice(0, 120) : "unknown";
     }
