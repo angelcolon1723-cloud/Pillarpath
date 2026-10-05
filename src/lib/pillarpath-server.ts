@@ -100,6 +100,34 @@ export const createChild = createServerFn({ method: "POST" })
   });
 
 /**
+ * Credit Units to a child's server-side balance (e.g. parent loads Units).
+ * Atomic: the balance update and the ledger entry happen in one statement.
+ */
+export const loadUnitsForChild = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number; amount: number }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean; newBalance: number }> => {
+    const sql = await getSql();
+    const amount = Math.floor(Number(data.amount));
+    if (!Number.isFinite(amount) || amount < 1) throw new Error("Amount must be at least 1 Unit.");
+    const rows = await sql<{ units: number }>`
+      with credited as (
+        update children set units = units + ${amount}
+        where id = ${data.childId} and user_id = ${context.userId}
+        returning units
+      ),
+      logged as (
+        insert into units_transactions (user_id, child_id, kind, amount, note)
+        select ${context.userId}, ${data.childId}, 'load', ${amount}, 'Units loaded by parent'
+        where exists (select 1 from credited)
+        returning 1
+      )
+      select units from credited`;
+    if (!rows.length) throw new Error("Child not found.");
+    return { ok: true, newBalance: rows[0].units };
+  });
+
+/**
  * Family device linking (pairing codes).
  *
  * The parent generates a short code shown on their device; the child enters

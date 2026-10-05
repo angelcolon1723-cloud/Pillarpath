@@ -64,7 +64,7 @@ import {
 import { PendingGiftRows } from "@/components/kiddo/give";
 import { PendingShopRows } from "@/components/kiddo/creator-shop";
 import { PendingGalleryRows } from "@/components/kiddo/showcase";
-import { logUnitsTransaction } from "@/lib/pillarpath-server";
+import { logUnitsTransaction, loadUnitsForChild, getPillarpathData } from "@/lib/pillarpath-server";
 
 function BackButton() {
   const setScreen = useLedger((s) => s.setScreen);
@@ -820,10 +820,32 @@ export function ParentLoad() {
         <Button
           className="w-full"
           disabled={!ack || amount < 1}
-          onClick={() => {
+          onClick={async () => {
             const err = loadUnits(amount);
-            if (err) toast.error(err);
-            else toast.success(`${amount.toLocaleString()} Units loaded — non-refundable`);
+            if (err) {
+              toast.error(err);
+              return;
+            }
+            // Mirror to the server-side balance so the dashboard hero,
+            // Savings Goals escrow, and per-child insights all see it.
+            // (Legacy local ledger keeps the kid-side view working.)
+            try {
+              const data = await getPillarpathData();
+              const child = data.children[0];
+              if (child) {
+                await loadUnitsForChild({ data: { childId: child.id, amount } });
+              }
+            } catch (e) {
+              // Local credit already succeeded; surface the sync issue
+              // without rolling back the user's Units.
+              toast.error(
+                e instanceof Error
+                  ? `Units loaded locally, but server sync failed: ${e.message}`
+                  : "Units loaded locally, but server sync failed."
+              );
+              return;
+            }
+            toast.success(`${amount.toLocaleString()} Units loaded — non-refundable`);
           }}
         >
           {amount >= 1

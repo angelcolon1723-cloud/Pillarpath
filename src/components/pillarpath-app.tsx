@@ -235,7 +235,14 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
     role === "parent" ? parentSection : role === "child" ? ledgerScreen : teacherSection;
 
   function navigate(id: string) {
-    if (role === "parent") setParentSection(id as ParentSection);
+    if (role === "parent") {
+      if (id === "family-ledger") {
+        setParentSection("family");
+        setFamilyTab("ledger");
+      } else {
+        setParentSection(id as ParentSection);
+      }
+    }
     else if (role === "child") setLedgerScreen(id as Screen);
     else setTeacherSection(id as TeacherSection);
   }

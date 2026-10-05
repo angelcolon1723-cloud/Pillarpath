@@ -63,6 +63,7 @@ export type ParentSection =
   | "marketing"
   | "fulfillment"
   | "family"
+  | "family-ledger"
   | "goals"
   | "teachers"
   | "future-units"
@@ -202,7 +203,7 @@ export function Dashboard({
 
   function goLedger(screen: "load" | "home" | "give" | "vault") {
     setScreen(screen);
-    onNavigate("family");
+    onNavigate("family-ledger");
   }
 
   const steps = [

@@ -280,7 +280,7 @@ export function TeacherLibrary({ onOpenMaterial }: { onOpenMaterial: (resourceId
         <div className="grid gap-2">
           {openFolder.items.map((item) => {
             const Icon = itemIcon(item.kind);
-            const clickable = item.kind === "material";
+            const clickable = item.kind === "material" || item.kind === "link";
             return (
               <Card key={item.id} className="flex items-start gap-3 p-3">
                 <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
