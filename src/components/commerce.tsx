@@ -1,20 +1,29 @@
 import { useState } from "react";
 import {
+  ArrowDownToLine,
   BarChart3,
   Boxes,
+  CheckCircle2,
   ChevronRight,
   CircleDollarSign,
   CreditCard,
   Gift,
+  GraduationCap,
+  HeartHandshake,
+  Landmark,
   Megaphone,
+  MessagesSquare,
   PackageCheck,
+  PiggyBank,
   Plus,
   Settings,
   ShoppingBag,
   Star,
   Store,
+  Target,
   Truck,
   Users,
+  X,
 } from "lucide-react";
 import { toast } from "sonner";
 import {
@@ -171,159 +180,371 @@ export function Dashboard({
   data: AppData;
   onNavigate: (s: ParentSection) => void;
 }) {
-  const revenue = data.orders
-    .filter((o) => o.status === "paid" || o.status === "preview_payment")
-    .reduce((sum, o) => sum + o.total_cents, 0);
+  const firstName = data.profile.display_name.split(" ")[0];
+  const consent = useLedger((s) => s.consent);
+  const setScreen = useLedger((s) => s.setScreen);
+  const ledgerPending = useLedger((s) => s.pendingCount());
+  const [openTool, setOpenTool] = useState<null | "insights" | "moments" | "gift">(null);
+  const [dismissedSteps, setDismissedSteps] = useState<string[]>([]);
+
+  const totalUnits = data.children.reduce((sum, c) => sum + (c.units ?? 0), 0);
+  const totalVault = data.children.reduce((sum, c) => sum + (c.vault_units ?? 0), 0);
+  const kidCount = data.children.length;
+
+  const hour = new Date().getHours();
+  const greeting = hour < 12 ? "Good morning" : hour < 18 ? "Good afternoon" : "Good evening";
+
+  function goLedger(screen: "load" | "home" | "give" | "vault") {
+    setScreen(screen);
+    onNavigate("family");
+  }
+
+  const steps = [
+    {
+      id: "consent",
+      done: consent,
+      title: "Verify parental consent",
+      text: "Required before loading Units",
+      action: () => goLedger("home"),
+    },
+    {
+      id: "child",
+      done: kidCount > 0,
+      title: "Add your first child",
+      text: "Create a supervised profile",
+      action: () => onNavigate("family"),
+    },
+    {
+      id: "load",
+      done: totalUnits + totalVault > 0,
+      title: "Load your first Units",
+      text: "Top up the family balance",
+      action: () => goLedger("load"),
+    },
+    {
+      id: "goal",
+      done: false,
+      title: "Set a savings goal",
+      text: "Save toward something big together",
+      action: () => onNavigate("goals"),
+    },
+  ].filter((s) => !s.done && !dismissedSteps.includes(s.id));
+
+  const quickActions = [
+    {
+      icon: ArrowDownToLine,
+      label: "Load Units",
+      action: () => goLedger("load"),
+    },
+    {
+      icon: CheckCircle2,
+      label: "Approve",
+      badge: ledgerPending > 0 ? ledgerPending : null,
+      action: () => goLedger("home"),
+    },
+    {
+      icon: HeartHandshake,
+      label: "Give",
+      action: () => goLedger("give"),
+    },
+    {
+      icon: Target,
+      label: "Goals",
+      action: () => onNavigate("goals"),
+    },
+  ];
+
+  const tools = [
+    {
+      id: "insights" as const,
+      icon: BarChart3,
+      title: "Spending insights",
+      text: "Where Units went",
+    },
+    {
+      id: "moments" as const,
+      icon: MessagesSquare,
+      title: "Money moments",
+      text: "Talk it over",
+    },
+    {
+      id: "gift" as const,
+      icon: Gift,
+      title: "Gift mode",
+      text: "Wishes & pledges",
+    },
+  ];
+
+  const discoverMore: Array<{
+    icon: typeof Settings;
+    title: string;
+    text: string;
+    badge?: string;
+    action: () => void;
+  }> = [
+    {
+      icon: PackageCheck,
+      title: "Orders",
+      text: "Store purchases",
+      badge: data.orders.length > 0 ? String(data.orders.length) : undefined,
+      action: () => onNavigate("orders"),
+    },
+    {
+      icon: Users,
+      title: "Family & ledger",
+      text: "Profiles, chores, history",
+      action: () => onNavigate("family"),
+    },
+    {
+      icon: GraduationCap,
+      title: "Teachers",
+      text: "Classroom connections",
+      action: () => onNavigate("teachers"),
+    },
+    {
+      icon: Star,
+      title: "Future Units",
+      text: "Closed-loop family goals",
+      action: () => onNavigate("future-units"),
+    },
+    {
+      icon: Settings,
+      title: "Settings",
+      text: "Profile and controls",
+      action: () => onNavigate("settings"),
+    },
+  ];
 
   return (
-    <section className="space-y-6">
-      <div className="flex flex-col justify-between gap-4 md:flex-row md:items-end">
-        <SectionIntro
-          eyebrow="Parent workspace"
-          title={`Welcome, ${data.profile.display_name.split(" ")[0]}`}
-          text="Family ledger, store, and orders in one place."
-        />
-        <Button onClick={() => onNavigate("store")}>
-          <ShoppingBag className="size-4" />
-          Open store
-        </Button>
+    <section className="space-y-5">
+      {/* Greeting */}
+      <div>
+        <p className="text-sm font-medium text-muted">Parent workspace</p>
+        <h1 className="font-display text-3xl font-semibold tracking-tight">
+          {greeting}, {firstName}
+        </h1>
       </div>
-      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
-        <Metric
-          title="Store revenue"
-          value={money(revenue)}
-          delta="Paid and preview orders"
-          icon={CircleDollarSign}
-        />
-        <Metric
-          title="Orders"
-          value={String(data.orders.length)}
-          delta="Latest 20"
-          icon={PackageCheck}
-        />
-        <Metric
-          title="Children"
-          value={String(data.children.length)}
-          delta="Supervised profiles"
-          icon={Users}
-        />
+
+      {/* Hero balance */}
+      <div className="overflow-hidden rounded-2xl bg-ink p-6 text-bg shadow-[var(--shadow-border)]">
+        <p className="text-xs font-medium uppercase tracking-wider text-bg/60">
+          Family Units
+        </p>
+        <p className="mt-1 font-display text-5xl font-semibold tracking-tight tabular-nums">
+          {(totalUnits + totalVault).toLocaleString()}
+        </p>
+        <p className="mt-1 text-sm text-bg/70">
+          {totalUnits.toLocaleString()} spendable · {totalVault.toLocaleString()} in vault
+          {kidCount > 0 ? ` · across ${kidCount} ${kidCount === 1 ? "child" : "children"}` : ""}
+        </p>
       </div>
-      <SpendingInsightsPanel />
-      <MoneyMomentsPanel />
-      <GiftModePanel kids={data.children.map((c) => ({ id: c.id, name: c.name }))} />
-      <div className="grid gap-5 xl:grid-cols-[1.35fr_0.65fr]">
-        <Card className="overflow-hidden p-0">
-          <div className="flex items-center justify-between border-b border-border px-5 py-4">
-            <div>
-              <CardTitle>Commerce activity</CardTitle>
-              <CardHint className="mt-1">Orders and payment status</CardHint>
-            </div>
-            <button
-              type="button"
-              onClick={() => onNavigate("orders")}
-              className="text-sm font-semibold text-accent"
-            >
-              View all
-            </button>
-          </div>
-          {data.orders.length ? (
-            data.orders.slice(0, 6).map((order) => (
-              <div
-                key={order.id}
-                className="flex items-center justify-between gap-4 border-b border-border px-5 py-4 last:border-0"
-              >
-                <div className="flex items-center gap-3">
-                  <div className="grid size-10 place-items-center rounded-xl bg-surface-2 text-accent">
-                    <PackageCheck className="size-4" />
-                  </div>
-                  <div>
-                    <p className="font-medium">Order #{order.id}</p>
-                    <p className="text-xs text-muted">
-                      {new Date(order.created_at).toLocaleDateString()} ·{" "}
-                      {order.payment_provider}
-                    </p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold tabular-nums">
-                    {money(order.total_cents)}
-                  </p>
-                  <Badge
-                    tone={
-                      order.status === "paid" || order.status === "preview_payment"
-                        ? "accent"
-                        : "muted"
-                    }
-                  >
-                    {order.status.replaceAll("_", " ")}
-                  </Badge>
-                </div>
-              </div>
-            ))
-          ) : (
-            <EmptyState
-              icon={PackageCheck}
-              title="No orders yet"
-              text="Open the store and create your first basket."
-            />
-          )}
-        </Card>
-        <Card className="space-y-5">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-wider text-accent">
-              Family pulse
-            </p>
-            <h3 className="mt-1 font-display text-xl font-semibold">
-              Children at a glance
-            </h3>
-          </div>
-          {data.children.map((child) => (
-            <div key={child.id} className="rounded-2xl bg-surface-2 p-4">
-              <div className="flex items-center justify-between">
-                <div>
-                  <p className="font-semibold">{child.name}</p>
-                  <p className="text-xs text-muted">Age {child.age ?? "—"}</p>
-                </div>
-                <span className="font-mono text-sm text-accent tabular-nums">
-                  {child.units} U
+
+      {/* Quick actions */}
+      <div className="grid grid-cols-4 gap-2">
+        {quickActions.map(({ icon: Icon, label, badge, action }) => (
+          <button
+            key={label}
+            type="button"
+            onClick={action}
+            className="group flex flex-col items-center gap-2 py-2"
+          >
+            <span className="relative grid size-14 place-items-center rounded-full bg-accent-soft text-accent transition-transform group-active:scale-95">
+              <Icon className="size-6" strokeWidth={1.8} />
+              {badge != null ? (
+                <span className="absolute -right-1 -top-1 grid size-6 min-w-6 place-items-center rounded-full bg-danger px-1 text-[11px] font-bold text-white">
+                  {badge}
                 </span>
-              </div>
-              <div className="mt-3 h-2 rounded-full bg-bg">
-                <div
-                  className="h-full rounded-full bg-accent"
-                  style={{
-                    width: `${Math.min(100, (child.vault_units / 70) * 100)}%`,
-                  }}
-                />
-              </div>
-              <p className="mt-2 text-xs text-muted">
-                {child.vault_units} Units in Vault
-              </p>
+              ) : null}
+            </span>
+            <span className="text-xs font-medium">{label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Up next */}
+      {steps.length > 0 ? (
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="text-base">Up next</CardTitle>
+              <CardHint className="mt-0.5">Get the most out of PillarPath</CardHint>
             </div>
+            <Badge tone="accent">
+              {steps.length} left
+            </Badge>
+          </div>
+          <div className="mt-3 divide-y divide-border">
+            {steps.map((step) => (
+              <div key={step.id} className="flex items-center gap-3 py-3 first:pt-1 last:pb-0">
+                <button
+                  type="button"
+                  onClick={step.action}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <p className="text-sm font-semibold">{step.title}</p>
+                  <p className="text-xs text-muted">{step.text}</p>
+                </button>
+                <button
+                  type="button"
+                  aria-label="Dismiss"
+                  onClick={() => setDismissedSteps((d) => [...d, step.id])}
+                  className="grid size-8 shrink-0 place-items-center rounded-full text-muted hover:bg-surface-2"
+                >
+                  <X className="size-4" />
+                </button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
+      {/* Product cards */}
+      <div className="space-y-3">
+        <button
+          type="button"
+          onClick={() => onNavigate("goals")}
+          className="flex w-full items-center gap-4 rounded-2xl border border-border bg-surface p-5 text-left transition-[transform,border-color] hover:-translate-y-0.5 hover:border-accent/40"
+        >
+          <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-violet-500/15 text-violet-400">
+            <PiggyBank className="size-6" strokeWidth={1.8} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold">Savings goals</span>
+            <span className="block truncate text-sm text-muted">
+              Set a goal, save Units together, celebrate
+            </span>
+          </span>
+          <ChevronRight className="size-5 shrink-0 text-muted" />
+        </button>
+        <button
+          type="button"
+          onClick={() => goLedger("vault")}
+          className="flex w-full items-center gap-4 rounded-2xl border border-border bg-surface p-5 text-left transition-[transform,border-color] hover:-translate-y-0.5 hover:border-accent/40"
+        >
+          <span className="grid size-12 shrink-0 place-items-center rounded-2xl bg-accent-soft text-accent">
+            <Landmark className="size-6" strokeWidth={1.8} />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="block font-semibold">Savings vault</span>
+            <span className="block truncate text-sm text-muted">
+              {totalVault.toLocaleString()} Units growing · 5% APY
+            </span>
+          </span>
+          <ChevronRight className="size-5 shrink-0 text-muted" />
+        </button>
+      </div>
+
+      {/* Money tools */}
+      <div>
+        <h2 className="mb-3 font-display text-lg font-semibold">Money tools</h2>
+        <div className="grid grid-cols-2 gap-3">
+          {tools.map(({ id, icon: Icon, title, text }) => (
+            <button
+              key={id}
+              type="button"
+              onClick={() => setOpenTool((t) => (t === id ? null : id))}
+              className={cn(
+                "rounded-2xl border p-4 text-left transition-[transform,border-color] hover:-translate-y-0.5",
+                openTool === id
+                  ? "border-accent/60 bg-accent-soft/50"
+                  : "border-border bg-surface hover:border-accent/40",
+              )}
+            >
+              <Icon className="size-5 text-accent" strokeWidth={1.8} />
+              <p className="mt-3 text-sm font-semibold">{title}</p>
+              <p className="mt-0.5 text-xs text-muted">{text}</p>
+            </button>
           ))}
           <button
             type="button"
-            onClick={() => onNavigate("family")}
-            className="flex min-h-11 w-full items-center justify-between rounded-xl border border-border px-4 py-3 text-sm font-semibold hover:bg-surface-2"
+            onClick={() => onNavigate("store")}
+            className="rounded-2xl border border-border bg-surface p-4 text-left transition-[transform,border-color] hover:-translate-y-0.5 hover:border-accent/40"
           >
-            Manage family
-            <ChevronRight className="size-4" />
+            <ShoppingBag className="size-5 text-accent" strokeWidth={1.8} />
+            <p className="mt-3 text-sm font-semibold">Store</p>
+            <p className="mt-0.5 text-xs text-muted">Kid-safe shelves</p>
           </button>
-        </Card>
+        </div>
+        {openTool === "insights" ? (
+          <div className="mt-3"><SpendingInsightsPanel /></div>
+        ) : null}
+        {openTool === "moments" ? (
+          <div className="mt-3"><MoneyMomentsPanel /></div>
+        ) : null}
+        {openTool === "gift" ? (
+          <div className="mt-3">
+            <GiftModePanel kids={data.children.map((c) => ({ id: c.id, name: c.name }))} />
+          </div>
+        ) : null}
       </div>
-      <div className="grid gap-4 md:grid-cols-2">
-        <QuickAction
-          icon={BarChart3}
-          title="Reserve Future Units"
-          text="Closed-loop family goals"
-          onClick={() => onNavigate("future-units")}
-        />
-        <QuickAction
-          icon={Settings}
-          title="Account settings"
-          text="Profile and payment controls"
-          onClick={() => onNavigate("settings")}
-        />
+
+      {/* Children at a glance */}
+      {kidCount > 0 ? (
+        <Card className="p-5">
+          <div className="flex items-center justify-between">
+            <CardTitle className="text-base">Children</CardTitle>
+            <button
+              type="button"
+              onClick={() => onNavigate("family")}
+              className="text-sm font-semibold text-accent"
+            >
+              Manage
+            </button>
+          </div>
+          <div className="mt-3 space-y-3">
+            {data.children.map((child) => (
+              <div key={child.id} className="rounded-2xl bg-surface-2 p-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <p className="font-semibold">{child.name}</p>
+                    <p className="text-xs text-muted">Age {child.age ?? "—"}</p>
+                  </div>
+                  <span className="font-mono text-sm text-accent tabular-nums">
+                    {(child.units ?? 0).toLocaleString()} U
+                  </span>
+                </div>
+                <div className="mt-3 h-2 rounded-full bg-bg">
+                  <div
+                    className="h-full rounded-full bg-accent"
+                    style={{
+                      width: `${Math.min(100, ((child.vault_units ?? 0) / 70) * 100)}%`,
+                    }}
+                  />
+                </div>
+                <p className="mt-2 text-xs text-muted">
+                  {(child.vault_units ?? 0).toLocaleString()} Units in Vault
+                </p>
+              </div>
+            ))}
+          </div>
+        </Card>
+      ) : null}
+
+      {/* Discover more */}
+      <div>
+        <h2 className="mb-3 font-display text-lg font-semibold">Discover more</h2>
+        <Card className="divide-y divide-border p-0">
+          {discoverMore.map(({ icon: Icon, title, text, badge, action }) => (
+            <button
+              key={title}
+              type="button"
+              onClick={action}
+              className="flex w-full items-center gap-4 px-5 py-4 text-left hover:bg-surface-2/60"
+            >
+              <span className="grid size-10 shrink-0 place-items-center rounded-xl bg-surface-2 text-accent">
+                <Icon className="size-5" strokeWidth={1.8} />
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-sm font-semibold">{title}</span>
+                <span className="block truncate text-xs text-muted">{text}</span>
+              </span>
+              {badge ? (
+                <Badge tone="accent">{badge}</Badge>
+              ) : null}
+              <ChevronRight className="size-4 shrink-0 text-muted" />
+            </button>
+          ))}
+        </Card>
       </div>
     </section>
   );
