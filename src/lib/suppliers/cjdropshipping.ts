@@ -249,13 +249,13 @@ export class CjDropshippingClient {
           res,
           "getAccessToken",
         );
-        this.token = {
+        this.setToken({
           accessToken: payload.accessToken,
           refreshToken: payload.refreshToken,
           // CJ access tokens live 180 days per docs; refresh a day early.
           expiresAt: now + 179 * 24 * 3600 * 1000,
-        };
-        return this.token.accessToken;
+        });
+        return this.token!.accessToken;
       } finally {
         this.tokenPromise = null;
       }
@@ -273,11 +273,11 @@ export class CjDropshippingClient {
       res,
       "refreshAccessToken",
     );
-    this.token = {
+    this.setToken({
       accessToken: payload.accessToken,
       refreshToken: payload.refreshToken ?? this.token?.refreshToken ?? "",
       expiresAt: Date.now() + 179 * 24 * 3600 * 1000,
-    };
+    });
   }
 
   /* ---------------- request plumbing ---------------- */
