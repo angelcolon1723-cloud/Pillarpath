@@ -46,14 +46,9 @@ export function CjSourcingPanel({ onImported }: { onImported: () => void }) {
       if (!res.hits.length) toast.message("No products found — try a different search.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Search failed.";
-      if (/invalid api key|access token/i.test(msg)) {
-        toast.error(
-          "CJ key connects but product search is blocked. In your CJ dashboard: Apps → API → confirm the key's Status is “Activated”. Then tap “Test CJ connection” in Corporate HQ → Fulfillment.",
-          { duration: 8000 },
-        );
-      } else {
-        toast.error(msg);
-      }
+      // Surface the server's message as-is — it now carries CJ's raw error
+      // code instead of the stale "check Activated" guidance.
+      toast.error(msg, { duration: 8000 });
     } finally {
       setSearching(false);
     }

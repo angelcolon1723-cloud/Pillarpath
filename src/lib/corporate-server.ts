@@ -17,6 +17,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware, ForbiddenError } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import { createCachedCjClient } from "@/lib/suppliers/cj-token-store";
+import { CjApiError } from "@/lib/suppliers/cjdropshipping";
 import {
   DEPARTMENTS,
   ROLES,
@@ -376,16 +377,20 @@ export const testCjConnection = createServerFn({ method: "POST" })
       };
     } catch (e) {
       const msg = e instanceof Error ? e.message : "network error";
+      // Surface CJ's raw error code/message for real diagnosis — the generic
+      // "check Activated" guidance is stale once the dashboard confirms it.
+      const cjErr = e instanceof CjApiError ? (e as CjApiError) : null;
+      const raw = cjErr && cjErr.code ? ` [CJ code ${cjErr.code}]` : "";
       if (/too many requests|qps/i.test(msg)) {
-        return { ok: false, message: "CJ rate limit hit (1 call/sec) — wait a few seconds and tap again." };
+        return { ok: false, message: `CJ rate limit hit (1 call/sec) — wait a few seconds and tap again.${raw}` };
       }
       if (/invalid api key|access token/i.test(msg)) {
         return {
           ok: false,
-          message: "Key connects but product access is blocked. In your CJ dashboard: Apps → API → confirm the key's Status is “Activated”.",
+          message: `Key connects but product search is blocked.${raw} Your CJ dashboard shows the key Activated, so this needs CJ support — ask them why an activated key's token is rejected on product endpoints.`,
         };
       }
-      return { ok: false, message: `CJ test failed: ${msg}` };
+      return { ok: false, message: `CJ test failed: ${msg}${raw}` };
     }
   });
 
