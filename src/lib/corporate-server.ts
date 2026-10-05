@@ -876,20 +876,27 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
         const page = await freshClient.searchProducts({ keyWord: "squishy", size: 1 });
         out.clientProbe = `OK — ${page.total} total, ${page.items.length} items`;
         // Use the client's own debug hook to see the raw unmapped response.
-        // Try multiple keywords to catch CJ returning real products.
-        for (const kw of ["toy", "kids", "school"]) {
-          try {
-            const rawDebug = await freshClient.debugRawSearch({ keyWord: kw, size: 3, countryCode: "US" }) as any;
-            const d = rawDebug as any;
-            const pl = d?.content?.productList;
-            if (Array.isArray(pl) && pl.length > 0 && typeof pl[0] === "object") {
-              out.debugItemKeys = `keyword=${kw}: ` + Object.keys(pl[0]).slice(0, 30).join(",");
-              out.debugItemSample = JSON.stringify(pl[0]).slice(0, 800);
-              break;
-            }
-          } catch { /* try next keyword */ }
+        // Replicate the EXACT sourcing search params that returned 15 results.
+        try {
+          const rawDebug = await freshClient.debugRawSearch({
+            keyWord: "back to school",
+            size: 24,
+            countryCode: "US",
+            orderBy: 4,
+            sort: "desc",
+          }) as any;
+          const d = rawDebug as any;
+          out.debugTotal = d?.totalRecords ?? d?.total;
+          const pl = d?.content?.productList;
+          if (Array.isArray(pl) && pl.length > 0 && typeof pl[0] === "object") {
+            out.debugItemKeys = Object.keys(pl[0]).slice(0, 30).join(",");
+            out.debugItemSample = JSON.stringify(pl[0]).slice(0, 800);
+          } else {
+            out.debugItemKeys = `empty (totalRecords=${d?.totalRecords})`;
+          }
+        } catch (de) {
+          out.debugItemKeys = `debug failed: ${de instanceof Error ? de.message.slice(0, 80) : "?"}`;
         }
-        if (!out.debugItemKeys) out.debugItemKeys = "no products in any keyword probe";
       } catch (ce) {
         out.clientProbe = `FAIL — ${ce instanceof Error ? ce.message.slice(0, 160) : "unknown"}`;
       }
