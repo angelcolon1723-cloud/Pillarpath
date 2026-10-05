@@ -608,13 +608,16 @@ export class CjDropshippingClient {
   }
 }
 
-/** Pick the non-empty payload out of CJ's result/data envelope. */
+/** Pick the payload object out of CJ's result/data envelope. */
 function unwrapCjEnvelope(body: { result?: unknown; data?: unknown }): unknown {
-  const isEmpty = (v: unknown) =>
-    v == null || (typeof v === "object" && Object.keys(v as object).length === 0);
-  if (!isEmpty(body.result)) return body.result;
-  if (!isEmpty(body.data)) return body.data;
-  return body.result ?? body.data ?? {};
+  // CJ sometimes sets `result` to a bare boolean (e.g. `true` on
+  // getAccessToken) while the real payload sits in `data`. Only accept
+  // actual objects — never primitives.
+  const isPayload = (v: unknown) =>
+    typeof v === "object" && v !== null && Object.keys(v).length > 0;
+  if (isPayload(body.result)) return body.result;
+  if (isPayload(body.data)) return body.data;
+  return {};
 }
 
 /* ------------------------------------------------------------------ */
