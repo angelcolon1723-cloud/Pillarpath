@@ -1,12 +1,14 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BookOpen,
+  Download,
   Drum,
   Film,
   Gamepad2,
   Lock,
   Medal,
   Music2,
+  Share2,
   Shirt,
   Sparkles,
   Star,
@@ -33,9 +35,9 @@ import {
 import { cn } from "@/lib/utils";
 
 const TEAMS = [
-  { id: "art-squad", name: "Art Squad", blurb: "Draw, stamp, and share a weekly scene." },
-  { id: "game-makers", name: "Game Makers", blurb: "Memory, puzzles, and streak runs." },
-  { id: "sound-lab", name: "Sound Lab", blurb: "Beats, scales, and four-count loops." },
+  { id: "art-squad", name: "Art Squad", blurb: "Draw, stamp, and share a weekly scene.", perk: "+2 XP on every drawing saved" },
+  { id: "game-makers", name: "Game Makers", blurb: "Memory, puzzles, and streak runs.", perk: "+2 XP on every game win" },
+  { id: "sound-lab", name: "Sound Lab", blurb: "Beats, scales, and four-count loops.", perk: "+2 XP on every studio mission" },
 ];
 
 const PACKS = [
@@ -382,9 +384,63 @@ function AnimationRoom() {
 
 function DesignRoom() {
   const drawings = useLedger((s) => s.drawings);
+  const saveDrawing = useLedger((s) => s.saveDrawing);
   const [ink, setInk] = useState("#45c58a");
   const [word, setWord] = useState("PILLAR");
   const art = drawings[0]?.dataUrl;
+
+  function downloadTee() {
+    const c = document.createElement("canvas");
+    c.width = 440; c.height = 560;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    // Shirt body
+    ctx.fillStyle = ink;
+    ctx.beginPath();
+    ctx.roundRect(110, 40, 220, 440, [60, 60, 12, 12]);
+    ctx.fill();
+    // Artwork
+    const img = art ? new Image() : null;
+    const draw = () => {
+      if (img && art) {
+        ctx.drawImage(img, 170, 180, 100, 100);
+      }
+      // Wordmark
+      ctx.fillStyle = "#06100b";
+      ctx.font = "bold 36px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillText(word || "PILLAR", 220, 340);
+      const a = document.createElement("a");
+      a.download = `tee-${word.toLowerCase() || "design"}.png`;
+      a.href = c.toDataURL("image/png");
+      a.click();
+      toast.success("Tee design downloaded");
+    };
+    if (img && art) {
+      img.onload = draw;
+      img.src = art;
+    } else {
+      draw();
+    }
+  }
+
+  function shareToShowcase() {
+    const c = document.createElement("canvas");
+    c.width = 440; c.height = 560;
+    const ctx = c.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = ink;
+    ctx.beginPath();
+    ctx.roundRect(110, 40, 220, 440, [60, 60, 12, 12]);
+    ctx.fill();
+    ctx.fillStyle = "#06100b";
+    ctx.font = "bold 36px system-ui";
+    ctx.textAlign = "center";
+    ctx.fillText(word || "PILLAR", 220, 340);
+    const dataUrl = c.toDataURL("image/png");
+    saveDrawing(dataUrl, { title: `Tee · ${word || "Design"}` });
+    toast.success("Shared to Showcase!");
+  }
 
   return (
     <Card className="space-y-4 p-5">
@@ -415,6 +471,14 @@ function DesignRoom() {
         ))}
       </div>
       <Input value={word} onChange={(e) => setWord(e.target.value.slice(0, 14))} aria-label="Shirt wordmark" />
+      <div className="flex gap-2">
+        <Button onClick={downloadTee} variant="outline" className="flex-1">
+          <Download className="size-4" /> Download PNG
+        </Button>
+        <Button onClick={shareToShowcase} className="flex-1">
+          <Share2 className="size-4" /> Share to Showcase
+        </Button>
+      </div>
     </Card>
   );
 }
@@ -423,22 +487,42 @@ function ChallengesRoom() {
   const drawings = useLedger((s) => s.drawings);
   const wins = useLedger((s) => s.gameWins ?? 0);
   const missions = useLedger((s) => s.completedMissionIds ?? []);
+  const claimed = useLedger((s) => s.claimedChallenges ?? []);
+  const claim = useLedger((s) => s.claimChallenge);
   const items = [
-    { title: "Daily: save a piece", done: drawings.length > 0, reward: "+8 XP" },
-    { title: "Weekly: win 3 games", done: wins >= 3, reward: "+12 Units" },
-    { title: "Monthly: 4 missions", done: missions.length >= 4, reward: "Maker badge" },
+    { id: "daily-art", title: "Daily: save a piece", done: drawings.length > 0, reward: "+8 XP" },
+    { id: "weekly-games", title: "Weekly: win 3 games", done: wins >= 3, reward: "+12 Units" },
+    { id: "monthly-maker", title: "Monthly: 4 missions", done: missions.length >= 4, reward: "Maker badge · +20 XP" },
   ];
   return (
     <div className="space-y-3">
-      {items.map((item) => (
-        <Card key={item.title} className="flex items-center justify-between gap-3 p-4">
-          <div>
-            <p className="font-semibold">{item.title}</p>
-            <p className="text-sm text-muted">{item.reward}</p>
-          </div>
-          <Badge tone={item.done ? "accent" : "muted"}>{item.done ? "Done" : "Open"}</Badge>
-        </Card>
-      ))}
+      {items.map((item) => {
+        const isClaimed = claimed.includes(item.id);
+        return (
+          <Card key={item.id} className="flex items-center justify-between gap-3 p-4">
+            <div>
+              <p className="font-semibold">{item.title}</p>
+              <p className="text-sm text-muted">{item.reward}</p>
+            </div>
+            {isClaimed ? (
+              <Badge tone="accent">Claimed</Badge>
+            ) : item.done ? (
+              <Button
+                size="sm"
+                onClick={() => {
+                  const err = claim(item.id);
+                  if (err) toast.message(err);
+                  else toast.success(`Claimed ${item.reward}!`);
+                }}
+              >
+                Claim
+              </Button>
+            ) : (
+              <Badge tone="muted">Open</Badge>
+            )}
+          </Card>
+        );
+      })}
     </div>
   );
 }
@@ -446,23 +530,46 @@ function ChallengesRoom() {
 function BoardRoom() {
   const xp = useLedger((s) => s.studioXp ?? 0);
   const name = useLedger((s) => s.childName);
-  const rows = [
-    { name: "Luna", xp: 420 },
-    { name: "Maya", xp: 310 },
-    { name, xp },
-    { name: "Jordan", xp: 180 },
-  ].sort((a, b) => b.xp - a.xp);
+  // Real ranks based on the child's own XP milestones — no fake competitors.
+  const ranks = [
+    { name: "Sketchling", xp: 0 },
+    { name: "Doodler", xp: 50 },
+    { name: "Creator", xp: 150 },
+    { name: "Artisan", xp: 300 },
+    { name: "Master", xp: 500 },
+  ];
+  const current = [...ranks].reverse().find((r) => xp >= r.xp) ?? ranks[0];
+  const next = ranks.find((r) => r.xp > xp);
   return (
-    <Card className="overflow-hidden p-0">
-      {rows.map((row, i) => (
-        <div key={row.name} className="flex items-center justify-between border-b border-border px-5 py-4 last:border-0">
-          <p className="font-semibold">
-            {i + 1}. {row.name}
+    <div className="space-y-3">
+      <Card className="p-5 text-center">
+        <p className="text-sm text-muted">{name}'s studio rank</p>
+        <p className="font-display text-3xl font-bold text-accent">{current.name}</p>
+        <p className="font-mono text-sm text-muted">{xp} XP</p>
+        {next && (
+          <p className="mt-2 text-xs text-muted">
+            {next.xp - xp} XP to {next.name}
           </p>
-          <p className="font-mono text-sm">{row.xp} XP</p>
+        )}
+        <div className="mt-3 h-2 overflow-hidden rounded-full bg-surface-2">
+          <div
+            className="h-full rounded-full bg-accent transition-all"
+            style={{ width: `${next ? Math.min(100, (xp / next.xp) * 100) : 100}%` }}
+          />
         </div>
-      ))}
-    </Card>
+      </Card>
+      <Card className="p-4">
+        <p className="mb-2 text-sm font-semibold">Rank ladder</p>
+        {ranks.map((r) => (
+          <div key={r.name} className="flex items-center justify-between py-1.5 text-sm">
+            <span className={r.name === current.name ? "font-bold text-accent" : ""}>
+              {r.name} {r.name === current.name && "← you"}
+            </span>
+            <span className="font-mono text-muted">{r.xp} XP</span>
+          </div>
+        ))}
+      </Card>
+    </div>
   );
 }
 
@@ -492,21 +599,34 @@ function TeamsRoom() {
   const join = useLedger((s) => s.joinStudioTeam);
   return (
     <div className="grid gap-3">
+      {team && (
+        <Card className="border-accent/40 bg-accent/5 p-4">
+          <p className="text-sm">
+            <span className="font-semibold">Current team:</span>{" "}
+            {TEAMS.find((t) => t.id === team)?.name}
+          </p>
+          <p className="text-xs text-muted">
+            Perk active: {TEAMS.find((t) => t.id === team)?.perk}
+          </p>
+        </Card>
+      )}
       {TEAMS.map((item) => (
         <Card key={item.id} className="p-5">
           <div className="flex items-start justify-between gap-3">
             <div>
               <CardTitle className="text-base">{item.name}</CardTitle>
               <p className="mt-1 text-sm text-muted">{item.blurb}</p>
+              <p className="mt-1 text-xs font-semibold text-accent">{item.perk}</p>
             </div>
             <Users className="size-5 text-accent" />
           </div>
           <Button
             className="mt-4"
             variant={team === item.id ? "secondary" : "default"}
+            disabled={team === item.id}
             onClick={() => {
               join(item.id);
-              toast.success(`Joined ${item.name}`);
+              toast.success(`Joined ${item.name} — perk active!`);
             }}
           >
             {team === item.id ? "Current team" : "Join"}

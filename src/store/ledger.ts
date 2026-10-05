@@ -192,6 +192,7 @@ function openingState() {
     gameWins: 0,
     studioTeam: null as string | null,
     ownedPacks: [] as string[],
+    claimedChallenges: [] as string[],
     choreCatalog: CHORE_SEED.map((c) => ({ ...c })),
     disabledChoreIds: [] as string[],
   };
@@ -255,6 +256,7 @@ type LedgerState = LedgerData & {
   awardStudioWin: (xp: number, units: number, note: string) => string | null;
   buyStudioPack: (packId: string, cost: number) => string | null;
   joinStudioTeam: (team: string) => void;
+  claimChallenge: (challengeId: string) => string | null;
   touchStudioStreak: () => void;
   resetDemo: () => void;
   daysRemaining: () => number;
@@ -735,7 +737,9 @@ export const useLedger = create<LedgerState>()(
         return null;
       },
       saveDrawing: (dataUrl, meta) => {
-        set((s) => ({
+        const s = get();
+        const teamBonus = s.studioTeam === "art-squad" ? 2 : 0;
+        set({
           drawings: [
             {
               id: uid("draw"),
@@ -746,8 +750,9 @@ export const useLedger = create<LedgerState>()(
             },
             ...s.drawings,
           ].slice(0, 12),
-        }));
-        return "Design saved";
+          studioXp: (s.studioXp ?? 0) + teamBonus,
+        });
+        return teamBonus > 0 ? "Design saved · +2 XP team bonus" : "Design saved";
       },
       clearDrawings: () => set({ drawings: [] }),
       setChildAge: (age) => {
@@ -761,9 +766,10 @@ export const useLedger = create<LedgerState>()(
         const s = get();
         const done = s.completedMissionIds ?? [];
         if (done.includes(missionId)) return "Mission already complete";
+        const teamBonus = s.studioTeam === "sound-lab" ? 2 : 0;
         set({
           completedMissionIds: [missionId, ...done],
-          studioXp: (s.studioXp ?? 0) + Math.max(0, Math.floor(xp)),
+          studioXp: (s.studioXp ?? 0) + Math.max(0, Math.floor(xp)) + teamBonus,
           history: record(s.history, "event", 0, `Studio mission · ${missionId}`),
         });
         return null;
@@ -772,8 +778,9 @@ export const useLedger = create<LedgerState>()(
         const s = get();
         if (s.frozen) return "Account is frozen";
         const credit = Math.max(0, Math.floor(units));
+        const teamBonus = s.studioTeam === "game-makers" ? 2 : 0;
         set({
-          studioXp: (s.studioXp ?? 0) + Math.max(0, Math.floor(xp)),
+          studioXp: (s.studioXp ?? 0) + Math.max(0, Math.floor(xp)) + teamBonus,
           gameWins: (s.gameWins ?? 0) + 1,
           balance: s.balance + credit,
           history: record(s.history, "credit", credit, note),
@@ -793,6 +800,32 @@ export const useLedger = create<LedgerState>()(
         return null;
       },
       joinStudioTeam: (team) => set({ studioTeam: team }),
+      claimChallenge: (challengeId) => {
+        const s = get();
+        const claimed = s.claimedChallenges ?? [];
+        if (claimed.includes(challengeId)) return "Already claimed";
+        if (s.frozen) return "Account is frozen";
+        const drawings = s.drawings ?? [];
+        const wins = s.gameWins ?? 0;
+        const missions = s.completedMissionIds ?? [];
+        let xp = 0, units = 0, note = "";
+        if (challengeId === "daily-art" && drawings.length > 0) {
+          xp = 8; note = "Daily challenge · save a piece";
+        } else if (challengeId === "weekly-games" && wins >= 3) {
+          units = 12; note = "Weekly challenge · win 3 games";
+        } else if (challengeId === "monthly-maker" && missions.length >= 4) {
+          xp = 20; note = "Monthly challenge · 4 missions · Maker badge earned";
+        } else {
+          return "Challenge not complete yet";
+        }
+        set({
+          claimedChallenges: [...claimed, challengeId],
+          studioXp: (s.studioXp ?? 0) + xp,
+          balance: s.balance + units,
+          history: record(s.history, units > 0 ? "credit" : "event", units, note),
+        });
+        return null;
+      },
       touchStudioStreak: () => {
         const today = new Date().toISOString().slice(0, 10);
         const s = get();

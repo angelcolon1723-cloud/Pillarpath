@@ -2552,38 +2552,18 @@ export function ChildClassroom() {
 
       <Card className="space-y-3 p-4">
         <CardTitle className="text-base">Join a classroom</CardTitle>
-        <CardHint>Ask your teacher for the 6-letter join code.</CardHint>
-        <div className="grid gap-2 sm:grid-cols-2">
-          <div>
-            <FieldLabel>Join code</FieldLabel>
-            <Input
-              value={code}
-              onChange={(e) => setCode(e.target.value.toUpperCase())}
-              placeholder="ABC123"
-              maxLength={6}
-            />
-          </div>
-          <div>
-            <FieldLabel>Student name</FieldLabel>
-            <Input value={name} onChange={(e) => setName(e.target.value)} />
-          </div>
-        </div>
-        <Button
-          onClick={() => {
-            const err = joinClassroom(code, name);
-            if (err) toast.error(err);
-            else {
-              setCode("");
-              toast.success("Joined the classroom");
-            }
-          }}
-        >
-          Join classroom
-        </Button>
+        <CardHint>
+          Classrooms are connected from the parent side — ask your parent to
+          enter the teacher's join code in the parent app under Teachers.
+        </CardHint>
+        <p className="text-sm text-muted">
+          Once your parent connects a classroom, your lessons and assignments
+          will appear here.
+        </p>
       </Card>
 
       {myClassroomIds.length === 0 ? (
-        <EmptyHint text="You are not in any classroom yet — join one above." />
+        <EmptyHint text="You are not in any classroom yet — ask your parent to connect one." />
       ) : (
         <div className="space-y-3">
           {classrooms

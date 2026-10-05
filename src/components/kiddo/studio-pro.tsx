@@ -5,15 +5,18 @@ import {
   Circle,
   Download,
   Eraser,
+  Highlighter,
   Layers,
   Layers2,
   Lock,
   Minus,
   Music2,
   PaintBucket,
+  PenLine,
   Play,
   Plus,
   Sparkles,
+  SprayCan,
   Square,
   Trash2,
   Type,
@@ -63,7 +66,11 @@ function makeLayer() {
 
 /* ------------------------------ Pro Canvas ------------------------ */
 
-type CanvasTool = "brush" | "eraser" | "fill" | "line" | "rect" | "circle" | "text";
+type CanvasTool = "brush" | "eraser" | "fill" | "line" | "rect" | "circle" | "text" | "liner" | "marker" | "spray";
+
+/** Extra palettes unlocked by the Palette Set pack. */
+const WARM_SWATCHES = ["#ff6b35", "#f7c548", "#e8452c", "#a83232", "#ff9f1c"];
+const COOL_SWATCHES = ["#4cc9f0", "#4361ee", "#3a0ca3", "#7209b7", "#00f5d4"];
 
 /** Scanline flood fill on a 2d context. */
 function floodFill(
@@ -159,6 +166,50 @@ function ProCanvas({ onDone }: { onDone: () => void }) {
   const [color, setColor] = useState(SWATCHES[0]);
   const [size, setSize] = useState(8);
   const [opacity, setOpacity] = useState(1);
+  const [paletteTab, setPaletteTab] = useState<"base" | "warm" | "cool">("base");
+  const ownedPacks = useLedger((s) => s.ownedPacks ?? []);
+  const hasBrushPro = ownedPacks.includes("brush-pro");
+  const hasPaletteSet = ownedPacks.includes("palette-set");
+  const hasTemplatePack = ownedPacks.includes("template-pack");
+
+  /** Draw a template background on the base layer (Template Pack). */
+  function applyTemplate(kind: "comic" | "poster" | "grid") {
+    const base = layersRef.current[0];
+    const ctx = base?.getContext("2d");
+    if (!ctx) return;
+    pushUndo();
+    ctx.save();
+    ctx.globalCompositeOperation = "source-over";
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, PRO_W, PRO_H);
+    ctx.strokeStyle = "#1c1a16";
+    ctx.lineWidth = 6;
+    if (kind === "comic") {
+      // 4 comic panels
+      const pw = PRO_W / 2, ph = PRO_H / 2;
+      for (let r = 0; r < 2; r++) for (let c = 0; c < 2; c++) {
+        ctx.strokeRect(c * pw + 12, r * ph + 12, pw - 24, ph - 24);
+      }
+    } else if (kind === "poster") {
+      // Poster border + title band
+      ctx.strokeRect(16, 16, PRO_W - 32, PRO_H - 32);
+      ctx.lineWidth = 2;
+      ctx.strokeRect(32, 32, PRO_W - 64, 120);
+    } else {
+      // Blueprint grid
+      ctx.lineWidth = 1;
+      ctx.strokeStyle = "#c9d4e8";
+      for (let x = 0; x <= PRO_W; x += 40) {
+        ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, PRO_H); ctx.stroke();
+      }
+      for (let y = 0; y <= PRO_H; y += 40) {
+        ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(PRO_W, y); ctx.stroke();
+      }
+    }
+    ctx.restore();
+    composite();
+    toast.success("Template applied");
+  }
   const [mirror, setMirror] = useState(false);
   const [text, setText] = useState("");
   const [, setTick] = useState(0);
@@ -233,11 +284,44 @@ function ProCanvas({ onDone }: { onDone: () => void }) {
       ctx.globalCompositeOperation = "destination-out";
       ctx.strokeStyle = "#000";
       ctx.fillStyle = "#000";
+    } else if (t === "liner") {
+      // Fine detail: thin precise line regardless of size slider.
+      ctx.globalCompositeOperation = "source-over";
+      ctx.lineWidth = Math.max(1, sizeRef.current / 4);
+      ctx.strokeStyle = colorRef.current;
+      ctx.fillStyle = colorRef.current;
+    } else if (t === "marker") {
+      // Thick opaque marker.
+      ctx.globalCompositeOperation = "source-over";
+      ctx.lineWidth = sizeRef.current * 2.5;
+      ctx.globalAlpha = 1;
+      ctx.strokeStyle = colorRef.current;
+      ctx.fillStyle = colorRef.current;
+    } else if (t === "spray") {
+      // Airbrush: scatter dots handled in drawSpray; keep base setup.
+      ctx.globalCompositeOperation = "source-over";
+      ctx.fillStyle = colorRef.current;
     } else {
       ctx.globalCompositeOperation = "source-over";
       ctx.strokeStyle = colorRef.current;
       ctx.fillStyle = colorRef.current;
     }
+  }
+
+  function drawSpray(ctx: CanvasRenderingContext2D, x: number, y: number) {
+    const radius = sizeRef.current * 2;
+    const dots = 24;
+    for (let i = 0; i < dots; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = Math.random() * radius;
+      const dx = x + Math.cos(a) * r;
+      const dy = y + Math.sin(a) * r;
+      ctx.globalAlpha = opacityRef.current * (1 - r / (radius * 1.5));
+      ctx.beginPath();
+      ctx.arc(dx, dy, Math.max(0.5, sizeRef.current / 8), 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.globalAlpha = opacityRef.current;
   }
 
   function drawDot(ctx: CanvasRenderingContext2D, x: number, y: number) {
@@ -310,8 +394,11 @@ function ProCanvas({ onDone }: { onDone: () => void }) {
 
     pushUndo();
     setupStroke(ctx, t);
-    if (t === "brush" || t === "eraser") {
+    if (t === "brush" || t === "eraser" || t === "liner" || t === "marker") {
       drawDot(ctx, p.x, p.y);
+      strokeRef.current = { tool: t, start: p, snapshot: null };
+    } else if (t === "spray") {
+      drawSpray(ctx, p.x, p.y);
       strokeRef.current = { tool: t, start: p, snapshot: null };
     } else {
       // shape tools: snapshot for live preview
@@ -332,13 +419,20 @@ function ProCanvas({ onDone }: { onDone: () => void }) {
     if (!s) return;
     const p = pos(e);
     if (!p) return;
-    if (s.tool === "brush" || s.tool === "eraser") {
+    if (s.tool === "brush" || s.tool === "eraser" || s.tool === "liner" || s.tool === "marker") {
       const ctx = layerCtx();
       if (!ctx) return;
       setupStroke(ctx, s.tool);
       drawSeg(ctx, s.start.x, s.start.y, p.x, p.y);
       ctx.globalAlpha = 1;
       s.start = p;
+      composite();
+    } else if (s.tool === "spray") {
+      const ctx = layerCtx();
+      if (!ctx) return;
+      setupStroke(ctx, s.tool);
+      drawSpray(ctx, p.x, p.y);
+      ctx.globalAlpha = 1;
       composite();
     } else if (s.snapshot) {
       // live shape preview on the visible canvas
@@ -437,7 +531,7 @@ function ProCanvas({ onDone }: { onDone: () => void }) {
     toast.success("Artwork downloaded");
   }
 
-  const tools: Array<[CanvasTool, typeof Brush, string]> = [
+  const tools: Array<[CanvasTool, typeof Brush, string, boolean?]> = [
     ["brush", Brush, "Brush"],
     ["eraser", Eraser, "Eraser"],
     ["fill", PaintBucket, "Fill"],
@@ -445,6 +539,10 @@ function ProCanvas({ onDone }: { onDone: () => void }) {
     ["rect", Square, "Rect"],
     ["circle", Circle, "Circle"],
     ["text", Type, "Text"],
+    // Brush Pro pack unlocks:
+    ["liner", PenLine, "Liner", !hasBrushPro],
+    ["marker", Highlighter, "Marker", !hasBrushPro],
+    ["spray", SprayCan, "Spray", !hasBrushPro],
   ];
 
   return (
@@ -461,15 +559,17 @@ function ProCanvas({ onDone }: { onDone: () => void }) {
 
       <Card className="space-y-3 p-4">
         <div className="flex flex-wrap gap-1.5">
-          {tools.map(([id, Icon, label]) => (
+          {tools.map(([id, Icon, label, locked]) => (
             <Button
               key={id}
               size="sm"
               variant={tool === id ? "default" : "outline"}
+              disabled={!!locked}
               onClick={() => setTool(id)}
-              aria-label={label}
+              aria-label={locked ? `${label} — unlock with Brush Pack` : label}
+              title={locked ? "Unlock with the Brush Pack in the Studio Shop" : label}
             >
-              <Icon className="size-4" />
+              {locked ? <Lock className="size-4" /> : <Icon className="size-4" />}
             </Button>
           ))}
           <Button size="sm" variant="outline" onClick={undo} aria-label="Undo">
@@ -482,9 +582,31 @@ function ProCanvas({ onDone }: { onDone: () => void }) {
           >
             Mirror {mirror ? "on" : "off"}
           </Button>
+          {hasTemplatePack ? (
+            <div className="flex gap-1">
+              <Button size="sm" variant="outline" onClick={() => applyTemplate("comic")}>
+                Comic
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => applyTemplate("poster")}>
+                Poster
+              </Button>
+              <Button size="sm" variant="outline" onClick={() => applyTemplate("grid")}>
+                Grid
+              </Button>
+            </div>
+          ) : (
+            <Button
+              size="sm"
+              variant="outline"
+              title="Unlock canvas templates with the Template Pack in the Studio Shop"
+              className="text-muted"
+            >
+              <Lock className="size-3" /> Templates
+            </Button>
+          )}
         </div>
         <div className="flex flex-wrap items-center gap-2">
-          {SWATCHES.map((s) => (
+          {(paletteTab === "base" ? SWATCHES : paletteTab === "warm" ? WARM_SWATCHES : COOL_SWATCHES).map((s) => (
             <button
               key={s}
               type="button"
@@ -497,6 +619,31 @@ function ProCanvas({ onDone }: { onDone: () => void }) {
               style={{ backgroundColor: s }}
             />
           ))}
+          {hasPaletteSet ? (
+            <div className="flex gap-1">
+              {(["base", "warm", "cool"] as const).map((t) => (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setPaletteTab(t)}
+                  className={cn(
+                    "rounded-full px-2 py-1 text-[10px] font-semibold capitalize",
+                    paletteTab === t ? "bg-accent text-white" : "bg-surface-2 text-muted",
+                  )}
+                >
+                  {t}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <button
+              type="button"
+              title="Unlock Warm & Cool palettes with the Palette Set in the Studio Shop"
+              className="flex items-center gap-1 rounded-full bg-surface-2 px-2 py-1 text-[10px] font-semibold text-muted"
+            >
+              <Lock className="size-3" /> +10 colors
+            </button>
+          )}
           <input
             type="color"
             value={color}

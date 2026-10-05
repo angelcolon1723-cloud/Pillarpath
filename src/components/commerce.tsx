@@ -35,6 +35,7 @@ import {
   cancelFamilyInvite,
   approveDeviceLink,
   denyDeviceLink,
+  redeemFamilyInvite,
   type FamilyInvite,
   createPromoCode,
   saveProfile,
@@ -899,6 +900,8 @@ export function FamilyProfiles({
   const [childAge, setChildAge] = useState("10");
   const [invites, setInvites] = useState<FamilyInvite[]>([]);
   const [generating, setGenerating] = useState(false);
+  const [redeemCode, setRedeemCode] = useState("");
+  const [redeeming, setRedeeming] = useState(false);
   const setStudioAge = useLedger((s) => s.setChildAge);
 
   const loadInvites = useCallback(async () => {
@@ -930,6 +933,23 @@ export function FamilyProfiles({
       toast.error(e instanceof Error ? e.message : "Couldn't create a code.");
     } finally {
       setGenerating(false);
+    }
+  }
+
+  async function redeemCodeSubmit() {
+    if (redeemCode.length !== 6 || redeeming) return;
+    setRedeeming(true);
+    try {
+      const deviceLabel = `${navigator.platform} · ${navigator.userAgent.match(/\(([^)]+)\)/)?.[1] ?? "browser"}`.slice(0, 120);
+      await redeemFamilyInvite({ data: { code: redeemCode, deviceLabel } });
+      setRedeemCode("");
+      await loadInvites();
+      await onRefresh();
+      toast.success("Code accepted! Ask your parent to approve this device.");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Invalid or expired code.");
+    } finally {
+      setRedeeming(false);
     }
   }
 
@@ -1110,6 +1130,35 @@ export function FamilyProfiles({
             </Button>
             <p className="text-xs text-muted">
               Your child enters the code on their device — that's what links the two.
+            </p>
+          </div>
+        </Card>
+
+        <Card className="border border-dashed border-border bg-transparent shadow-none">
+          <div className="flex items-center gap-3">
+            <div className="grid size-11 place-items-center rounded-2xl bg-surface-2">
+              <Smartphone className="size-5" />
+            </div>
+            <div>
+              <h3 className="font-semibold">Join my family</h3>
+              <p className="text-xs text-muted">Enter the code on this device.</p>
+            </div>
+          </div>
+          <div className="mt-4 grid gap-3">
+            <Input
+              placeholder="6-digit code"
+              value={redeemCode}
+              onChange={(e) => setRedeemCode(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              maxLength={6}
+              inputMode="numeric"
+              className="text-center text-2xl font-mono tracking-[0.5em]"
+            />
+            <Button onClick={redeemCodeSubmit} disabled={redeeming || redeemCode.length !== 6}>
+              {redeeming ? "Joining…" : "Join family"}
+            </Button>
+            <p className="text-xs text-muted">
+              Open this screen on your child's device, enter the code from above,
+              and you'll get an approval request here.
             </p>
           </div>
         </Card>

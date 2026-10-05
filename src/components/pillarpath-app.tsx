@@ -48,7 +48,7 @@ import {
   ChildMarket,
   ChildVault,
 } from "@/components/kiddo/child-views";
-import { ParentChores } from "@/components/kiddo/parent-views";
+import { ParentChores, ParentClassroom } from "@/components/kiddo/parent-views";
 import { StudioScreen } from "@/components/kiddo/studio";
 import { FutureUnitsMarket } from "@/components/kiddo/future-market";
 import { UnitMarketView } from "@/components/kiddo/unit-market";
@@ -606,7 +606,7 @@ function ParentWorkspace({
   if (section === "teachers") {
     return (
       <section className="mx-auto max-w-3xl">
-        <ParentTeachers />
+        <ParentClassroom />
       </section>
     );
   }
