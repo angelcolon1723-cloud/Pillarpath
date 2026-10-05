@@ -64,6 +64,7 @@ import {
 import { PendingGiftRows } from "@/components/kiddo/give";
 import { PendingShopRows } from "@/components/kiddo/creator-shop";
 import { PendingGalleryRows } from "@/components/kiddo/showcase";
+import { logUnitsTransaction } from "@/lib/pillarpath-server";
 
 function BackButton() {
   const setScreen = useLedger((s) => s.setScreen);
@@ -338,7 +339,12 @@ export function ParentHome() {
                     onClick={() => {
                       const err = approveChore(c.id);
                       if (err) toast.error(err);
-                      else toast.success(`+${c.amount} Units awarded`);
+                      else {
+                        toast.success(`+${c.amount} Units awarded`);
+                        logUnitsTransaction({
+                          data: { kind: "earn", amount: c.amount, note: `Chore approved · ${c.name}` },
+                        }).catch(() => {});
+                      }
                     }}
                   >
                     <Check className="size-4" />

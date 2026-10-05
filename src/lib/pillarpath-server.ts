@@ -517,6 +517,8 @@ export const contributeToGoal = createServerFn({ method: "POST" })
       returning id, child_id,
         (select name from children where id = ${childId}) as child_name,
         title, emoji, target_units, saved_units, status, created_at::text as created_at`;
+    await recordTx(sql, context.userId, childId, "goal", -amount,
+      `Saved toward "${rows[0].title}"`);
     return { goal: toSavingsGoal(rows[0]) };
   });
 
@@ -539,5 +541,110 @@ export const releaseSavingsGoal = createServerFn({ method: "POST" })
                 where id = ${g.child_id} and user_id = ${context.userId}`;
     }
     await sql`update savings_goals set saved_units = 0, status = 'released' where id = ${data.goalId}`;
+    if (g.saved_units > 0) {
+      await recordTx(sql, context.userId, g.child_id, "release", g.saved_units,
+        "Savings goal released");
+    }
     return { ok: true, releasedUnits: g.saved_units };
+  });
+
+/* ------------------------------------------------------------------ */
+/* Units transaction log + Spending Insights                            */
+/* ------------------------------------------------------------------ */
+
+export type UnitsTxKind =
+  | "earn" | "spend" | "save" | "vault" | "give" | "goal"
+  | "release" | "load" | "award" | "adjust";
+
+async function recordTx(
+  sql: any,
+  userId: string,
+  childId: number | null,
+  kind: UnitsTxKind,
+  amount: number,
+  note?: string,
+) {
+  await sql`
+    insert into units_transactions (user_id, child_id, kind, amount, note)
+    values (${userId}, ${childId}, ${kind}, ${amount}, ${note ?? null})`;
+}
+
+/**
+ * Log a Units movement from the client (chores, store, vault moves that
+ * happen in the local store). Server verifies the child belongs to the family.
+ */
+export const logUnitsTransaction = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId?: number; kind: UnitsTxKind; amount: number; note?: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    const amount = Math.floor(Number(data.amount));
+    if (!Number.isFinite(amount) || amount === 0) throw new Error("Invalid amount.");
+    let childId: number | null = null;
+    if (data.childId) {
+      const kids = await sql<{ id: number }>`
+        select id from children where id = ${data.childId} and user_id = ${context.userId}`;
+      if (!kids.length) throw new Error("Child not found.");
+      childId = kids[0].id;
+    }
+    await recordTx(sql, context.userId, childId, data.kind, amount, data.note?.slice(0, 120));
+    return { ok: true };
+  });
+
+export interface SpendingInsights {
+  childId: number | null;
+  childName: string;
+  earned: number;
+  spent: number;
+  saved: number;
+  given: number;
+  txCount: number;
+  recent: Array<{ kind: UnitsTxKind; amount: number; note: string | null; at: string }>;
+}
+
+/** Aggregated Units flow per child (plus family-wide) for the parent dashboard. */
+export const getSpendingInsights = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<{ insights: SpendingInsights[] }> => {
+    const sql = await getSql();
+    const kids = await sql<{ id: number; name: string }>`
+      select id, name from children where user_id = ${context.userId} order by id`;
+    const txs = await sql<{
+      child_id: number | null; kind: string; amount: number;
+      note: string | null; created_at: string;
+    }>`
+      select child_id, kind, amount, note, created_at::text as created_at
+      from units_transactions
+      where user_id = ${context.userId}
+        and created_at > now() - interval '30 days'
+      order by created_at desc
+      limit 500`;
+
+    const EARN = new Set(["earn", "load", "award", "release"]);
+    const SPEND = new Set(["spend"]);
+    const SAVE = new Set(["save", "vault", "goal"]);
+    const GIVE = new Set(["give"]);
+
+    const build = (childId: number | null, childName: string): SpendingInsights => {
+      const rows = txs.filter((t) => (childId === null ? true : t.child_id === childId));
+      let earned = 0, spent = 0, saved = 0, given = 0;
+      for (const t of rows) {
+        const a = Math.abs(t.amount);
+        if (EARN.has(t.kind)) earned += a;
+        else if (SPEND.has(t.kind)) spent += a;
+        else if (SAVE.has(t.kind)) saved += a;
+        else if (GIVE.has(t.kind)) given += a;
+      }
+      return {
+        childId, childName, earned, spent, saved, given,
+        txCount: rows.length,
+        recent: rows.slice(0, 8).map((t) => ({
+          kind: t.kind as UnitsTxKind, amount: t.amount, note: t.note, at: t.created_at,
+        })),
+      };
+    };
+
+    const insights = kids.map((k) => build(k.id, k.name));
+    if (kids.length > 1) insights.unshift(build(null, "Whole family"));
+    return { insights };
   });
