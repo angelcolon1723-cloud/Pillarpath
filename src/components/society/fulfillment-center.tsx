@@ -9,6 +9,7 @@ import {
   refreshCjTracking,
   retryCjFulfillment,
   testCjConnection,
+  cjDeepDiagnostic,
   type AdminFulfillmentOrder,
 } from "@/lib/corporate-server";
 
@@ -52,6 +53,8 @@ export function FulfillmentCenter() {
     }
   }
 
+  const [cjDiag, setCjDiag] = useState<string | null>(null);
+
   async function testCj() {
     setCjTest("Testing…");
     try {
@@ -59,6 +62,16 @@ export function FulfillmentCenter() {
       setCjTest(r.ok ? `✅ ${r.message}` : `❌ ${r.message}`);
     } catch (e) {
       setCjTest(`❌ ${e instanceof Error ? e.message : "Test failed."}`);
+    }
+  }
+
+  async function deepDiag() {
+    setCjDiag("Running deep diagnostic…");
+    try {
+      const r = await cjDeepDiagnostic({ data: undefined });
+      setCjDiag(JSON.stringify(r, null, 1));
+    } catch (e) {
+      setCjDiag(`Failed: ${e instanceof Error ? e.message : "unknown"}`);
     }
   }
 
@@ -82,11 +95,21 @@ export function FulfillmentCenter() {
               Orders are created unpaid — you review and pay each one from your CJ balance.
             </p>
           </div>
-          <Button size="sm" variant="outline" onClick={testCj}>
-            Test CJ connection
-          </Button>
+          <div className="flex gap-2">
+            <Button size="sm" variant="outline" onClick={testCj}>
+              Test CJ connection
+            </Button>
+            <Button size="sm" variant="ghost" onClick={deepDiag}>
+              Deep diagnostic
+            </Button>
+          </div>
         </div>
         {cjTest && <p className="mt-2 text-xs">{cjTest}</p>}
+        {cjDiag && (
+          <pre className="mt-2 max-h-48 overflow-auto rounded-lg bg-surface-2 p-3 font-mono text-[11px] whitespace-pre-wrap">
+            {cjDiag}
+          </pre>
+        )}
       </Card>
 
       {orders === null ? (

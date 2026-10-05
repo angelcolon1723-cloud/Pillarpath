@@ -764,3 +764,61 @@ export const assignSelfToRole = createServerFn({ method: "POST" })
     });
     return { ok: true, roleTitle: roles[0].title };
   });
+
+/* ------------------------------------------------------------------ */
+/* CJ deep diagnostic — safe fingerprints, no secrets exposed           */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Returns safe diagnostic fingerprints for the CJ integration:
+ * - API key length + first/last 4 chars (to verify the right key)
+ * - Token length + first/last 4 chars (to verify it's populated)
+ * - Raw result of a minimal product probe
+ * Never exposes full secrets.
+ */
+export const cjDeepDiagnostic = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }) => {
+    const status = await readStatus(context.userId);
+    if (!status.isCorporate || !hasGrant(status.permissions, "suppliers", "manage")) {
+      throw new ForbiddenError("corporate:suppliers:manage");
+    }
+    const apiKey = process.env.CJ_API_KEY ?? "";
+    const fp = (s: string) =>
+      s.length < 8 ? `(len ${s.length})` : `${s.slice(0, 4)}…${s.slice(-4)} (len ${s.length})`;
+    const out: Record<string, string> = {
+      keyFingerprint: apiKey ? fp(apiKey.trim()) : "CJ_API_KEY NOT SET",
+      keyHasWhitespace: /^\s|\s$/.test(apiKey) ? "YES — leading/trailing whitespace!" : "no",
+    };
+    try {
+      // Direct token fetch, bypassing cache, to see the raw token.
+      const res = await fetch(
+        "https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken",
+        {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ apiKey: apiKey.trim() }),
+        },
+      );
+      const body = (await res.json().catch(() => null)) as any;
+      const token = body?.data?.accessToken ?? body?.result?.accessToken ?? body?.accessToken ?? null;
+      out.tokenFingerprint = token ? fp(String(token)) : "NO TOKEN IN RESPONSE";
+      out.tokenResponseCode = String(body?.code ?? res.status);
+      if (!token) {
+        out.probe = "skipped — no token to probe with";
+        return out;
+      }
+      // Minimal probe: listV2 with size 1.
+      const probe = await fetch(
+        "https://developers.cjdropshipping.com/api2.0/v1/product/listV2?page=1&size=1",
+        { headers: { "CJ-Access-Token": String(token), "Content-Type": "application/json" } },
+      );
+      const pbody = (await probe.json().catch(() => null)) as any;
+      out.probeCode = String(pbody?.code ?? probe.status);
+      out.probeMessage = String(pbody?.message ?? "no message").slice(0, 120);
+      out.probeRequestId = String(pbody?.requestId ?? "none");
+    } catch (e) {
+      out.error = e instanceof Error ? e.message.slice(0, 120) : "unknown";
+    }
+    return out;
+  });
