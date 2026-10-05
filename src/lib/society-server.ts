@@ -486,7 +486,7 @@ export const searchCjProducts = createServerFn({ method: "POST" })
       size: 24,
       countryCode: data.usOnly === false ? undefined : "US",
       endSellPrice: data.maxPrice,
-      orderBy: 4, // inventory — prefer stocked items
+      orderBy: 4 as const, // inventory — prefer stocked items
       sort: "desc" as const,
     };
     const client = await createCachedCjClient();
