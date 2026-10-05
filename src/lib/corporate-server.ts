@@ -876,29 +876,20 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
         const page = await freshClient.searchProducts({ keyWord: "squishy", size: 1 });
         out.clientProbe = `OK — ${page.total} total, ${page.items.length} items`;
         // Use the client's own debug hook to see the raw unmapped response.
-        try {
-          const rawDebug = await freshClient.debugRawSearch({ keyWord: "squishy", size: 1 }) as any;
-          const dbgKeys = rawDebug && typeof rawDebug === "object" ? Object.keys(rawDebug).join(",") : String(typeof rawDebug);
-          out.debugRawKeys = dbgKeys.slice(0, 200);
-          // Find the product array in the debug response.
-          const d = rawDebug as any;
-          const locs: Record<string, unknown> = {
-            "content": d?.content,
-            "content.productList": d?.content?.productList,
-            "list": d?.list,
-            "productList": d?.productList,
-          };
-          for (const [label, val] of Object.entries(locs)) {
-            if (Array.isArray(val) && val.length > 0 && typeof val[0] === "object") {
-              out.debugItemKeys = `${label}: ` + Object.keys(val[0]).slice(0, 30).join(",");
-              out.debugItemSample = JSON.stringify(val[0]).slice(0, 600);
+        // Try multiple keywords to catch CJ returning real products.
+        for (const kw of ["toy", "kids", "school"]) {
+          try {
+            const rawDebug = await freshClient.debugRawSearch({ keyWord: kw, size: 3, countryCode: "US" }) as any;
+            const d = rawDebug as any;
+            const pl = d?.content?.productList;
+            if (Array.isArray(pl) && pl.length > 0 && typeof pl[0] === "object") {
+              out.debugItemKeys = `keyword=${kw}: ` + Object.keys(pl[0]).slice(0, 30).join(",");
+              out.debugItemSample = JSON.stringify(pl[0]).slice(0, 800);
               break;
             }
-          }
-          if (!out.debugItemKeys) out.debugItemKeys = "no items in debug response";
-        } catch (de) {
-          out.debugItemKeys = `debug failed: ${de instanceof Error ? de.message.slice(0, 80) : "?"}`;
+          } catch { /* try next keyword */ }
         }
+        if (!out.debugItemKeys) out.debugItemKeys = "no products in any keyword probe";
       } catch (ce) {
         out.clientProbe = `FAIL — ${ce instanceof Error ? ce.message.slice(0, 160) : "unknown"}`;
       }
