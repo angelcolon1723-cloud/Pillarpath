@@ -11,6 +11,9 @@ import {
   ChevronRight,
   Loader2,
   X,
+  Upload,
+  FileText,
+  Download,
 } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -24,8 +27,14 @@ import {
   deleteFolder,
   addLibraryItem,
   removeLibraryItem,
+  getFileUploadUrl,
+  confirmFileUpload,
+  listLibraryFiles,
+  getFileDownloadUrl,
+  deleteLibraryFile,
   type LibraryFolder,
   type LibraryItem,
+  type LibraryFile,
 } from "@/lib/teacher-server";
 import { SectionHeader } from "./teacher-views";
 
@@ -46,6 +55,9 @@ export function TeacherLibrary({ onOpenMaterial }: { onOpenMaterial: (resourceId
   const [noteBody, setNoteBody] = useState("");
   const [showNoteForm, setShowNoteForm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [files, setFiles] = useState<LibraryFile[] | null>(null);
+  const [uploading, setUploading] = useState(false);
+  const [r2Missing, setR2Missing] = useState(false);
 
   const load = async () => {
     try {
@@ -59,6 +71,16 @@ export function TeacherLibrary({ onOpenMaterial }: { onOpenMaterial: (resourceId
   useEffect(() => {
     void load();
   }, []);
+
+  useEffect(() => {
+    if (!openFolderId) {
+      setFiles(null);
+      return;
+    }
+    listLibraryFiles({ data: { folderId: openFolderId } })
+      .then((r) => setFiles(r.files))
+      .catch(() => setFiles([]));
+  }, [openFolderId, folders]);
 
   const openFolder = folders?.find((f) => f.id === openFolderId) ?? null;
 
@@ -146,6 +168,74 @@ export function TeacherLibrary({ onOpenMaterial }: { onOpenMaterial: (resourceId
     // 'link' items deep-link via the teacher nav — handled by parent via onNavigateLink
   };
 
+  const uploadFile = async (file: File) => {
+    if (!openFolderId) return;
+    setUploading(true);
+    try {
+      const { uploadUrl, fileKey } = await getFileUploadUrl({
+        data: {
+          folderId: openFolderId,
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+        },
+      });
+      const put = await fetch(uploadUrl, {
+        method: "PUT",
+        headers: { "Content-Type": file.type || "application/octet-stream" },
+        body: file,
+      });
+      if (!put.ok) throw new Error("Upload failed — try again.");
+      await confirmFileUpload({
+        data: {
+          folderId: openFolderId,
+          fileKey,
+          fileName: file.name,
+          mimeType: file.type || "application/octet-stream",
+          sizeBytes: file.size,
+        },
+      });
+      const r = await listLibraryFiles({ data: { folderId: openFolderId } });
+      setFiles(r.files);
+      setR2Missing(false);
+      toast.success(`📄 ${file.name} uploaded`);
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : "Upload failed.";
+      if (/aren't set up|isn't connected/i.test(msg)) setR2Missing(true);
+      toast.error(msg);
+    } finally {
+      setUploading(false);
+    }
+  };
+
+  const downloadFile = async (file: LibraryFile) => {
+    try {
+      const r = await getFileDownloadUrl({ data: { fileId: file.id } });
+      const a = document.createElement("a");
+      a.href = r.url;
+      a.download = file.fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't download.");
+    }
+  };
+
+  const deleteFile = async (file: LibraryFile) => {
+    if (!confirm(`Delete "${file.fileName}"?`)) return;
+    try {
+      await deleteLibraryFile({ data: { fileId: file.id } });
+      setFiles((f) => (f ?? []).filter((x) => x.id !== file.id));
+      toast.success("File deleted");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't delete.");
+    }
+  };
+
+  const fmtSize = (b: number) =>
+    b >= 1048576 ? `${(b / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(b / 1024))} KB`;
+
   /* ---------------- folder detail ---------------- */
   if (openFolder) {
     return (
@@ -210,6 +300,72 @@ export function TeacherLibrary({ onOpenMaterial }: { onOpenMaterial: (resourceId
               </Card>
             );
           })}
+        </div>
+
+        <div className="space-y-2">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold">📄 Files</p>
+            <label className="inline-flex cursor-pointer items-center gap-1.5 rounded-lg border border-border px-3 py-1.5 text-xs font-semibold hover:bg-surface-2">
+              {uploading ? (
+                <Loader2 className="size-3.5 animate-spin" />
+              ) : (
+                <Upload className="size-3.5" />
+              )}
+              {uploading ? "Uploading…" : "Upload file"}
+              <input
+                type="file"
+                className="hidden"
+                disabled={uploading}
+                accept=".pdf,.doc,.docx,.ppt,.pptx,.xls,.xlsx,.txt,.csv,.png,.jpg,.jpeg,.gif,.webp"
+                onChange={(e) => {
+                  const f = e.target.files?.[0];
+                  e.target.value = "";
+                  if (f) void uploadFile(f);
+                }}
+              />
+            </label>
+          </div>
+          {r2Missing && (
+            <div className="rounded-xl bg-amber-500/10 p-3 text-xs">
+              <span className="font-semibold">File storage isn't connected yet.</span>{" "}
+              Your admin needs to connect a Cloudflare R2 bucket (free tier) — then uploads light up here.
+            </div>
+          )}
+          {files === null && !r2Missing && (
+            <p className="text-xs text-muted">Loading files…</p>
+          )}
+          {files !== null && files.length === 0 && !r2Missing && (
+            <p className="text-xs text-muted">
+              No files yet — upload worksheets, PDFs, or photos of student work.
+            </p>
+          )}
+          {files?.map((f) => (
+            <div key={f.id} className="flex items-center gap-3 rounded-xl border border-border p-3">
+              <span className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-accent-soft text-accent">
+                <FileText className="size-4" />
+              </span>
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-sm font-semibold">{f.fileName}</p>
+                <p className="text-xs text-muted">{fmtSize(f.sizeBytes)}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => downloadFile(f)}
+                className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-ink"
+                aria-label="Download"
+              >
+                <Download className="size-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => deleteFile(f)}
+                className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-red-500"
+                aria-label="Delete file"
+              >
+                <Trash2 className="size-3.5" />
+              </button>
+            </div>
+          ))}
         </div>
 
         {!showNoteForm ? (

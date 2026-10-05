@@ -2320,3 +2320,130 @@ export const removeLibraryItem = createServerFn({ method: "POST" })
     await sql`delete from teacher_library_items where id = ${data.id} and user_id = ${context.userId}`;
     return { ok: true };
   });
+
+/* ------------------------------------------------------------------ */
+/* Teacher Library file uploads (Cloudflare R2)                         */
+/* ------------------------------------------------------------------ */
+
+import {
+  r2Configured,
+  r2UploadUrl,
+  r2DownloadUrl,
+  r2Delete,
+  safeFileName,
+  validateUpload,
+} from "@/lib/r2";
+
+export interface LibraryFile {
+  id: string;
+  fileName: string;
+  mimeType: string;
+  sizeBytes: number;
+  createdAt: string;
+}
+
+/** Step 1: get a presigned URL to upload directly to R2. */
+export const getFileUploadUrl = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { folderId: string; fileName: string; mimeType: string; sizeBytes: number }) => input)
+  .handler(async ({ context, data }): Promise<{ uploadUrl: string; fileKey: string }> => {
+    if (!r2Configured()) {
+      throw new Error("File uploads aren't set up yet — the R2 bucket needs connecting first.");
+    }
+    const sql = await getSql();
+    const folders = await sql<{ id: string }>`
+      select id from teacher_folders where id = ${data.folderId} and user_id = ${context.userId}`;
+    if (!folders.length) throw new Error("Folder not found.");
+    const problem = validateUpload(data.mimeType, data.sizeBytes);
+    if (problem) throw new Error(problem);
+    const fileKey = `teachers/${context.userId}/${data.folderId}/${Date.now()}-${safeFileName(data.fileName)}`;
+    const uploadUrl = await r2UploadUrl(fileKey, data.mimeType);
+    return { uploadUrl, fileKey };
+  });
+
+/** Step 2: after the browser PUTs to R2, record the file in the library. */
+export const confirmFileUpload = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { folderId: string; fileKey: string; fileName: string; mimeType: string; sizeBytes: number }) => input)
+  .handler(async ({ context, data }): Promise<{ file: LibraryFile }> => {
+    const sql = await getSql();
+    const folders = await sql<{ id: string }>`
+      select id from teacher_folders where id = ${data.folderId} and user_id = ${context.userId}`;
+    if (!folders.length) throw new Error("Folder not found.");
+    // Only accept keys this server issued for this user+folder.
+    const prefix = `teachers/${context.userId}/${data.folderId}/`;
+    if (!data.fileKey.startsWith(prefix)) throw new Error("Invalid file key.");
+    const problem = validateUpload(data.mimeType, data.sizeBytes);
+    if (problem) throw new Error(problem);
+    const rows = await sql<{
+      id: string; file_name: string; mime_type: string; size_bytes: number; created_at: string;
+    }>`
+      insert into teacher_library_files (user_id, folder_id, file_key, file_name, mime_type, size_bytes)
+      values (${context.userId}, ${data.folderId}, ${data.fileKey},
+              ${safeFileName(data.fileName)}, ${data.mimeType}, ${Math.floor(data.sizeBytes)})
+      returning id, file_name, mime_type, size_bytes, created_at::text as created_at`;
+    const r = rows[0];
+    return {
+      file: {
+        id: r.id, fileName: r.file_name, mimeType: r.mime_type,
+        sizeBytes: r.size_bytes, createdAt: r.created_at,
+      },
+    };
+  });
+
+export const listLibraryFiles = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { folderId: string }) => input)
+  .handler(async ({ context, data }): Promise<{ files: LibraryFile[] }> => {
+    const sql = await getSql();
+    const rows = await sql<{
+      id: string; file_name: string; mime_type: string; size_bytes: number; created_at: string;
+    }>`
+      select f.id, f.file_name, f.mime_type, f.size_bytes, f.created_at::text as created_at
+      from teacher_library_files f
+      join teacher_folders fo on fo.id = f.folder_id
+      where f.folder_id = ${data.folderId} and fo.user_id = ${context.userId}
+      order by f.created_at desc`;
+    return {
+      files: rows.map((r) => ({
+        id: r.id, fileName: r.file_name, mimeType: r.mime_type,
+        sizeBytes: r.size_bytes, createdAt: r.created_at,
+      })),
+    };
+  });
+
+export const getFileDownloadUrl = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { fileId: string }) => input)
+  .handler(async ({ context, data }): Promise<{ url: string }> => {
+    if (!r2Configured()) throw new Error("File storage isn't connected yet.");
+    const sql = await getSql();
+    const rows = await sql<{ file_key: string; file_name: string }>`
+      select f.file_key, f.file_name
+      from teacher_library_files f
+      join teacher_folders fo on fo.id = f.folder_id
+      where f.id = ${data.fileId} and fo.user_id = ${context.userId}`;
+    if (!rows.length) throw new Error("File not found.");
+    return { url: await r2DownloadUrl(rows[0].file_key, rows[0].file_name) };
+  });
+
+export const deleteLibraryFile = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("teacher")])
+  .validator((input: { fileId: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    const rows = await sql<{ file_key: string; folder_id: string }>`
+      select f.file_key, f.folder_id
+      from teacher_library_files f
+      join teacher_folders fo on fo.id = f.folder_id
+      where f.id = ${data.fileId} and fo.user_id = ${context.userId}`;
+    if (!rows.length) throw new Error("File not found.");
+    // Delete from R2 first (best effort), then the record.
+    try {
+      await r2Delete(rows[0].file_key);
+    } catch {
+      /* fall through — still remove the record */
+    }
+    await sql`delete from teacher_library_files where id = ${data.fileId}`;
+    return { ok: true };
+  });
