@@ -822,6 +822,10 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
       const token = body?.data?.accessToken ?? body?.result?.accessToken ?? body?.accessToken ?? null;
       out.tokenFingerprint = token ? fp(String(token)) : "NO TOKEN IN RESPONSE";
       out.tokenResponseCode = String(body?.code ?? res.status);
+      // Show the raw response shape so we can compare with the client's parseEnvelope.
+      out.tokenRawKeys = body ? Object.keys(body).join(",") : "null body";
+      const inner = body?.data ?? body?.result ?? null;
+      out.tokenInnerKeys = inner && typeof inner === "object" ? Object.keys(inner).join(",") : "n/a";
       if (!token) {
         out.probe = "skipped — no token to probe with";
         return out;
