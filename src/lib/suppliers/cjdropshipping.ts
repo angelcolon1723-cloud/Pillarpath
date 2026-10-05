@@ -286,6 +286,30 @@ export class CjDropshippingClient {
     });
   }
 
+  /**
+   * Expire the current token server-side. CJ caches tokens for 24h — if a
+   * token was minted before the account was fully authorized, re-fetching
+   * returns the SAME scoped-down token. Logout forces a truly fresh one.
+   */
+  async logoutToken(): Promise<void> {
+    const token = this.token?.accessToken;
+    if (!token) return;
+    await this.pace();
+    try {
+      await fetch(`${this.baseUrl}/authentication/logout`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", "CJ-Access-Token": token },
+      });
+    } catch {
+      /* best effort — a failed logout just means the token may already be dead */
+    }
+    this.token = null;
+    this.tokenPromise = null;
+    if (this.onAuthFailure) {
+      await this.onAuthFailure().catch(() => {});
+    }
+  }
+
   /* ---------------- request plumbing ---------------- */
 
   private async pace(): Promise<void> {
@@ -364,16 +388,13 @@ export class CjDropshippingClient {
         return await this.parseEnvelope<T>(res, `${method} ${path}`);
       } catch (err) {
         if (this.isAuthError(err) && !refreshed) {
-          // Token rejected by CJ. Do NOT re-fetch: CJ server-side-caches the
-          // token for 24h, so getAccessToken would return the same rejected
-          // token and just burn the 1 QPS limit. Drop it and fail honestly —
-          // the next invocation fetches fresh after the cache is cleared.
+          // Token rejected by CJ. It may have been minted before the account
+          // was fully authorized — and CJ server-side-caches it for 24h, so a
+          // plain re-fetch returns the SAME scoped-down token. Logout first to
+          // force a genuinely fresh one, then retry exactly once.
           refreshed = true;
-          this.token = null;
-          if (this.onAuthFailure) {
-            await this.onAuthFailure().catch(() => {});
-          }
-          throw err;
+          await this.logoutToken();
+          continue;
         }
         if (err instanceof CjApiError && err.retryable && attempt < MAX_RETRIES) {
           attempt += 1;
