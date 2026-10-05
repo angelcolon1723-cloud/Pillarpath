@@ -826,6 +826,9 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
       out.tokenRawKeys = body ? Object.keys(body).join(",") : "null body";
       const inner = body?.data ?? body?.result ?? null;
       out.tokenInnerKeys = inner && typeof inner === "object" ? Object.keys(inner).join(",") : "n/a";
+      const resultVal = (body as any)?.result;
+      out.tokenResultKeys = resultVal && typeof resultVal === "object" ? Object.keys(resultVal).join(",") : String(resultVal ?? "null");
+      out.tokenResultType = Array.isArray(resultVal) ? "array" : typeof resultVal;
       if (!token) {
         out.probe = "skipped — no token to probe with";
         return out;
@@ -839,11 +842,16 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
       out.probeCode = String(pbody?.code ?? probe.status);
       out.probeMessage = String(pbody?.message ?? "no message").slice(0, 120);
       out.probeRequestId = String(pbody?.requestId ?? "none");
-      // Side-by-side: run the real client's searchProducts with a FRESH
-      // (never-cached) token to see if the client itself is the problem.
+      // Side-by-side: run the real client's searchProducts with the SAME
+      // freshly-fetched token (no second getAccessToken — CJ rate-limits it).
       try {
         const { CjDropshippingClient } = await import("@/lib/suppliers/cjdropshipping");
         const freshClient = new CjDropshippingClient({ apiKey: apiKey.trim() });
+        freshClient.setToken({
+          accessToken: String(token),
+          refreshToken: "",
+          expiresAt: Date.now() + 3600 * 1000,
+        });
         const page = await freshClient.searchProducts({ keyWord: "squishy", size: 1 });
         out.clientProbe = `OK — ${page.total} total, ${page.items.length} items`;
       } catch (ce) {
