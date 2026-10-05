@@ -411,6 +411,23 @@ export class CjDropshippingClient {
 
   /* ---------------- products ---------------- */
 
+  /** Debug: return the raw unmapped listV2 response for diagnostics. */
+  async debugRawSearch(params: CjProductSearchParams = {}): Promise<unknown> {
+    return this.request<unknown>("GET", "/product/listV2", {
+      query: {
+        keyWord: params.keyWord,
+        page: params.page ?? 1,
+        size: Math.min(Math.max(params.size ?? 20, 1), 100),
+        categoryId: params.categoryId,
+        countryCode: params.countryCode,
+        startSellPrice: params.startSellPrice,
+        endSellPrice: params.endSellPrice,
+        orderBy: params.orderBy ?? 0,
+        sort: params.sort ?? "desc",
+      },
+    });
+  }
+
   async searchProducts(params: CjProductSearchParams = {}): Promise<CjPage<CjProductSummary>> {
     const raw = await this.request<{
       list?: unknown[];
