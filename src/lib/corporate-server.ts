@@ -365,22 +365,39 @@ export const testCjConnection = createServerFn({ method: "POST" })
       return { ok: false, message: "CJ_API_KEY is not set on the server." };
     }
     try {
+      // Phase 1: token issuance proves the key exists.
       const res = await fetch("https://developers.cjdropshipping.com/api2.0/v1/authentication/getAccessToken", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ apiKey }),
       });
       const body = (await res.json().catch(() => null)) as {
-        code?: number; message?: string; data?: { accessTokenExpiryDate?: string };
+        code?: number; message?: string; data?: { accessToken?: string; accessTokenExpiryDate?: string };
       } | null;
-      if (body && (body.code === 200 || body.data?.accessTokenExpiryDate)) {
+      const token = body?.data?.accessToken;
+      if (!token) {
+        return { ok: false, message: `CJ rejected the key: ${body?.message ?? `HTTP ${res.status}`}` };
+      }
+      // Phase 2: prove the token actually opens product data — token issuance
+      // alone is NOT enough (keys can authenticate yet lack product access).
+      const probe = await fetch(
+        "https://developers.cjdropshipping.com/api2.0/v1/product/getCategory",
+        { headers: { "CJ-Access-Token": token } },
+      );
+      const probeBody = (await probe.json().catch(() => null)) as {
+        code?: number; message?: string;
+      } | null;
+      if (probeBody && (probeBody.code === 200 || probeBody.code === "200" as unknown as number)) {
         await audit(context.userId, "corporate.cj.test", undefined, { ok: true });
         return {
           ok: true,
-          message: `CJ API key verified — token issued, valid until ${body.data?.accessTokenExpiryDate ?? "unknown"}.`,
+          message: `CJ fully verified — token issued AND product data accessible (valid until ${body.data?.accessTokenExpiryDate ?? "unknown"}).`,
         };
       }
-      return { ok: false, message: `CJ rejected the key: ${body?.message ?? `HTTP ${res.status}`}` };
+      return {
+        ok: false,
+        message: `Key connects but product access is blocked: ${probeBody?.message ?? `HTTP ${probe.status}`}. In your CJ dashboard, open Apps → API and confirm the key's Status is "Activated" with product permissions enabled.`,
+      };
     } catch (e) {
       return { ok: false, message: `Could not reach CJ's API: ${e instanceof Error ? e.message : "network error"}` };
     }
