@@ -2304,6 +2304,15 @@ export const addLibraryItem = createServerFn({ method: "POST" })
     if (!folders.length) throw new Error("Folder not found.");
     const title = data.title.trim().slice(0, 80);
     if (!title) throw new Error("Item needs a title.");
+    // Prevent duplicate saves of the same material/link into the same folder.
+    if (data.kind !== "note" && data.refId) {
+      const dupes = await sql<{ id: string }>`
+        select id from teacher_library_items
+        where user_id = ${context.userId} and folder_id = ${data.folderId}
+          and kind = ${data.kind} and ref_id = ${data.refId}
+        limit 1`;
+      if (dupes.length) return { id: dupes[0].id };
+    }
     const rows = await sql<{ id: string }>`
       insert into teacher_library_items (user_id, folder_id, kind, title, ref_id, body)
       values (${context.userId}, ${data.folderId}, ${data.kind}, ${title},

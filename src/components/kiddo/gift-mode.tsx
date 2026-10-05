@@ -9,6 +9,7 @@ import {
   createGiftWish,
   listGiftWishes,
   contributeToWish,
+  markWishGifted,
   deleteGiftWish,
   type GiftWish,
 } from "@/lib/pillarpath-server";
@@ -101,6 +102,20 @@ export function GiftModePanel({ kids }: { kids: Array<{ id: number; name: string
     setContrib((p) => ({ ...p, [wishId]: { ...(p[wishId] ?? { name: "", amount: "", message: "" }), ...patch } }));
 
   const open = wishes?.filter((w) => w.status === "open") ?? [];
+  const funded = wishes?.filter((w) => w.status === "funded") ?? [];
+
+  async function markGifted(wishId: string) {
+    setBusy(true);
+    try {
+      await markWishGifted({ data: { wishId } });
+      await load();
+      toast.success("Marked as gifted 🎉");
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Couldn't update.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <Card className="space-y-4 p-4 sm:p-5">
@@ -222,6 +237,33 @@ export function GiftModePanel({ kids }: { kids: Array<{ id: number; name: string
           </div>
         );
       })}
+
+      {funded.length > 0 && (
+        <div className="space-y-2">
+          <p className="text-xs font-semibold uppercase tracking-wider text-accent">
+            Fully funded — confirm the gift
+          </p>
+          {funded.map((w) => (
+            <div key={w.id} className="rounded-xl border border-accent/40 bg-accent/5 p-3">
+              <div className="flex items-center gap-2">
+                <span className="text-2xl">{w.emoji}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="truncate text-sm font-semibold">{w.title}</p>
+                  <p className="text-xs text-muted">
+                    {w.childName} · {w.fundedUnits.toLocaleString()} / {w.costUnits.toLocaleString()} Units pledged
+                  </p>
+                </div>
+              </div>
+              <p className="mt-2 text-xs text-muted">
+                Pledges are in — did you buy it? Confirm below once the gift is in hand.
+              </p>
+              <Button size="sm" className="mt-2 w-full" onClick={() => markGifted(w.id)} disabled={busy}>
+                <PartyPopper className="size-3.5" /> Gift purchased — mark as gifted
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
 
       {wishes !== null && wishes.some((w) => w.status === "gifted") && (
         <details className="text-xs text-muted">

@@ -709,31 +709,52 @@ export const contributeToGoal = createServerFn({ method: "POST" })
     const sql = await getSql();
     const amount = Math.floor(Number(data.amount));
     if (!Number.isFinite(amount) || amount < 1) throw new Error("Amount must be at least 1 Unit.");
-    const goals = await sql<{ id: string; child_id: number }>`
-      select id, child_id from savings_goals
-      where id = ${data.goalId} and user_id = ${context.userId} and status = 'active'`;
-    if (!goals.length) throw new Error("Goal not found or no longer active.");
-    const childId = goals[0].child_id;
-    // Atomic debit: only succeeds if the child has enough.
-    const debited = await sql<{ id: number }>`
-      update children set units = units - ${amount}
-      where id = ${childId} and user_id = ${context.userId} and units >= ${amount}
-      returning id`;
-    if (!debited.length) throw new Error("Not enough Units in the child's balance.");
+    // Single atomic statement: debit child + credit goal escrow + log tx.
+    // If any part fails, nothing is written — Units can never be debited
+    // without landing in escrow.
     const rows = await sql<{
       id: string; child_id: number; child_name: string; title: string; emoji: string;
       target_units: number; saved_units: number; status: string; created_at: string;
     }>`
-      update savings_goals
-      set saved_units = saved_units + ${amount},
-          status = case when saved_units + ${amount} >= target_units then 'completed' else 'active' end,
-          completed_at = case when saved_units + ${amount} >= target_units then now() else completed_at end
-      where id = ${data.goalId}
-      returning id, child_id,
-        (select name from children where id = ${childId}) as child_name,
-        title, emoji, target_units, saved_units, status, created_at::text as created_at`;
-    await recordTx(sql, context.userId, childId, "goal", -amount,
-      `Saved toward "${rows[0].title}"`);
+      with goal as (
+        select id, child_id, title, target_units, saved_units
+        from savings_goals
+        where id = ${data.goalId} and user_id = ${context.userId} and status = 'active'
+      ),
+      debited as (
+        update children set units = units - ${amount}
+        where id = (select child_id from goal)
+          and user_id = ${context.userId}
+          and units >= ${amount}
+          and exists (select 1 from goal)
+        returning id
+      ),
+      updated as (
+        update savings_goals
+        set saved_units = saved_units + ${amount},
+            status = case when saved_units + ${amount} >= target_units then 'completed' else 'active' end,
+            completed_at = case when saved_units + ${amount} >= target_units then now() else completed_at end
+        where id = (select id from goal)
+          and exists (select 1 from debited)
+        returning id, child_id, title, emoji, target_units, saved_units, status, created_at::text as created_at
+      ),
+      logged as (
+        insert into units_transactions (user_id, child_id, kind, amount, note)
+        select ${context.userId}, (select child_id from goal), 'goal', ${-amount},
+               'Saved toward "' || (select title from goal) || '"'
+        where exists (select 1 from updated)
+        returning 1
+      )
+      select u.id, u.child_id,
+        (select name from children where id = u.child_id) as child_name,
+        u.title, u.emoji, u.target_units, u.saved_units, u.status, u.created_at
+      from updated u`;
+    if (!rows.length) {
+      // Distinguish "goal missing" from "insufficient funds" for a useful error.
+      const g = await sql<{ id: string }>`select id from savings_goals where id = ${data.goalId} and user_id = ${context.userId} and status = 'active'`;
+      if (!g.length) throw new Error("Goal not found or no longer active.");
+      throw new Error("Not enough Units in the child's balance.");
+    }
     return { goal: toSavingsGoal(rows[0]) };
   });
 
@@ -746,21 +767,40 @@ export const releaseSavingsGoal = createServerFn({ method: "POST" })
   .validator((input: { goalId: string }) => input)
   .handler(async ({ context, data }): Promise<{ ok: boolean; releasedUnits: number }> => {
     const sql = await getSql();
-    const goals = await sql<{ id: string; child_id: number; saved_units: number }>`
-      select id, child_id, saved_units from savings_goals
-      where id = ${data.goalId} and user_id = ${context.userId} and status != 'released'`;
-    if (!goals.length) throw new Error("Goal not found or already released.");
-    const g = goals[0];
-    if (g.saved_units > 0) {
-      await sql`update children set units = units + ${g.saved_units}
-                where id = ${g.child_id} and user_id = ${context.userId}`;
-    }
-    await sql`update savings_goals set saved_units = 0, status = 'released' where id = ${data.goalId}`;
-    if (g.saved_units > 0) {
-      await recordTx(sql, context.userId, g.child_id, "release", g.saved_units,
-        "Savings goal released");
-    }
-    return { ok: true, releasedUnits: g.saved_units };
+    // Single atomic statement: credit child + zero escrow + mark released + log.
+    // Units can never be credited without the goal being marked released
+    // (which would allow a double-release).
+    const rows = await sql<{ saved_units: number }>`
+      with goal as (
+        select id, child_id, saved_units
+        from savings_goals
+        where id = ${data.goalId} and user_id = ${context.userId} and status != 'released'
+      ),
+      credited as (
+        update children set units = units + (select saved_units from goal)
+        where id = (select child_id from goal)
+          and user_id = ${context.userId}
+          and exists (select 1 from goal)
+        returning id
+      ),
+      released as (
+        update savings_goals set saved_units = 0, status = 'released'
+        where id = (select id from goal)
+          and exists (select 1 from credited)
+        returning saved_units
+      ),
+      logged as (
+        insert into units_transactions (user_id, child_id, kind, amount, note)
+        select ${context.userId}, (select child_id from goal), 'release',
+               (select saved_units from goal), 'Savings goal released'
+        where exists (select 1 from released)
+          and (select saved_units from goal) > 0
+        returning 1
+      )
+      select (select saved_units from goal) as saved_units
+      where exists (select 1 from released)`;
+    if (!rows.length) throw new Error("Goal not found or already released.");
+    return { ok: true, releasedUnits: rows[0].saved_units };
   });
 
 /* ------------------------------------------------------------------ */
@@ -801,6 +841,13 @@ export const logUnitsTransaction = createServerFn({ method: "POST" })
         select id from children where id = ${data.childId} and user_id = ${context.userId}`;
       if (!kids.length) throw new Error("Child not found.");
       childId = kids[0].id;
+    } else {
+      // Legacy callers (e.g. chore approvals from the single-child ledger
+      // store) don't send a childId. If the parent has exactly one child,
+      // attribute it there so per-child insights stay accurate.
+      const kids = await sql<{ id: number }>`
+        select id from children where user_id = ${context.userId} limit 2`;
+      if (kids.length === 1) childId = kids[0].id;
     }
     await recordTx(sql, context.userId, childId, data.kind, amount, data.note?.slice(0, 120));
     return { ok: true };
@@ -980,7 +1027,7 @@ export interface GiftWish {
   costUnits: number;
   fundedUnits: number;
   occasion: string | null;
-  status: "open" | "gifted";
+  status: "open" | "funded" | "gifted";
   createdAt: string;
   progressPct: number;
   contributions: GiftContribution[];
@@ -1080,8 +1127,26 @@ export const contributeToWish = createServerFn({ method: "POST" })
     await sql`
       update gift_wishes
       set funded_units = funded_units + ${amount},
-          status = case when funded_units + ${amount} >= cost_units then 'gifted' else 'open' end
+          status = case when funded_units + ${amount} >= cost_units then 'funded' else 'open' end
       where id = ${data.wishId}`;
+    return { ok: true };
+  });
+
+/**
+ * Parent confirms the gift was actually purchased/delivered.
+ * Pledges reaching the target only marks a wish 'funded' — this
+ * explicit confirmation moves it to 'gifted'.
+ */
+export const markWishGifted = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { wishId: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    const rows = await sql<{ id: string }>`
+      update gift_wishes set status = 'gifted'
+      where id = ${data.wishId} and user_id = ${context.userId} and status = 'funded'
+      returning id`;
+    if (!rows.length) throw new Error("Wish not found or not ready to mark gifted.");
     return { ok: true };
   });
 

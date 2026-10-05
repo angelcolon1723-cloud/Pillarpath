@@ -164,8 +164,18 @@ export function TeacherLibrary({ onOpenMaterial }: { onOpenMaterial: (resourceId
   const openItem = (item: LibraryItem) => {
     if (item.kind === "material" && item.refId) {
       onOpenMaterial(item.refId);
+      return;
     }
-    // 'link' items deep-link via the teacher nav — handled by parent via onNavigateLink
+    if (item.kind === "link") {
+      const url = (item.body ?? item.refId ?? "").trim();
+      if (/^https?:\/\//i.test(url)) {
+        window.open(url, "_blank", "noopener,noreferrer");
+        return;
+      }
+      toast.message("This link has no URL saved.");
+      return;
+    }
+    // Notes open inline via the note viewer below.
   };
 
   const uploadFile = async (file: File) => {
