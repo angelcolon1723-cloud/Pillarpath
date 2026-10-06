@@ -461,19 +461,36 @@ export class CjDropshippingClient {
     });
     // CJ listV2 nests the array at data.content.productList (content is an
     // object); older docs/sandboxes used a flat list/productList array.
+    // BUG WORKAROUND: CJ sometimes returns the content wrapper itself inside
+    // raw.list (i.e. list=[{productList: [...]}]). Detect and unwrap it.
     const content = raw.content;
+    const unwrap = (arr: unknown[]): Record<string, unknown>[] => {
+      if (arr.length === 1) {
+        const sole = arr[0] as Record<string, unknown>;
+        if (sole && typeof sole === "object" && Array.isArray(sole.productList)) {
+          return sole.productList as Record<string, unknown>[];
+        }
+      }
+      return arr as Record<string, unknown>[];
+    };
     const listArray = Array.isArray(content)
-      ? content
+      ? unwrap(content)
       : Array.isArray((content as { productList?: unknown } | undefined)?.productList)
-        ? (content as { productList: unknown[] }).productList
+        ? (content as { productList: unknown[] }).productList as Record<string, unknown>[]
         : undefined;
-    const items = (
+    const rawItems = (
       Array.isArray(raw.list)
-        ? raw.list
+        ? unwrap(raw.list)
         : Array.isArray(raw.productList)
-          ? raw.productList
+          ? unwrap(raw.productList as unknown[])
           : (listArray ?? [])
     ) as Record<string, unknown>[];
+    // Filter out any lingering wrapper objects (not real products).
+    const items = rawItems.filter((it) => {
+      if (!it || typeof it !== "object") return false;
+      // Real products have a pid/id; wrappers have productList key.
+      return !("productList" in it) && !("relatedCategoryList" in it);
+    });
     const mapped = items.map((item) => {
       const summary = mapProductSummary(item);
       // Attach raw for debugging/fallback (stripped before returning to client).
