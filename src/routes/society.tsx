@@ -67,19 +67,26 @@ function SocietyPage() {
   const [defaultMargin, setDefaultMargin] = useState(40);
   const [busy, setBusy] = useState(false);
   const [societyTab, setSocietyTab] = useState<"stockroom" | "sourcing" | "hq">("stockroom");
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setLoadError(null);
     try {
       const s = await getSocietyStatus();
       setStatus(s);
       if (s.isAdmin) {
-        const [stock, tv] = await Promise.all([
-          getStock(),
-          listTeacherVerifications(),
-        ]);
-        setItems(stock.items);
-        setDefaultMargin(stock.defaultMarginPct);
-        setVerifications(tv.items);
+        try {
+          const [stock, tv] = await Promise.all([
+            getStock(),
+            listTeacherVerifications(),
+          ]);
+          setItems(stock.items);
+          setDefaultMargin(stock.defaultMarginPct);
+          setVerifications(tv.items);
+        } catch (e) {
+          setLoadError(e instanceof Error ? e.message : "Failed to load stockroom.");
+          setItems([]);
+        }
       }
     } catch {
       setDenied(true);
@@ -203,7 +210,15 @@ function SocietyPage() {
               Your products
               {items != null && items.length > 0 && ` (${items.length})`}
             </h2>
-            {items === null && (
+            {loadError && (
+              <Card className="p-4">
+                <p className="text-sm text-danger">Couldn't load products: {loadError}</p>
+                <Button size="sm" variant="outline" className="mt-2" onClick={() => void load()}>
+                  Retry
+                </Button>
+              </Card>
+            )}
+            {items === null && !loadError && (
               <p className="text-sm text-muted">Loading supplier catalog…</p>
             )}
             {items !== null && items.length === 0 && (
