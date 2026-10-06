@@ -32,6 +32,7 @@ import { useLedger, formatDollars } from "@/store/ledger";
 import { bandForAge, missionProgress } from "@/lib/studio-path";
 import { WorldMap } from "@/components/kiddo/world/WorldMap";
 import { SavingsGoals } from "@/components/kiddo/savings-goals";
+import { Storefront } from "@/components/kiddo/storefront";
 
 const CHORE_ICON: Record<string, typeof Home> = {
   "rs-homework": BookOpen,
@@ -202,61 +203,23 @@ export function ChildMarket() {
 
   return (
     <div className="screen-enter space-y-4">
-      <header>
-        <p className="text-sm font-medium text-muted">Marketplace</p>
-        <h1 className="font-display text-3xl font-semibold tracking-tight">
-          Spend Units here
-        </h1>
-        <p className="mt-1 text-sm text-muted">
-          You have {formatUnits(balance)} Units. Parent approval required.
-        </p>
-      </header>
       <FrozenBanner />
       {products === null ? (
         <p className="py-6 text-center text-sm text-muted">Loading the shelves…</p>
-      ) : products.length === 0 ? (
-        <Card className="p-8 text-center">
-          <ShoppingBag className="mx-auto size-10 text-muted" strokeWidth={1.6} />
-          <h2 className="mt-3 font-display text-lg font-semibold">
-            The shelves are being stocked
-          </h2>
-          <p className="mt-1 text-sm text-muted">
-            New kid-safe products are on the way. Check back soon!
-          </p>
-        </Card>
       ) : (
-        <div className="grid grid-cols-2 gap-3">
-          {products.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() =>
-                selectProduct({
-                  id: p.id,
-                  name: p.name,
-                  price: p.unitPrice,
-                  description: p.description,
-                  imageUrl: p.imageUrl,
-                })
-              }
-              className="market-card overflow-hidden rounded-xl bg-surface p-0 text-left shadow-[var(--shadow-border)] transition-[scale,box-shadow] duration-150 ease-out active:scale-[0.96]"
-            >
-              <div className="flex h-24 items-center justify-center overflow-hidden bg-surface-2 text-ink">
-                {p.imageUrl ? (
-                  <img src={p.imageUrl} alt={p.name} className="h-full w-full object-cover" loading="lazy" />
-                ) : (
-                  <ShoppingBag className="size-9" strokeWidth={1.6} />
-                )}
-              </div>
-              <div className="p-3">
-                <div className="text-sm font-medium leading-snug">{p.name}</div>
-                <div className="mt-1 font-mono text-sm tabular-nums text-accent">
-                  {p.unitPrice} Units
-                </div>
-              </div>
-            </button>
-          ))}
-        </div>
+        <Storefront
+          products={products}
+          balance={balance}
+          onSelect={(p) =>
+            selectProduct({
+              id: p.id,
+              name: p.name,
+              price: p.price,
+              description: p.description,
+              imageUrl: p.imageUrl,
+            })
+          }
+        />
       )}
       <Button variant="outline" className="w-full" onClick={() => setScreen("home")}>
         Back
