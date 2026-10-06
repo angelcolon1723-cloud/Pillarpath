@@ -309,11 +309,17 @@ export function Storefront({ products, onSelect, balance }: StorefrontProps) {
             p.name.toLowerCase().includes(q) ||
             (p.description ?? "").toLowerCase().includes(q),
         );
-    // Deduplicate: same product name (normalized) appears only once.
-    // Keeps the first occurrence — no repeats across or within aisles.
+    // Deduplicate: same product (normalized name) appears only once.
+    // Aggressive normalization catches variant punctuation/spacing.
     const seen = new Set<string>();
     return list.filter((p) => {
-      const key = p.name.toLowerCase().trim().replace(/\s+/g, " ");
+      const key = p.name
+        .toLowerCase()
+        .replace(/[’‘`]/g, "'") // curly quotes -> straight
+        .replace(/[""]/g, '"')
+        .replace(/[^a-z0-9\s]/g, " ") // punctuation -> space
+        .replace(/\s+/g, " ")
+        .trim();
       if (seen.has(key)) return false;
       seen.add(key);
       return true;
