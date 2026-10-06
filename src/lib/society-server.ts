@@ -511,23 +511,47 @@ export const searchCjProducts = createServerFn({ method: "POST" })
         throw e;
       }
     }
-    const allHits = page.items.map((p) => ({
-      pid: p.pid,
-      name: p.nameEn,
-      image: p.bigImage,
-      price: p.sellPrice,
-      nowPrice: p.nowPrice,
-      category: p.categoryName,
-      countryCode: p.countryCode,
-      usStock: p.countryCode === "US" ? p.warehouseInventoryNum : 0,
-      deliveryCycle: p.deliveryCycle,
-    }));
+    // The list endpoint is flaky and returns incomplete data. For each
+    // product, fetch the full detail (reliable endpoint) in parallel.
+    // Limit to 12 to keep it fast.
+    const client2 = await createCachedCjClient();
+    const detailHits = await Promise.all(
+      page.items.slice(0, 12).map(async (p) => {
+        try {
+          const d = await client2!.getProductDetail(p.pid);
+          return {
+            pid: d.pid,
+            name: d.nameEn,
+            image: d.bigImage,
+            price: d.sellPrice,
+            nowPrice: d.nowPrice,
+            category: d.categoryName,
+            countryCode: d.countryCode,
+            usStock: d.warehouseInventoryNum,
+            deliveryCycle: d.deliveryCycle,
+          };
+        } catch {
+          // Fall back to list data if detail fails.
+          return {
+            pid: p.pid,
+            name: p.nameEn,
+            image: p.bigImage,
+            price: p.sellPrice,
+            nowPrice: p.nowPrice,
+            category: p.categoryName,
+            countryCode: p.countryCode,
+            usStock: p.countryCode === "US" ? p.warehouseInventoryNum : 0,
+            deliveryCycle: p.deliveryCycle,
+          };
+        }
+      }),
+    );
     // Client-side US-warehouse filter (CJ's server-side filter is broken).
     // Permissive: only exclude products explicitly marked non-US. Products
     // with unknown warehouse (null countryCode) are included — King decides.
     const hits = data.usOnly === false
-      ? allHits
-      : allHits.filter((h) => h.countryCode === "US" || h.countryCode == null);
+      ? detailHits
+      : detailHits.filter((h) => h.countryCode === "US" || h.countryCode == null);
     return {
       total: data.usOnly === false ? page.total : hits.length,
       hits,
