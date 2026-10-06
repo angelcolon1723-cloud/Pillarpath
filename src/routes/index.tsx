@@ -2,18 +2,30 @@ import { createFileRoute, Link } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 import {
   ArrowRight,
+  Backpack,
   BadgeCheck,
-  BookOpen,
-  Brush,
-  CheckCircle2,
+  Footprints,
+  Gamepad2,
   GraduationCap,
+  HeartHandshake,
+  Images,
   Lock,
+  Mountain,
+  Palette,
   PiggyBank,
+  Puzzle,
+  School,
+  Shirt,
   ShieldCheck,
-  Sparkles,
+  ShoppingBag,
+  Sprout,
+  Star,
+  Store,
+  Target,
   Trophy,
-  Users,
   Wallet,
+  Zap,
+  type LucideIcon,
 } from "lucide-react";
 import { SignedIn, SignedOut } from "@/lib/auth/gates";
 import { useCurrentUserState } from "@/lib/auth/use-current-user";
@@ -22,7 +34,6 @@ import { PillarpathApp } from "@/components/pillarpath-app";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { PillarMark } from "@/components/kiddo/mark";
-import { STUDIO_BANDS } from "@/lib/studio-path";
 
 export const Route = createFileRoute("/")({ component: Home });
 
@@ -65,6 +76,97 @@ function Eyebrow({ children }: { children: ReactNode }) {
   );
 }
 
+const LANDS: { name: string; Icon: LucideIcon; line: string }[] = [
+  { name: "Chore Village", Icon: Sprout, line: "Where effort turns into earnings." },
+  { name: "Vault Mountain", Icon: Mountain, line: "Savings climb toward big goals." },
+  { name: "Goal Garden", Icon: Target, line: "Dreams, planted and tended." },
+  { name: "Studio Island", Icon: Palette, line: "Make art, music, and games." },
+  { name: "Market Harbor", Icon: ShoppingBag, line: "The Society Store docks here." },
+  { name: "Learning Lagoon", Icon: GraduationCap, line: "Money lessons that stick." },
+  { name: "Showcase Gallery", Icon: Images, line: "Creations, on display." },
+  { name: "Give Grove", Icon: HeartHandshake, line: "Giving grows here." },
+  { name: "Classroom", Icon: School, line: "Learn together, earn together." },
+];
+
+const RANKS: { name: string; tagline: string }[] = [
+  { name: "Seedling", tagline: "Every pillar starts as a seed." },
+  { name: "Sprout", tagline: "Growing stronger every day." },
+  { name: "Trailblazer", tagline: "Blazing your own money trail." },
+  { name: "Luminary", tagline: "Your glow guides others." },
+  { name: "Pillar", tagline: "A pillar others can lean on." },
+];
+
+const AISLES: { name: string; Icon: LucideIcon }[] = [
+  { name: "Toy Workshop", Icon: Puzzle },
+  { name: "Tech Lab", Icon: Zap },
+  { name: "Game Zone", Icon: Gamepad2 },
+  { name: "Society Gear", Icon: Star },
+  { name: "Society Styles", Icon: Shirt },
+  { name: "The Outfitters", Icon: Footprints },
+  { name: "Scholar's Corner", Icon: Backpack },
+];
+
+const STARS: { left: string; top: string; delay: string; size: string }[] = [
+  { left: "8%", top: "12%", delay: "0s", size: "size-1" },
+  { left: "18%", top: "68%", delay: "0.8s", size: "size-1.5" },
+  { left: "30%", top: "8%", delay: "1.6s", size: "size-1" },
+  { left: "72%", top: "18%", delay: "0.4s", size: "size-1.5" },
+  { left: "85%", top: "58%", delay: "2.1s", size: "size-1" },
+  { left: "62%", top: "82%", delay: "1.2s", size: "size-1" },
+  { left: "42%", top: "88%", delay: "2.6s", size: "size-1.5" },
+  { left: "92%", top: "32%", delay: "1.9s", size: "size-1" },
+];
+
+/** The PillarPath World: a pillar monument orbited by the lands. */
+function WorldOrbit() {
+  const chips = LANDS.slice(0, 8);
+  return (
+    <div className="relative mx-auto aspect-square w-full max-w-[440px]" aria-hidden>
+      {STARS.map((s, i) => (
+        <span
+          key={i}
+          className={`star-twinkle absolute ${s.size} rounded-full bg-white`}
+          style={{ left: s.left, top: s.top, animationDelay: s.delay }}
+        />
+      ))}
+      {/* rotating orbit rings */}
+      <div className="absolute inset-4 animate-[spin_70s_linear_infinite] rounded-full border border-dashed border-accent/25" />
+      <div className="absolute inset-16 rounded-full border border-accent/10" />
+      <div
+        aria-hidden
+        className="pointer-events-none absolute left-1/2 top-1/2 size-64 -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(139,92,246,0.22),transparent_70%)] blur-2xl"
+      />
+      {/* central monument */}
+      <div className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2">
+        <div className="float-y grid size-24 place-items-center rounded-[2rem] border border-white/10 bg-gradient-to-br from-cyan-400/25 via-violet-500/25 to-fuchsia-500/25 shadow-[var(--shadow-float)] backdrop-blur-md sm:size-28">
+          <PillarMark className="size-12 sm:size-14" />
+        </div>
+      </div>
+      {/* orbiting land chips */}
+      {chips.map(({ name, Icon }, i) => {
+        const angle = (i / chips.length) * 360;
+        return (
+          <div
+            key={name}
+            className="absolute left-1/2 top-1/2"
+            style={{
+              transform: `rotate(${angle}deg) translateX(min(36vw,148px)) rotate(${-angle}deg)`,
+            }}
+          >
+            <div
+              className="float-y -ml-6 -mt-6 grid size-12 place-items-center rounded-2xl border border-white/10 bg-surface/90 shadow-[var(--shadow-float)] backdrop-blur-md"
+              style={{ animationDelay: `${(i * 0.55).toFixed(2)}s` }}
+              title={name}
+            >
+              <Icon className="size-5 text-accent" strokeWidth={1.8} />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 function Landing() {
   return (
     <main className="theme-landing min-h-dvh bg-bg text-ink">
@@ -74,7 +176,7 @@ function Landing() {
             <PillarMark />
             <div>
               <p className="font-display text-xl font-semibold">Pillarpath</p>
-              <p className="text-xs text-muted">Financial literacy for kids</p>
+              <p className="text-xs text-muted">The Society of Becoming</p>
             </div>
           </div>
           <Link to="/login">
@@ -84,384 +186,210 @@ function Landing() {
       </header>
 
       {/* ------------------------------- HERO ------------------------------- */}
-      <section className="px-5 py-14 sm:py-20">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-[1.15fr_0.85fr]">
-          <div>
+      <section className="relative overflow-hidden px-5 pb-16 pt-14 sm:pt-20">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -top-32 left-1/2 size-[36rem] -translate-x-1/2 rounded-full bg-[radial-gradient(circle,rgba(34,211,238,0.12),rgba(139,92,246,0.1),transparent_70%)] blur-3xl"
+        />
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
+          <div className="text-center lg:text-left">
             <Eyebrow>Better than yesterday.</Eyebrow>
-            <h1 className="mt-4 max-w-4xl font-display text-5xl font-semibold leading-[0.98] tracking-tight sm:text-7xl">
-              Turn chores into money smarts.
+            <h1 className="mt-4 font-display text-5xl font-semibold leading-[1.02] tracking-tight sm:text-6xl lg:text-7xl">
+              Welcome to the{" "}
+              <span className="bg-gradient-to-r from-cyan-300 via-violet-300 to-fuchsia-300 bg-clip-text text-transparent">
+                Society of Becoming.
+              </span>
             </h1>
-            <p className="mt-6 max-w-2xl text-lg leading-8 text-muted">
-              PillarPath gives your kids a world of their own — where real
-              chores earn Units, savings goals teach patience, and every money
-              move happens under your approval. Built for families, ready for
-              classrooms.
+            <p className="mx-auto mt-6 max-w-xl text-lg leading-8 text-muted lg:mx-0">
+              A world where kids earn, save, and grow — one better yesterday
+              at a time.
             </p>
-            <div className="mt-8 flex flex-wrap gap-3">
+            <div className="mt-8 flex flex-wrap justify-center gap-3 lg:justify-start">
               <Link to="/login">
-                <Button className="h-12 px-5">
-                  Create your family account
+                <Button className="h-12 px-6 text-base">
+                  Join the Society
                   <ArrowRight className="size-4" />
                 </Button>
               </Link>
-              <a href="#how">
-                <Button variant="outline" className="h-12 px-5">
-                  See how it works
+              <a href="#world">
+                <Button variant="outline" className="h-12 px-6 text-base">
+                  Explore the world
                 </Button>
               </a>
             </div>
-            <div className="mt-8 flex flex-wrap gap-x-6 gap-y-3 text-sm text-muted">
+            <div className="mt-8 flex flex-wrap justify-center gap-x-6 gap-y-3 text-sm text-muted lg:justify-start">
               <span className="flex items-center gap-2">
-                <ShieldCheck className="size-4 text-accent" /> Parent approves everything
+                <ShieldCheck className="size-4 text-accent" /> You approve everything
               </span>
               <span className="flex items-center gap-2">
-                <Lock className="size-4 text-accent" /> Units aren&rsquo;t real money — zero financial risk
+                <Lock className="size-4 text-accent" /> Units aren&rsquo;t real money
               </span>
               <span className="flex items-center gap-2">
                 <BadgeCheck className="size-4 text-accent" /> Kid-safe by design
               </span>
             </div>
           </div>
+          <WorldOrbit />
+        </div>
+      </section>
 
-          <Card className="overflow-hidden rounded-[2rem] p-0">
-            <div className="border-b border-border bg-surface-2 p-6">
-              <p className="text-xs font-semibold uppercase tracking-wider text-accent">
-                The earning loop
-              </p>
-              <h2 className="mt-1 font-display text-2xl font-semibold">
-                Earn. Approve. Grow.
-              </h2>
-            </div>
-            <div className="grid gap-3 p-5">
-              {(
-                [
-                  [Wallet, "Kids earn Units", "Real chores, real effort — 67 pre-seeded jobs across 6 categories, with values you set."],
-                  [ShieldCheck, "Parents approve", "Every chore, gift, and spend request lands in your queue. Nothing moves without your tap."],
-                  [PiggyBank, "Savings grow", "Units flow into Vault goals — or a Vault CD earning 5% APY toward college."],
-                ] as const
-              ).map(([Icon, title, text], i) => (
-                <div
-                  key={title}
-                  className="flex gap-4 rounded-2xl border border-border bg-bg p-4"
-                >
-                  <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-accent/15 font-display text-lg font-bold text-accent">
+      {/* ------------------------------- WORLD ------------------------------- */}
+      <section id="world" className="border-y border-border bg-surface/60 px-5 py-14 sm:py-20">
+        <div className="mx-auto max-w-6xl">
+          <div className="mx-auto max-w-2xl text-center">
+            <Eyebrow>The World</Eyebrow>
+            <h2 className="mt-2 font-display text-4xl font-semibold sm:text-5xl">
+              Nine lands. One climb.
+            </h2>
+            <p className="mt-4 leading-7 text-muted">
+              Kids don&rsquo;t open another app — they step into Pillar Plaza
+              and set out. Every chore finished, every Unit saved, every thing
+              made moves them forward.
+            </p>
+          </div>
+          <div className="mt-10 grid grid-cols-2 gap-3 sm:grid-cols-3 lg:grid-cols-3">
+            {LANDS.map(({ name, Icon, line }) => (
+              <Card
+                key={name}
+                className="group p-4 transition-transform duration-150 hover:-translate-y-1 sm:p-5"
+              >
+                <div className="grid size-11 place-items-center rounded-2xl bg-accent/12 text-accent shadow-[var(--shadow-float)]">
+                  <Icon className="size-5" strokeWidth={1.8} />
+                </div>
+                <h3 className="mt-3 font-display text-base font-semibold sm:text-lg">
+                  {name}
+                </h3>
+                <p className="mt-1 text-xs leading-5 text-muted sm:text-sm">{line}</p>
+              </Card>
+            ))}
+          </div>
+
+          {/* Society ranks */}
+          <div className="mt-12">
+            <p className="text-center text-xs font-bold uppercase tracking-[0.18em] text-accent">
+              The Society ranks
+            </p>
+            <div className="mt-6 flex items-stretch justify-between gap-1 sm:gap-2">
+              {RANKS.map((rank, i) => (
+                <div key={rank.name} className="flex flex-1 flex-col items-center">
+                  <div
+                    className={`grid size-10 place-items-center rounded-full border font-display text-sm font-bold sm:size-12 sm:text-base ${
+                      i === RANKS.length - 1
+                        ? "border-transparent bg-gradient-to-br from-cyan-400 via-violet-500 to-fuchsia-500 text-white shadow-[var(--shadow-float)]"
+                        : "border-border bg-surface text-accent shadow-[var(--shadow-float)]"
+                    }`}
+                  >
                     {i + 1}
                   </div>
-                  <div>
-                    <p className="flex items-center gap-2 font-semibold">
-                      <Icon className="size-4 text-accent" /> {title}
-                    </p>
-                    <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
+                  <p className="mt-2 text-center font-display text-xs font-semibold sm:text-sm">
+                    {rank.name}
+                  </p>
+                  <p className="mt-0.5 hidden text-center text-[11px] leading-4 text-muted sm:block">
+                    {rank.tagline}
+                  </p>
+                  {i < RANKS.length - 1 && (
+                    <div aria-hidden className="mt-3 hidden h-px w-full bg-gradient-to-r from-transparent via-accent/40 to-transparent sm:block" />
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* ------------------------------- STORE ------------------------------- */}
+      <section className="relative overflow-hidden px-5 py-14 sm:py-20">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute -bottom-40 -right-32 size-[30rem] rounded-full bg-[radial-gradient(circle,rgba(217,70,239,0.12),transparent_70%)] blur-3xl"
+        />
+        <div className="relative mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
+          <div className="order-2 lg:order-1">
+            <Card className="overflow-hidden p-0">
+              <div className="flex items-center gap-3 border-b border-border bg-surface-2 p-5">
+                <div className="grid size-11 place-items-center rounded-2xl bg-accent/12 text-accent shadow-[var(--shadow-float)]">
+                  <Store className="size-5" strokeWidth={1.8} />
+                </div>
+                <div>
+                  <p className="font-display text-lg font-semibold">The Society Store</p>
+                  <p className="text-xs text-muted">Gear up for becoming.</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-2 p-4 sm:grid-cols-3">
+                {AISLES.map(({ name, Icon }) => (
+                  <div
+                    key={name}
+                    className="flex items-center gap-2 rounded-2xl border border-border bg-bg px-3 py-2.5"
+                  >
+                    <Icon className="size-4 shrink-0 text-accent" strokeWidth={1.8} />
+                    <span className="truncate text-xs font-semibold">{name}</span>
                   </div>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
-      </section>
-
-      {/* ---------------------------- HOW IT WORKS ---------------------------- */}
-      <section id="how" className="border-y border-border bg-surface/70 px-5 py-14 sm:py-20">
-        <div className="mx-auto max-w-6xl">
-          <div className="max-w-2xl">
-            <Eyebrow>How it works</Eyebrow>
-            <h2 className="mt-2 font-display text-4xl font-semibold">
-              Allowance, rebuilt as an education.
-            </h2>
-            <p className="mt-3 text-muted">
-              Most kids learn about money by watching. PillarPath lets them
-              practice — with training wheels you control.
-            </p>
+                ))}
+              </div>
+              <div className="flex items-center justify-between border-t border-border bg-surface-2 px-5 py-3">
+                <span className="flex items-center gap-1.5 text-xs text-muted">
+                  <BadgeCheck className="size-3.5 text-accent" /> Kid-safe screened
+                </span>
+                <span className="flex items-center gap-1.5 text-xs text-muted">
+                  <ShieldCheck className="size-3.5 text-accent" /> Parent approves every purchase
+                </span>
+              </div>
+            </Card>
           </div>
-          <div className="mt-8 grid gap-4 md:grid-cols-3">
-            {(
-              [
-                [Wallet, "Kids do real work", "From making the bed to mowing the lawn, 67 pre-seeded chores across 6 categories pay Units. Edit the values, add your own, or disable what doesn't fit your family."],
-                [ShieldCheck, "You stay in charge", "Chore completions, gifts between kids, and shop purchases all wait for your approval. See every Unit move in the family ledger — and freeze access anytime."],
-                [GraduationCap, "Lessons stick", "Units saved in the Vault teach delayed gratification. Classroom modules teach the concepts. The Creative Studio keeps them creating, not just consuming."],
-              ] as const
-            ).map(([Icon, title, text]) => (
-              <Card key={title}>
-                <Icon className="size-6 text-accent" />
-                <h3 className="mt-5 font-display text-xl font-semibold">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-muted">{text}</p>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* ------------------------------ PARENTS ------------------------------ */}
-      <section id="parents" className="px-5 py-14 sm:py-20">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
-          <div>
-            <Eyebrow>For parents</Eyebrow>
-            <h2 className="mt-2 font-display text-4xl font-semibold">
-              You&rsquo;re the bank. And the boss.
-            </h2>
-            <p className="mt-4 leading-7 text-muted">
-              Your workspace is mission control for your family&rsquo;s money
-              habits. Set up chores once, then approve with a tap while the
-              ledger tracks every Unit earned, saved, gifted, and spent.
-            </p>
-            <ul className="mt-6 space-y-3 text-sm">
-              {[
-                "Approve chores, gifts, and purchases — nothing moves without you",
-                "Full family ledger: every Unit, timestamped and filterable",
-                "Load Units onto your family balance whenever you choose",
-                "Freeze a child's access instantly, right from your phone",
-                "67 pre-seeded chores you can edit, disable, or replace with your own",
-              ].map((item) => (
-                <li key={item} className="flex items-start gap-2 text-muted">
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-accent" />
-                  <span className="leading-6">{item}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-6 rounded-2xl border border-border bg-surface p-4 text-sm leading-6 text-muted">
-              <span className="font-semibold text-ink">Honest by design:</span>{" "}
-              Units are a family reward currency — not cash, not crypto, and
-              non-refundable. Your kids can never cash them out on their own.
-            </p>
-          </div>
-          <Card className="rounded-[2rem] p-6">
-            <p className="text-xs font-semibold uppercase tracking-wider text-accent">
-              Parent workspace
-            </p>
-            <h3 className="mt-1 font-display text-2xl font-semibold">
-              One dashboard for the whole family economy
-            </h3>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {(
-                [
-                  [Users, "Family profiles", "Each child gets their own space, balances, and history."],
-                  [Wallet, "Chore manager", "The full catalog, your values, your rules."],
-                  [PiggyBank, "Vault & Vault CD", "Savings goals plus long-term CDs earning 5% APY in Units."],
-                  [ShieldCheck, "Approvals queue", "Chores, gifts, and shop requests — approve or decline in seconds."],
-                ] as const
-              ).map(([Icon, title, text]) => (
-                <div key={title} className="rounded-2xl border border-border bg-bg p-4">
-                  <Icon className="size-5 text-accent" />
-                  <p className="mt-3 font-semibold">{title}</p>
-                  <p className="mt-1 text-xs leading-5 text-muted">{text}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
-        </div>
-      </section>
-
-      {/* -------------------------------- KIDS -------------------------------- */}
-      <section id="kids" className="border-y border-border bg-surface/70 px-5 py-14 sm:py-20">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
-          <Card className="order-2 rounded-[2rem] p-6 lg:order-1">
-            <p className="text-xs font-semibold uppercase tracking-wider text-accent">
-              Child workspace
-            </p>
-            <h3 className="mt-1 font-display text-2xl font-semibold">
-              A world that feels like a game, teaches like a class
-            </h3>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {(
-                [
-                  [Trophy, "Earn & level up", "Finish chores, watch your balance grow, hit streaks."],
-                  [PiggyBank, "Save toward goals", "Vault goals for the big stuff — plus a college-fund CD that grows."],
-                  [Sparkles, "Creator shop", "Spend Units on creations in the shop — Units only, no real money."],
-                  [Brush, "Creative Studio", "Draw, build, and make things across music, games, and design."],
-                ] as const
-              ).map(([Icon, title, text]) => (
-                <div key={title} className="rounded-2xl border border-border bg-bg p-4">
-                  <Icon className="size-5 text-accent" />
-                  <p className="mt-3 font-semibold">{title}</p>
-                  <p className="mt-1 text-xs leading-5 text-muted">{text}</p>
-                </div>
-              ))}
-            </div>
-          </Card>
           <div className="order-1 lg:order-2">
-            <Eyebrow>For kids</Eyebrow>
-            <h2 className="mt-2 font-display text-4xl font-semibold">
-              Their money. Their missions. Your rules.
+            <Eyebrow>The Society Store</Eyebrow>
+            <h2 className="mt-2 font-display text-4xl font-semibold sm:text-5xl">
+              Gear up for becoming.
             </h2>
             <p className="mt-4 leading-7 text-muted">
-              Kids get a space that&rsquo;s theirs — earning, saving, and
-              creating — while every boundary you set holds firm in the
-              background. They feel independent. You stay in control.
+              Units earned become treasures chosen. Kids browse real aisles —
+              toys, tech, games, styles — and pick what their effort bought.
+              Nothing reaches the shelves without passing kid-safety screening,
+              and every purchase still waits for your tap.
             </p>
-            <ul className="mt-6 space-y-3 text-sm">
-              {[
-                "See exactly what each chore pays before lifting a finger",
-                "Watch savings grow in the Vault — patience, visualized",
-                "Gift Units to siblings (with your approval, of course)",
-                "A read-only college-fund card shows their Vault CD growing",
-              ].map((item) => (
-                <li key={item} className="flex items-start gap-2 text-muted">
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-accent" />
-                  <span className="leading-6">{item}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
-        </div>
-      </section>
-
-      {/* ------------------------------ TEACHERS ------------------------------ */}
-      <section id="teachers" className="px-5 py-14 sm:py-20">
-        <div className="mx-auto grid max-w-6xl items-center gap-12 lg:grid-cols-2">
-          <div>
-            <Eyebrow>For teachers</Eyebrow>
-            <h2 className="mt-2 font-display text-4xl font-semibold">
-              Financial literacy, taught like it matters.
-            </h2>
-            <p className="mt-4 leading-7 text-muted">
-              Bring money skills into your classroom with a 10-module starter
-              curriculum, ready-made earning activities, and tools that make
-              running it effortless.
-            </p>
-            <ul className="mt-6 space-y-3 text-sm">
-              {[
-                "6-letter class join codes — students enroll in seconds",
-                "10-module financial-literacy curriculum, ready to teach",
-                "Lesson and assignment builders for your own material",
-                "Effort-ranked leaderboard (students stay anonymous by default)",
-                "Upload and download class records",
-              ].map((item) => (
-                <li key={item} className="flex items-start gap-2 text-muted">
-                  <CheckCircle2 className="mt-0.5 size-4 shrink-0 text-accent" />
-                  <span className="leading-6">{item}</span>
-                </li>
-              ))}
-            </ul>
-            <p className="mt-6 rounded-2xl border border-border bg-surface p-4 text-sm leading-6 text-muted">
-              <span className="font-semibold text-ink">Clean separation:</span>{" "}
-              classroom Units and family Units never mix. What happens in class
-              stays in class.
-            </p>
-          </div>
-          <Card className="rounded-[2rem] p-6">
-            <p className="text-xs font-semibold uppercase tracking-wider text-accent">
-              Teacher workspace
-            </p>
-            <h3 className="mt-1 font-display text-2xl font-semibold">
-              Mission control for money skills
-            </h3>
-            <div className="mt-5 grid gap-3 sm:grid-cols-2">
-              {(
-                [
-                  [BookOpen, "Curriculum", "10 starter modules on saving, earning, and smart spending."],
-                  [Users, "Classrooms", "Create classes, share join codes, manage students."],
-                  [Trophy, "Leaderboard", "Effort-ranked, anonymized — motivation without shaming."],
-                  [BadgeCheck, "Records", "Track progress and export records for your files."],
-                ] as const
-              ).map(([Icon, title, text]) => (
-                <div key={title} className="rounded-2xl border border-border bg-bg p-4">
-                  <Icon className="size-5 text-accent" />
-                  <p className="mt-3 font-semibold">{title}</p>
-                  <p className="mt-1 text-xs leading-5 text-muted">{text}</p>
-                </div>
-              ))}
+            <div className="mt-6 flex flex-wrap gap-3">
+              <Link to="/login">
+                <Button>
+                  Join to shop the shelves
+                  <ArrowRight className="size-4" />
+                </Button>
+              </Link>
             </div>
-          </Card>
+          </div>
         </div>
       </section>
 
-      {/* ------------------------------- VAULT CD ------------------------------- */}
-      <section id="vault" className="border-y border-border bg-surface/70 px-5 py-14 sm:py-20">
-        <div className="mx-auto max-w-4xl text-center">
-          <Eyebrow>Vault CD</Eyebrow>
-          <h2 className="mt-2 font-display text-4xl font-semibold">
-            A college fund that starts with chores.
-          </h2>
-          <p className="mx-auto mt-4 max-w-2xl leading-7 text-muted">
-            Lock Units away for 1, 3, or 5 years — or until your child turns
-            18 — and watch them earn a{" "}
-            <span className="font-semibold text-ink">5% APY bonus in Units</span>,
-            credited monthly. It&rsquo;s the first savings account your kid
-            will actually understand, because they funded it themselves.
-          </p>
-          <div className="mt-8 grid gap-4 text-left sm:grid-cols-3">
+      {/* ----------------------------- HOW IT WORKS ----------------------------- */}
+      <section className="border-y border-border bg-surface/60 px-5 py-14 sm:py-20">
+        <div className="mx-auto max-w-6xl">
+          <div className="mx-auto max-w-2xl text-center">
+            <Eyebrow>How it works</Eyebrow>
+            <h2 className="mt-2 font-display text-4xl font-semibold sm:text-5xl">
+              Earn. Grow. Become.
+            </h2>
+          </div>
+          <div className="mt-10 grid gap-4 md:grid-cols-3">
             {(
               [
-                ["Lock it", "Choose a term and move Units from the family balance into the CD."],
-                ["Watch it grow", "A 5% APY bonus accrues in Units, month after month."],
-                ["Use it for education", "At maturity, request a payout for qualified education expenses."],
+                [Wallet, "Earn", "Real chores pay real Units — with values you set. Kids see exactly what effort is worth."],
+                [PiggyBank, "Grow", "Units flow into Vault goals, a college-fund CD, or the Society Store. Patience, visualized."],
+                [Trophy, "Become", "Every step climbs the Society ranks — from Seedling to Pillar. Better than yesterday, every day."],
               ] as const
-            ).map(([title, text], i) => (
-              <Card key={title} className="p-5">
-                <p className="font-display text-3xl font-bold text-accent">{i + 1}</p>
-                <h3 className="mt-3 font-display text-lg font-semibold">{title}</h3>
-                <p className="mt-1 text-sm leading-6 text-muted">{text}</p>
-              </Card>
-            ))}
-          </div>
-          <p className="mx-auto mt-6 max-w-2xl text-xs leading-5 text-muted">
-            Early withdrawal returns the principal as Units and forfeits the
-            bonus — the lesson is the point. Education payouts at maturity are
-            queued pending our licensed banking partner; no real money moves
-            yet, and we&rsquo;ll say so loudly when it does.
-          </p>
-        </div>
-      </section>
-
-      {/* ------------------------------ CREATIVE STUDIO ------------------------------ */}
-      <section id="studio" className="px-5 py-14 sm:py-20">
-        <div className="mx-auto max-w-6xl">
-          <div className="max-w-2xl">
-            <Eyebrow>Creative Studio</Eyebrow>
-            <h2 className="mt-2 font-display text-4xl font-semibold">
-              Not just money skills. Making skills.
-            </h2>
-            <p className="mt-3 text-muted">
-              Four age-matched tracks — Spark through Atelier — where kids
-              complete creative missions, unlock real tools, and open rooms for
-              music, games, animation, and design. Earning teaches discipline;
-              creating teaches everything else.
-            </p>
-          </div>
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {STUDIO_BANDS.map((band) => (
-              <Card key={band.id} className="flex flex-col">
-                <p className="text-xs font-semibold uppercase tracking-wider text-accent">
-                  Ages {band.ages}
+            ).map(([Icon, title, text], i) => (
+              <Card key={title} className="relative overflow-hidden p-6">
+                <p
+                  aria-hidden
+                  className="pointer-events-none absolute -right-2 -top-4 font-display text-[6rem] font-bold leading-none text-accent/8"
+                >
+                  {i + 1}
                 </p>
-                <h3 className="mt-2 font-display text-2xl font-semibold">{band.name}</h3>
-                <p className="mt-2 flex-1 text-sm text-muted">{band.pitch}</p>
-                <ul className="mt-4 space-y-2 text-sm text-muted">
-                  {band.missions.slice(0, 3).map((mission) => (
-                    <li key={mission.id} className="flex items-start gap-2">
-                      <CheckCircle2 className="mt-0.5 size-3.5 shrink-0 text-accent" />
-                      {mission.title}
-                    </li>
-                  ))}
-                </ul>
-              </Card>
-            ))}
-          </div>
-        </div>
-      </section>
-
-      {/* -------------------------------- SAFETY -------------------------------- */}
-      <section id="safety" className="border-y border-border bg-surface/70 px-5 py-14 sm:py-20">
-        <div className="mx-auto max-w-6xl">
-          <div className="max-w-2xl">
-            <Eyebrow>Why parents trust it</Eyebrow>
-            <h2 className="mt-2 font-display text-4xl font-semibold">
-              Built like a bank vault. Feels like a game.
-            </h2>
-          </div>
-          <div className="mt-8 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-            {(
-              [
-                [ShieldCheck, "Approval-first", "Chores, gifts, and purchases wait for a parent's tap. Nothing moves on its own."],
-                [Lock, "Not real money", "Units are a closed-loop family currency. No bank account to drain, no surprise charges — ever."],
-                [Users, "Separated worlds", "Classroom Units and family Units are strictly separated, by design, always."],
-                [BadgeCheck, "Honest beta", "We're in beta: the core loops work today, and we'll tell you plainly what's still on the way."],
-              ] as const
-            ).map(([Icon, title, text]) => (
-              <Card key={title}>
-                <Icon className="size-6 text-accent" />
-                <h3 className="mt-5 font-display text-xl font-semibold">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-muted">{text}</p>
+                <div className="relative">
+                  <div className="grid size-12 place-items-center rounded-2xl bg-accent/12 text-accent shadow-[var(--shadow-float)]">
+                    <Icon className="size-6" strokeWidth={1.8} />
+                  </div>
+                  <h3 className="mt-4 font-display text-2xl font-semibold">{title}</h3>
+                  <p className="mt-2 text-sm leading-6 text-muted">{text}</p>
+                </div>
               </Card>
             ))}
           </div>
@@ -469,22 +397,28 @@ function Landing() {
       </section>
 
       {/* ------------------------------ FINAL CTA ------------------------------ */}
-      <section className="px-5 py-16 sm:py-24">
-        <div className="mx-auto max-w-3xl text-center">
-          <div className="mx-auto mb-6 w-fit">
+      <section className="relative overflow-hidden px-5 py-16 sm:py-24">
+        <div
+          aria-hidden
+          className="pointer-events-none absolute left-1/2 top-1/2 size-[34rem] -translate-x-1/2 -translate-y-1/2 rounded-full bg-[radial-gradient(circle,rgba(34,211,238,0.1),rgba(139,92,246,0.1),transparent_70%)] blur-3xl"
+        />
+        <div className="relative mx-auto max-w-3xl text-center">
+          <div className="float-y mx-auto mb-6 w-fit">
             <PillarMark className="size-16" />
           </div>
           <h2 className="font-display text-4xl font-semibold sm:text-5xl">
-            Give your kids a head start on money.
+            Join the Society of{" "}
+            <span className="bg-gradient-to-r from-cyan-300 via-violet-300 to-fuchsia-300 bg-clip-text text-transparent">
+              Becoming.
+            </span>
           </h2>
           <p className="mx-auto mt-4 max-w-xl leading-7 text-muted">
-            Set up your family in minutes. Add your kids, pick your chores,
-            and watch earning turn into learning.
+            Set up your family in minutes — and watch better-than-yesterday begin.
           </p>
           <div className="mt-8 flex flex-wrap justify-center gap-3">
             <Link to="/login">
-              <Button className="h-12 px-6">
-                Create your family account
+              <Button className="h-12 px-6 text-base">
+                Join the Society
                 <ArrowRight className="size-4" />
               </Button>
             </Link>
@@ -498,7 +432,7 @@ function Landing() {
             <PillarMark />
             <span>Pillarpath</span>
           </div>
-          <span>Financial literacy for kids — earn, save, learn, create</span>
+          <span>Better than yesterday.</span>
           <div className="flex gap-4">
             <Link to="/privacy">Privacy</Link>
             <Link to="/terms">Terms</Link>
