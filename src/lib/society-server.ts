@@ -481,12 +481,14 @@ export const searchCjProducts = createServerFn({ method: "POST" })
   .handler(async ({ data }): Promise<{ hits: CjSearchHit[]; total: number }> => {
     const kw = data.keyword.trim();
     if (!kw) return { hits: [], total: 0 };
+    // NOTE: CJ's listV2 countryCode filter is broken server-side (returns
+    // totalRecords>0 but empty productList). Fetch unfiltered and apply the
+    // US-warehouse filter client-side on the product's countryCode field.
     const params = {
       keyWord: kw,
       size: 24,
-      countryCode: data.usOnly === false ? undefined : "US",
       endSellPrice: data.maxPrice,
-      orderBy: 4 as const, // inventory — prefer stocked items
+      orderBy: 4 as const,
       sort: "desc" as const,
     };
     const client = await createCachedCjClient();
@@ -509,18 +511,24 @@ export const searchCjProducts = createServerFn({ method: "POST" })
         throw e;
       }
     }
+    const allHits = page.items.map((p) => ({
+      pid: p.pid,
+      name: p.nameEn,
+      image: p.bigImage,
+      price: p.sellPrice,
+      nowPrice: p.nowPrice,
+      category: p.categoryName,
+      countryCode: p.countryCode,
+      usStock: p.countryCode === "US" ? p.warehouseInventoryNum : 0,
+      deliveryCycle: p.deliveryCycle,
+    }));
+    // Client-side US-warehouse filter (CJ's server-side filter is broken).
+    const hits = data.usOnly === false
+      ? allHits
+      : allHits.filter((h) => h.countryCode === "US");
     return {
-      total: page.total,
-      hits: page.items.map((p) => ({
-        pid: p.pid,
-        name: p.nameEn,
-        image: p.bigImage,
-        price: p.sellPrice,
-        nowPrice: p.nowPrice,
-        category: p.categoryName,
-        usStock: p.countryCode === "US" ? p.warehouseInventoryNum : 0,
-        deliveryCycle: p.deliveryCycle,
-      })),
+      total: data.usOnly === false ? page.total : hits.length,
+      hits,
     };
   });
 
