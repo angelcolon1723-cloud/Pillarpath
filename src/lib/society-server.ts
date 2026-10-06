@@ -514,11 +514,37 @@ export const searchCjProducts = createServerFn({ method: "POST" })
     // The list endpoint is flaky and returns incomplete data. For each
     // product, fetch the full detail (reliable endpoint) in parallel.
     // Limit to 12 to keep it fast.
+    // Use the raw product data to get the real PID (mapping may fail).
+    const getPid = (p: { pid: string }): string => {
+      if (p.pid) return p.pid;
+      // Fall back to raw fields attached by the client.
+      const raw = (p as any)._raw as Record<string, unknown> | undefined;
+      if (raw) {
+        const pid = raw.pid ?? raw.id ?? raw.productId ?? raw.product_id ?? raw.pidId;
+        if (pid) return String(pid);
+      }
+      return "";
+    };
     const client2 = await createCachedCjClient();
     const detailHits = await Promise.all(
       page.items.slice(0, 12).map(async (p) => {
+        const pid = getPid(p);
+        if (!pid) {
+          // No PID — return the mapped data as-is.
+          return {
+            pid: p.pid,
+            name: p.nameEn,
+            image: p.bigImage,
+            price: p.sellPrice,
+            nowPrice: p.nowPrice,
+            category: p.categoryName,
+            countryCode: p.countryCode,
+            usStock: p.countryCode === "US" ? p.warehouseInventoryNum : 0,
+            deliveryCycle: p.deliveryCycle,
+          };
+        }
         try {
-          const d = await client2!.getProductDetail(p.pid);
+          const d = await client2!.getProductDetail(pid);
           return {
             pid: d.pid,
             name: d.nameEn,

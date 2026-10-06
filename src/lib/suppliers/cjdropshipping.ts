@@ -474,8 +474,14 @@ export class CjDropshippingClient {
           ? raw.productList
           : (listArray ?? [])
     ) as Record<string, unknown>[];
+    const mapped = items.map((item) => {
+      const summary = mapProductSummary(item);
+      // Attach raw for debugging/fallback (stripped before returning to client).
+      (summary as any)._raw = item;
+      return summary;
+    });
     const result = {
-      items: items.map(mapProductSummary),
+      items: mapped,
       total: toNumber(raw.total ?? raw.totalRecords),
       page: toNumber(raw.pageNum ?? raw.pageNumber, 1),
       pageSize: toNumber(raw.pageSize, items.length),
