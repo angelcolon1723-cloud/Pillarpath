@@ -75,18 +75,22 @@ function SocietyPage() {
       const s = await getSocietyStatus();
       setStatus(s);
       if (s.isAdmin) {
-        try {
-          const [stock, tv] = await Promise.all([
-            getStock(),
-            listTeacherVerifications(),
-          ]);
-          setItems(stock.items);
-          setDefaultMargin(stock.defaultMarginPct);
-          setVerifications(tv.items);
-        } catch (e) {
-          setLoadError(e instanceof Error ? e.message : "Failed to load stockroom.");
-          setItems([]);
-        }
+        // Load independently — one failing shouldn't block the other.
+        const stockP = getStock().then(
+          (stock) => {
+            setItems(stock.items);
+            setDefaultMargin(stock.defaultMarginPct);
+          },
+          (e) => {
+            setLoadError(e instanceof Error ? e.message : "Failed to load stockroom.");
+            setItems([]);
+          },
+        );
+        const tvP = listTeacherVerifications().then(
+          (tv) => setVerifications(tv.items),
+          () => setVerifications([]),
+        );
+        await Promise.all([stockP, tvP]);
       }
     } catch {
       setDenied(true);

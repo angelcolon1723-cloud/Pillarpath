@@ -380,41 +380,40 @@ export const listTeacherVerifications = createServerFn({ method: "GET" })
   .middleware([roleMiddleware("admin")])
   .handler(async (): Promise<{ items: TeacherVerificationRequest[] }> => {
     const sql = await getSql();
+    // Schema note: migration 0005 created teacher_verifications with user_id;
+    // migration 0008's version (teacher_id, school, district...) never applied
+    // because of `if not exists`. Query the actual 0005 schema.
     const rows = await sql<{
-      teacher_id: string;
+      user_id: string;
       email: string | null;
       name: string | null;
-      school: string;
-      district: string;
-      work_email: string;
-      notes: string;
+      school_email: string | null;
+      evidence_url: string | null;
       status: string;
       created_at: Date | string;
       reviewed_at: Date | string | null;
     }>`
-      select tv.teacher_id,
+      select tv.user_id,
              u.email,
              u.name,
-             tv.school,
-             tv.district,
-             tv.work_email,
-             tv.notes,
+             tv.school_email,
+             tv.evidence_url,
              tv.status,
              tv.created_at,
              tv.reviewed_at
       from teacher_verifications tv
-      left join "user" u on u.id = tv.teacher_id
+      left join "user" u on u.id = tv.user_id
       order by case when tv.status = 'pending' then 0 else 1 end,
                tv.created_at desc`;
     return {
       items: rows.map((r) => ({
-        teacherId: r.teacher_id,
+        teacherId: r.user_id,
         email: r.email,
         name: r.name,
-        school: r.school,
-        district: r.district,
-        workEmail: r.work_email,
-        notes: r.notes,
+        school: "",
+        district: "",
+        workEmail: r.school_email ?? "",
+        notes: r.evidence_url ?? "",
         status: r.status,
         createdAt: new Date(r.created_at).toISOString(),
         reviewedAt:
