@@ -198,37 +198,41 @@ function SocietyPage() {
             </div>
           ) : (
         <div className="mt-8 space-y-8">
+          <div className="space-y-4">
+            <h2 className="font-display text-xl font-semibold">
+              Your products
+              {items != null && items.length > 0 && ` (${items.length})`}
+            </h2>
+            {items === null && (
+              <p className="text-sm text-muted">Loading supplier catalog…</p>
+            )}
+            {items !== null && items.length === 0 && (
+              <Card className="p-8 text-center">
+                <h2 className="font-display text-xl font-semibold">
+                  Catalog is empty
+                </h2>
+                <p className="mt-2 text-sm text-muted">
+                  Import supplier products (CJ Dropshipping / Printify) to begin
+                  screening and stocking.
+                </p>
+              </Card>
+            )}
+            {items?.map((item) => (
+              <StockCard
+                key={item.id}
+                item={item}
+                defaultMargin={defaultMargin}
+                busy={busy}
+                onAction={(fn, msg) => void run(fn, msg)}
+              />
+            ))}
+          </div>
           <ImportPanel busy={busy} onImported={() => void load()} />
           <TeacherVerificationsPanel
             items={verifications}
             busy={busy}
             onAction={(fn, msg) => void run(fn, msg)}
           />
-          <div className="space-y-4">
-            {items === null && (
-              <p className="text-sm text-muted">Loading supplier catalog…</p>
-            )}
-          {items !== null && items.length === 0 && (
-            <Card className="p-8 text-center">
-              <h2 className="font-display text-xl font-semibold">
-                Catalog is empty
-              </h2>
-              <p className="mt-2 text-sm text-muted">
-                Import supplier products (CJ Dropshipping / Printify) to begin
-                screening and stocking.
-              </p>
-            </Card>
-          )}
-          {items?.map((item) => (
-            <StockCard
-              key={item.id}
-              item={item}
-              defaultMargin={defaultMargin}
-              busy={busy}
-              onAction={(fn, msg) => void run(fn, msg)}
-            />
-          ))}
-          </div>
         </div>
           )}
         </div>
@@ -607,27 +611,12 @@ function StockCard({
         </div>
       </div>
       <div className="mt-4 flex flex-wrap items-center gap-2 border-t border-border pt-4">
-        {item.screening_status !== "approved" && item.screening_status !== "rejected" && (
-          <Button
-            size="sm"
-            disabled={busy}
-            onClick={() => onAction(() => approveStockItem({ data: { id: item.id } }), "Approved.")}
-          >
-            Approve
-          </Button>
-        )}
-        {item.screening_status !== "rejected" && (
-          <Button
-            size="sm"
-            variant="ghost"
-            disabled={busy}
-            onClick={() => onAction(() => rejectStockItem({ data: { id: item.id } }), "Rejected.")}
-          >
-            Reject
-          </Button>
-        )}
-        {item.screening_status === "approved" && !live && (
-          <div className="flex items-center gap-2">
+        {live ? (
+          <Badge tone="accent">Live on shelves</Badge>
+        ) : item.screening_status === "rejected" ? (
+          <Badge tone="muted">Rejected</Badge>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2">
             <div className="flex items-center gap-1">
               <span className="text-xs text-muted">$</span>
               <Input
@@ -636,6 +625,7 @@ function StockCard({
                 value={price}
                 onChange={(e) => setPrice(e.target.value)}
                 aria-label="Retail price in dollars"
+                placeholder="0.00"
               />
             </div>
             <Button
@@ -647,25 +637,35 @@ function StockCard({
                   toast.error("Enter a valid retail price.");
                   return;
                 }
-                onAction(
-                  () => publishStockItem({ data: { id: item.id, retailPriceCents: cents } }),
-                  "Published to the shelves.",
-                );
+                // Approve (if needed) then publish in one tap.
+                onAction(async () => {
+                  if (item.screening_status !== "approved") {
+                    await approveStockItem({ data: { id: item.id } });
+                  }
+                  await publishStockItem({ data: { id: item.id, retailPriceCents: cents } });
+                }, "Published to the shelves.");
               }}
             >
               Publish to shelves
             </Button>
             {suggestion != null && (
-              <span className="text-xs text-subtle">
-                Auto-price ${(suggestion.cents / 100).toFixed(2)} ({defaultMargin}%
-                margin
-                {suggestion.clamped === "low"
-                  ? `, raised to typical ${suggestion.category} pricing`
-                  : suggestion.clamped === "high"
-                    ? `, capped to typical ${suggestion.category} pricing`
-                    : ""}
-                )
-              </span>
+              <button
+                type="button"
+                className="text-xs text-accent underline"
+                onClick={() => setPrice((suggestion.cents / 100).toFixed(2))}
+              >
+                Use ${(suggestion.cents / 100).toFixed(2)}
+              </button>
+            )}
+            {item.screening_status !== "approved" && (
+              <Button
+                size="sm"
+                variant="ghost"
+                disabled={busy}
+                onClick={() => onAction(() => rejectStockItem({ data: { id: item.id } }), "Rejected.")}
+              >
+                Reject
+              </Button>
             )}
           </div>
         )}
