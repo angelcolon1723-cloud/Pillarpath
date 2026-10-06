@@ -139,7 +139,7 @@ export function GiftModePanel({ kids }: { kids: Array<{ id: number; name: string
                   type="button"
                   onClick={() => setWishChildId(k.id)}
                   className={cn(
-                    "rounded-full border px-3 py-1.5 text-xs font-semibold",
+                    "rounded-full border px-3 py-1.5 text-xs font-semibold shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95",
                     (wishChildId ?? kids[0]?.id) === k.id
                       ? "border-accent bg-accent/15 text-accent"
                       : "border-border text-muted",
@@ -203,7 +203,7 @@ export function GiftModePanel({ kids }: { kids: Array<{ id: number; name: string
                 </div>
               </div>
               <button type="button" onClick={() => remove(w)} disabled={busy}
-                className="rounded-lg p-1 text-muted hover:text-red-500" aria-label="Remove wish">
+                className="rounded-xl p-1 text-muted shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95 hover:text-red-500" aria-label="Remove wish">
                 <Trash2 className="size-3.5" />
               </button>
             </div>

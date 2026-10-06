@@ -334,7 +334,7 @@ export function Dashboard({
       </div>
 
       {/* Hero balance */}
-      <div className="overflow-hidden rounded-2xl bg-ink p-6 text-bg shadow-[var(--shadow-border)]">
+      <div className="overflow-hidden rounded-2xl bg-ink p-6 text-bg shadow-[var(--shadow-float)]">
         <p className="text-xs font-medium uppercase tracking-wider text-bg/60">
           Family Units
         </p>

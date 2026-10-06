@@ -39,7 +39,7 @@ export function MoneyMomentsPanel() {
             <button
               type="button"
               onClick={() => setDismissed((d) => new Set(d).add(m.id))}
-              className="absolute right-2 top-2 rounded-lg p-1 text-muted hover:bg-surface hover:text-ink"
+              className="absolute right-2 top-2 rounded-xl p-1 text-muted shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95 hover:bg-surface hover:text-ink"
               aria-label="Dismiss"
             >
               <X className="size-3.5" />

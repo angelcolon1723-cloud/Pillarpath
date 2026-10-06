@@ -213,7 +213,7 @@ export function ParentHome() {
         </div>
       </Card>
 
-      <div className="stagger-3 screen-enter overflow-hidden rounded-xl bg-ink p-5 text-bg shadow-[var(--shadow-border)]">
+      <div className="stagger-3 screen-enter overflow-hidden rounded-xl bg-ink p-5 text-bg shadow-[var(--shadow-float)]">
         <p className="text-xs font-medium uppercase tracking-wider text-bg/60">
           Spendable balance
         </p>
@@ -610,8 +610,8 @@ export function ParentChores() {
                     onClick={() => toggleChore(c.id)}
                     className={
                       disabled
-                        ? "grid size-9 shrink-0 place-items-center rounded-lg border border-border text-muted"
-                        : "grid size-9 shrink-0 place-items-center rounded-lg bg-accent-soft text-accent"
+                        ? "grid size-9 shrink-0 place-items-center rounded-xl border border-border text-muted shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95"
+                        : "grid size-9 shrink-0 place-items-center rounded-xl bg-accent-soft text-accent shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95"
                     }
                   >
                     <Power className="size-4" />

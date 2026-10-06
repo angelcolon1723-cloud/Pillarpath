@@ -501,7 +501,7 @@ export function StudioScreen() {
         <div
           ref={wrapRef}
           className={cn(
-            "relative overflow-hidden rounded-lg art-surface shadow-[var(--shadow-border)]",
+            "relative overflow-hidden rounded-lg art-surface shadow-[var(--shadow-float)]",
             tools.has("grid") && "studio-grid",
           )}
         >
@@ -519,7 +519,7 @@ export function StudioScreen() {
               type="button"
               aria-label={`Color ${c}`}
               onClick={() => setColor(c)}
-              className="size-11 rounded-full shadow-[var(--shadow-border)]"
+              className="size-11 rounded-full shadow-[var(--shadow-float)]"
               style={{
                 background: c,
                 outline:
@@ -703,7 +703,7 @@ function ToolChip({
       type="button"
       onClick={onClick}
       className={cn(
-        "inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-3 text-sm font-semibold",
+        "inline-flex min-h-11 items-center gap-2 rounded-xl border border-border px-3 text-sm font-semibold shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95",
         active ? "bg-ink text-bg" : "bg-surface-2 text-ink",
       )}
     >

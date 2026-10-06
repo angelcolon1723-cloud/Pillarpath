@@ -103,7 +103,7 @@ export function SpendingInsightsPanel() {
               type="button"
               onClick={() => setActiveIdx(i)}
               className={cn(
-                "rounded-full border px-3 py-1.5 text-xs font-semibold",
+                "rounded-full border px-3 py-1.5 text-xs font-semibold shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95",
                 i === activeIdx
                   ? "border-accent bg-accent/15 text-accent"
                   : "border-border text-muted",

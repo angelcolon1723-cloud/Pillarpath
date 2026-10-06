@@ -632,7 +632,7 @@ function ParentWorkspace({
         />
         <div
           role="tablist"
-          className="grid max-w-md grid-cols-2 rounded-xl bg-surface-2 p-1"
+          className="grid max-w-md grid-cols-2 rounded-2xl bg-surface-2 p-1 shadow-[var(--shadow-float)]"
         >
           {(
             [
@@ -647,8 +647,8 @@ function ParentWorkspace({
               aria-selected={familyTab === id}
               onClick={() => onFamilyTab(id)}
               className={cn(
-                "min-h-11 rounded-lg text-sm font-semibold",
-                familyTab === id ? "bg-surface text-ink shadow-[var(--shadow-border)]" : "text-muted",
+                "min-h-11 rounded-xl text-sm font-semibold transition-all duration-150 active:scale-95",
+                familyTab === id ? "bg-surface text-ink shadow-[var(--shadow-float)]" : "text-muted hover:text-ink",
               )}
             >
               {label}

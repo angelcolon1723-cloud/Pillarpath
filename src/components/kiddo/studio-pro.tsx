@@ -627,7 +627,7 @@ function ProCanvas({ onDone }: { onDone: () => void }) {
                   type="button"
                   onClick={() => setPaletteTab(t)}
                   className={cn(
-                    "rounded-full px-2 py-1 text-[10px] font-semibold capitalize",
+                    "rounded-full px-2 py-1 text-[10px] font-semibold capitalize shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95",
                     paletteTab === t ? "bg-accent text-white" : "bg-surface-2 text-muted",
                   )}
                 >

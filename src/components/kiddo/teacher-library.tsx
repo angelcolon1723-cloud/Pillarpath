@@ -302,7 +302,7 @@ export function TeacherLibrary({ onOpenMaterial }: { onOpenMaterial: (resourceId
                   type="button"
                   onClick={() => doRemoveItem(item.id)}
                   disabled={busy}
-                  className="shrink-0 rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-ink"
+                  className="shrink-0 rounded-xl p-1.5 text-muted shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95 hover:bg-surface-2 hover:text-ink"
                   aria-label="Remove item"
                 >
                   <X className="size-4" />
@@ -361,7 +361,7 @@ export function TeacherLibrary({ onOpenMaterial }: { onOpenMaterial: (resourceId
               <button
                 type="button"
                 onClick={() => downloadFile(f)}
-                className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-ink"
+                className="rounded-xl p-1.5 text-muted shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95 hover:bg-surface-2 hover:text-ink"
                 aria-label="Download"
               >
                 <Download className="size-4" />
@@ -369,7 +369,7 @@ export function TeacherLibrary({ onOpenMaterial }: { onOpenMaterial: (resourceId
               <button
                 type="button"
                 onClick={() => deleteFile(f)}
-                className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-red-500"
+                className="rounded-xl p-1.5 text-muted shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95 hover:bg-surface-2 hover:text-red-500"
                 aria-label="Delete file"
               >
                 <Trash2 className="size-3.5" />
@@ -489,7 +489,7 @@ export function TeacherLibrary({ onOpenMaterial }: { onOpenMaterial: (resourceId
                       setRenamingId(f.id);
                       setRenameValue(f.name);
                     }}
-                    className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-ink"
+                    className="rounded-xl p-1.5 text-muted shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95 hover:bg-surface-2 hover:text-ink"
                     aria-label="Rename folder"
                   >
                     <Pencil className="size-3.5" />
@@ -497,7 +497,7 @@ export function TeacherLibrary({ onOpenMaterial }: { onOpenMaterial: (resourceId
                   <button
                     type="button"
                     onClick={() => doDelete(f.id, f.name)}
-                    className="rounded-lg p-1.5 text-muted hover:bg-surface-2 hover:text-red-500"
+                    className="rounded-xl p-1.5 text-muted shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95 hover:bg-surface-2 hover:text-red-500"
                     aria-label="Delete folder"
                   >
                     <Trash2 className="size-3.5" />

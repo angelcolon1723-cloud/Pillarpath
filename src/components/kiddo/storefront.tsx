@@ -173,7 +173,7 @@ function ProductCard({
       type="button"
       onClick={() => onSelect(toSelectArg(product))}
       className={cn(
-        "group overflow-hidden rounded-xl bg-surface text-left shadow-[var(--shadow-border)] transition-all duration-150 ease-out hover:-translate-y-0.5 active:scale-[0.97]",
+        "group overflow-hidden rounded-xl bg-surface text-left shadow-[var(--shadow-float)] transition-all duration-150 ease-out hover:-translate-y-0.5 active:scale-[0.97]",
         className,
       )}
     >
@@ -220,7 +220,7 @@ function HeroBanner({
   return (
     <section
       aria-label="Featured product"
-      className="relative overflow-hidden rounded-2xl bg-surface shadow-[var(--shadow-border)]"
+      className="relative overflow-hidden rounded-2xl bg-surface shadow-[var(--shadow-float)]"
     >
       {/* Neon wash */}
       <div

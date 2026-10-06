@@ -164,7 +164,7 @@ export function SavingsGoals({
                   type="button"
                   onClick={() => setGoalChildId(k.id)}
                   className={cn(
-                    "rounded-full border px-3 py-1.5 text-xs font-semibold",
+                    "rounded-full border px-3 py-1.5 text-xs font-semibold shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95",
                     (goalChildId ?? kids[0]?.id) === k.id
                       ? "border-accent bg-accent/15 text-accent"
                       : "border-border text-muted",

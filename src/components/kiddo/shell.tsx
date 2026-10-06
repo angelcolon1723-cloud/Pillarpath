@@ -50,7 +50,7 @@ function RoleSwitch() {
     <div
       role="tablist"
       aria-label="Demo as"
-      className="grid grid-cols-2 rounded-md bg-surface-2 p-1 shadow-[var(--shadow-border)]"
+      className="grid grid-cols-2 rounded-2xl bg-surface-2 p-1 shadow-[var(--shadow-float)]"
     >
       {(["parent", "child"] as const).map((r) => (
         <button
@@ -60,8 +60,8 @@ function RoleSwitch() {
           aria-selected={role === r}
           onClick={() => pick(r)}
           className={cn(
-            "flex h-9 items-center justify-center gap-1.5 rounded-sm text-sm font-medium capitalize transition-[background-color,color] duration-150 ease-out",
-            role === r ? "bg-surface text-ink shadow-[var(--shadow-border)]" : "text-muted",
+            "flex h-9 items-center justify-center gap-1.5 rounded-xl text-sm font-medium capitalize transition-all duration-150 ease-out active:scale-95",
+            role === r ? "bg-surface text-ink shadow-[var(--shadow-float)]" : "text-muted hover:text-ink",
           )}
         >
           {r === "parent" ? (

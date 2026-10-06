@@ -364,7 +364,7 @@ export function WorldMap() {
                   <Icon className="size-7 text-white" strokeWidth={1.8} />
                 </span>
                 <Card
-                  className={`flex-1 bg-gradient-to-br ${realm.biome} p-4 shadow-[var(--shadow-border)] transition-transform duration-200 group-active:scale-[0.98]`}
+                  className={`flex-1 bg-gradient-to-br ${realm.biome} p-4 shadow-[var(--shadow-float)] transition-transform duration-200 group-active:scale-[0.98]`}
                 >
                   <span className={`flex items-center gap-1 font-display text-lg font-semibold ${left ? "" : "justify-end"}`}>
                     {realm.name}

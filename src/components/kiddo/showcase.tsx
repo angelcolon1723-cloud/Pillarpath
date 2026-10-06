@@ -54,7 +54,7 @@ function PostCard({
               type="button"
               onClick={onCheer}
               className={cn(
-                "flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold",
+                "flex items-center gap-1 rounded-full px-2 py-1 text-xs font-semibold shadow-[var(--shadow-float)] transition-all duration-150 active:scale-95",
                 cheered ? "bg-accent-soft text-accent" : "bg-surface-2 text-muted",
               )}
               aria-label="Cheer this creation"
@@ -133,7 +133,7 @@ export function ChildGallery() {
         </p>
       </header>
 
-      <div role="tablist" className="grid grid-cols-2 rounded-xl bg-surface-2 p-1">
+      <div role="tablist" className="grid grid-cols-2 rounded-2xl bg-surface-2 p-1 shadow-[var(--shadow-float)]">
         {(
           [
             ["browse", "Browse"],
@@ -147,8 +147,8 @@ export function ChildGallery() {
             aria-selected={tab === id}
             onClick={() => setTab(id)}
             className={cn(
-              "min-h-11 rounded-lg text-sm font-semibold",
-              tab === id ? "bg-surface text-ink shadow-[var(--shadow-border)]" : "text-muted",
+              "min-h-11 rounded-xl text-sm font-semibold transition-all duration-150 active:scale-95",
+              tab === id ? "bg-surface text-ink shadow-[var(--shadow-float)]" : "text-muted hover:text-ink",
             )}
           >
             {label}
