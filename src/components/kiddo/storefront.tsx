@@ -178,8 +178,19 @@ function ProductCard({
         <div className="line-clamp-2 min-h-10 text-sm font-medium leading-snug">
           {product.name}
         </div>
-        <div className="mt-1 font-mono text-sm font-semibold tabular-nums text-accent">
-          {formatUnits(product.unitPrice)} Units
+        <div className="mt-1 flex items-center justify-between">
+          <div className="font-mono text-sm font-semibold tabular-nums text-accent">
+            {formatUnits(product.unitPrice)} Units
+          </div>
+          <div className="text-[11px] text-muted">
+            {product.stockQuantity <= 0 ? (
+              <span className="text-danger">Out of stock</span>
+            ) : product.stockQuantity <= 5 ? (
+              <span className="text-amber-500">Only {product.stockQuantity} left</span>
+            ) : (
+              <span>{product.stockQuantity} in stock</span>
+            )}
+          </div>
         </div>
       </div>
     </button>

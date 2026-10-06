@@ -357,6 +357,7 @@ export interface MarketplaceProduct {
   imageUrl: string | null;
   unitPrice: number;
   category: string | null;
+  stockQuantity: number;
 }
 
 /**
@@ -370,12 +371,13 @@ export const getMarketplaceProducts = createServerFn({ method: "GET" })
     const rows = await sql<{
       id: string; name: string; description: string | null;
       image_url: string | null; unit_price: number; category: string | null;
-    }>`select id, name, description, image_url, unit_price, category from store_products where active = true order by name`;
+      stock_quantity: number | null;
+    }>`select id, name, description, image_url, unit_price, category, stock_quantity from store_products where active = true order by name`;
     return {
       products: rows.map((r) => ({
         id: r.id, name: r.name, description: r.description,
         imageUrl: r.image_url, unitPrice: r.unit_price,
-        category: r.category,
+        category: r.category, stockQuantity: r.stock_quantity ?? 50,
       })),
     };
   });

@@ -37,6 +37,8 @@ export interface PublishOptions {
   marginPct?: number;
   /** Explicit retail price (cents); overrides the margin computation. */
   retailPriceCents?: number;
+  /** How many units to stock in the store. Defaults to 50. */
+  stockQuantity?: number;
   /** Admin user id recording the publish. */
   publishedBy?: string | null;
 }
@@ -112,13 +114,13 @@ export async function publishSupplierProductToStorefront(
     insert into store_products (
       id, name, description, category, image_url, unit_price,
       retail_price_cents, supplier_name, supplier_sku, active, inventory,
-      supplier_product_id, published_at, margin_pct
+      supplier_product_id, published_at, margin_pct, stock_quantity
     ) values (
       ${id}, ${product.title}, ${description}, ${category}, ${imageUrl},
       ${retailPriceCents}, ${retailPriceCents},
       ${supplierLabel(product.supplier)}, ${product.supplier_sku ?? product.supplier_product_id},
       true, ${product.inventory ?? 100},
-      ${product.id}, now(), ${marginPct}
+      ${product.id}, now(), ${marginPct}, ${opts.stockQuantity ?? 50}
     )
     on conflict (id) do update set
       name = excluded.name,
@@ -133,6 +135,7 @@ export async function publishSupplierProductToStorefront(
       inventory = excluded.inventory,
       supplier_product_id = excluded.supplier_product_id,
       published_at = now(),
+      stock_quantity = excluded.stock_quantity,
       margin_pct = excluded.margin_pct
     returning *`;
   return result[0];

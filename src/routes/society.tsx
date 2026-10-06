@@ -13,6 +13,7 @@ import {
   getStock,
   importPrintifySelection,
   listTeacherVerifications,
+  publishAllApproved,
   publishStockItem,
   rejectStockItem,
   reviewTeacherVerification,
@@ -210,10 +211,26 @@ function SocietyPage() {
           ) : (
         <div className="mt-8 space-y-8">
           <div className="space-y-4">
-            <h2 className="font-display text-xl font-semibold">
-              Your products
-              {items != null && items.length > 0 && ` (${items.length})`}
-            </h2>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="font-display text-xl font-semibold">
+                Your products
+                {items != null && items.length > 0 && ` (${items.length})`}
+              </h2>
+              {items != null && items.some((it) => it.screening_status === "approved" && it.store_active !== true) && (
+                <Button
+                  size="sm"
+                  disabled={busy}
+                  onClick={() =>
+                    void run(async () => {
+                      const res = await publishAllApproved({ data: { stockQuantity: 50 } });
+                      return res;
+                    }, "Published all approved products.")
+                  }
+                >
+                  Publish all approved
+                </Button>
+              )}
+            </div>
             {loadError && (
               <Card className="p-4">
                 <p className="text-sm text-danger">Couldn't load products: {loadError}</p>
@@ -585,6 +602,7 @@ function StockCard({
       ? suggestRetailPrice(item.title, item.cost_cents, defaultMargin)
       : suggestRetailPriceNoCost(item.title);
   const [price, setPrice] = useState((suggestion.cents / 100).toFixed(2));
+  const [stockQty, setStockQty] = useState("50");
   const live = item.store_active === true;
 
   return (
@@ -645,6 +663,17 @@ function StockCard({
                 placeholder="0.00"
               />
             </div>
+            <div className="flex items-center gap-1">
+              <span className="text-xs text-muted">Qty</span>
+              <Input
+                className="w-16"
+                inputMode="numeric"
+                value={stockQty}
+                onChange={(e) => setStockQty(e.target.value)}
+                aria-label="Stock quantity"
+                placeholder="50"
+              />
+            </div>
             <Button
               size="sm"
               disabled={busy || price.trim() === ""}
@@ -654,13 +683,14 @@ function StockCard({
                   toast.error("Enter a valid retail price.");
                   return;
                 }
+                const qty = Math.max(1, Math.floor(Number(stockQty) || 50));
                 // Approve (if needed) then publish in one tap.
                 onAction(async () => {
                   if (item.screening_status !== "approved") {
                     await approveStockItem({ data: { id: item.id } });
                   }
-                  await publishStockItem({ data: { id: item.id, retailPriceCents: cents } });
-                }, "Published to the shelves.");
+                  await publishStockItem({ data: { id: item.id, retailPriceCents: cents, stockQuantity: qty } });
+                }, `Published to the shelves (${qty} in stock).`);
               }}
             >
               Publish to shelves

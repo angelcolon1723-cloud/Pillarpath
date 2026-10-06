@@ -93,11 +93,12 @@ export const rejectStockItem = createServerFn({ method: "POST" })
 
 export const publishStockItem = createServerFn({ method: "POST" })
   .middleware([roleMiddleware("admin")])
-  .validator((input: { id: number; marginPct?: number; retailPriceCents?: number }) => input)
+  .validator((input: { id: number; marginPct?: number; retailPriceCents?: number; stockQuantity?: number }) => input)
   .handler(async ({ context, data }) => {
     const row = await publishSupplierProductToStorefront(data.id, {
       marginPct: data.marginPct,
       retailPriceCents: data.retailPriceCents,
+      stockQuantity: data.stockQuantity,
       publishedBy: context.identity.userId,
     });
     await audit(context.identity.userId, "stock.publish", String(data.id), {
@@ -106,6 +107,41 @@ export const publishStockItem = createServerFn({ method: "POST" })
       marginPct: row.margin_pct,
     });
     return { ok: true, storeProductId: row.id };
+  });
+
+/** Bulk publish: publish all approved-but-unpublished products at once. */
+export const publishAllApproved = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("admin")])
+  .validator((input: { stockQuantity?: number }) => input)
+  .handler(async ({ context, data }) => {
+    const { getStockOverview } = await import("@/lib/suppliers/publish");
+    const { suggestRetailPrice, suggestRetailPriceNoCost } = await import("@/lib/suppliers/pricing");
+    const items = await getStockOverview();
+    const toPublish = items.filter(
+      (it) => it.screening_status === "approved" && it.store_active !== true,
+    );
+    let published = 0;
+    const qty = Math.max(1, Math.floor(data.stockQuantity ?? 50));
+    for (const it of toPublish) {
+      try {
+        const suggestion =
+          it.cost_cents != null
+            ? suggestRetailPrice(it.title, it.cost_cents, 40)
+            : suggestRetailPriceNoCost(it.title);
+        await publishSupplierProductToStorefront(it.id, {
+          retailPriceCents: suggestion.cents,
+          stockQuantity: qty,
+          publishedBy: context.identity.userId,
+        });
+        published++;
+      } catch {
+        // Skip failures, continue with the rest.
+      }
+    }
+    await audit(context.identity.userId, "stock.bulk_publish", `${published}`, {
+      attempted: toPublish.length,
+    });
+    return { ok: true, published, attempted: toPublish.length };
   });
 
 export interface BlueprintChoice {
