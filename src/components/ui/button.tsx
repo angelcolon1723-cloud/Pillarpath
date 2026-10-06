@@ -23,11 +23,11 @@ const buttonVariants = cva(
           "bg-vault text-vault-foreground shadow-[var(--shadow-float)] hover:shadow-[var(--shadow-float-hover)] hover:bg-vault/92",
       },
       size: {
-        default: "h-11 rounded-2xl px-5 text-sm",
-        sm: "h-9 rounded-xl px-4 text-sm",
-        lg: "h-12 rounded-2xl px-6 text-sm",
-        icon: "size-11 rounded-2xl",
-        "icon-sm": "size-9 rounded-xl",
+        default: "h-11 rounded-full px-5 text-sm",
+        sm: "h-9 rounded-full px-4 text-sm",
+        lg: "h-12 rounded-full px-6 text-sm",
+        icon: "size-11 rounded-full",
+        "icon-sm": "size-9 rounded-full",
       },
     },
     defaultVariants: {
