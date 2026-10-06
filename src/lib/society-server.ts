@@ -579,12 +579,15 @@ export const searchCjProducts = createServerFn({ method: "POST" })
       ? detailHits
       : detailHits.filter((h) => h.countryCode === "US" || h.countryCode == null);
     // Debug: include raw field names in response for mapping fix.
-    const firstRaw = (page.items[0] as any)?._raw as Record<string, unknown> | undefined;
-    const debugRawKeys = firstRaw ? Object.keys(firstRaw).join(",") : "no raw";
+    // The list returns content object, not products — show what we actually got.
+    const firstHit = page.items[0] as any;
+    const debugInfo = firstHit
+      ? `pid=${firstHit.pid || "empty"}, name=${(firstHit.nameEn || "").slice(0, 30)}, hasRaw=${!!firstHit._raw}, rawKeys=${firstHit._raw ? Object.keys(firstHit._raw).slice(0, 15).join(",") : "none"}`
+      : "no items";
     return {
       total: data.usOnly === false ? page.total : hits.length,
       hits,
-      _debugRawKeys: debugRawKeys,
+      _debugRawKeys: debugInfo,
     };
   });
 
