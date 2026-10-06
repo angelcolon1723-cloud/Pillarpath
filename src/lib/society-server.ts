@@ -478,7 +478,7 @@ export interface CjSearchHit {
 export const searchCjProducts = createServerFn({ method: "POST" })
   .middleware([roleMiddleware("admin")])
   .validator((input: { keyword: string; usOnly?: boolean; maxPrice?: number }) => input)
-  .handler(async ({ data }): Promise<{ hits: CjSearchHit[]; total: number }> => {
+  .handler(async ({ data }): Promise<{ hits: CjSearchHit[]; total: number; _debugRawKeys?: string }> => {
     const kw = data.keyword.trim();
     if (!kw) return { hits: [], total: 0 };
     // NOTE: CJ's listV2 countryCode filter is broken server-side (returns
@@ -578,9 +578,13 @@ export const searchCjProducts = createServerFn({ method: "POST" })
     const hits = data.usOnly === false
       ? detailHits
       : detailHits.filter((h) => h.countryCode === "US" || h.countryCode == null);
+    // Debug: include raw field names in response for mapping fix.
+    const firstRaw = (page.items[0] as any)?._raw as Record<string, unknown> | undefined;
+    const debugRawKeys = firstRaw ? Object.keys(firstRaw).join(",") : "no raw";
     return {
       total: data.usOnly === false ? page.total : hits.length,
       hits,
+      _debugRawKeys: debugRawKeys,
     };
   });
 
