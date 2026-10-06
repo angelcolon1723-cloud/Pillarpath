@@ -1906,7 +1906,7 @@ export function ParentOrders() {
         <p className="text-sm font-medium text-muted">Store</p>
         <h1 className="font-display text-3xl font-semibold tracking-tight">Orders</h1>
         <p className="mt-1 text-sm text-muted">
-          Everything approved from the marketplace, on its way to your door.
+          Your direct purchases and approved marketplace orders, on their way to your door.
         </p>
       </header>
       {orders === null ? (
@@ -1924,7 +1924,14 @@ export function ParentOrders() {
             <Card key={o.id} className="p-4">
               <div className="flex items-center justify-between gap-3">
                 <div>
-                  <p className="text-sm font-semibold">Order #{o.id}</p>
+                  <p className="flex items-center gap-2 text-sm font-semibold">
+                    Order #{o.id}
+                    {o.paymentProvider === "stripe" ? (
+                      <Badge tone="accent" className="text-[10px]">Your purchase</Badge>
+                    ) : o.paymentProvider === "units" ? (
+                      <Badge tone="muted" className="text-[10px]">Kid's purchase</Badge>
+                    ) : null}
+                  </p>
                   <p className="text-xs text-muted">
                     {o.items.map((i) => `${i.quantity}× ${i.productName}`).join(", ")}
                   </p>

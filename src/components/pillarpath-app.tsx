@@ -39,6 +39,7 @@ import {
   ParentLoad,
   ParentVault,
 } from "@/components/kiddo/parent-views";
+import { ParentStore } from "@/components/kiddo/parent-store";
 import {
   ChildChores,
   ChildConfirm,
@@ -74,7 +75,6 @@ import {
   ProductArt,
   SectionIntro,
   SettingsView,
-  StoreGrid,
   money,
   type AppData,
   type ParentSection,
@@ -598,7 +598,7 @@ function ParentWorkspace({
 }) {
   const ledgerScreen = useLedger((s) => s.screen);
 
-  if (section === "store") return <StoreGrid products={data.products} onAdded={onRefresh} />;
+  if (section === "store") return <ParentStore />;
   if (section === "orders") return <OrdersView data={data} />;
   if (section === "settings") return <SettingsView data={data} onRefresh={onRefresh} />;
   if (section === "future-units") return <FutureUnitsMarket data={data} onRefresh={onRefresh} />;

@@ -34,6 +34,7 @@ export interface FulfillmentOrder {
   status: string;
   totalCents: number;
   createdAt: string;
+  paymentProvider: string | null;
   items: { productName: string; quantity: number; unitPriceCents: number; imageUrl: string | null }[];
   fulfillmentStatus: string | null;
   trackingNumber: string | null;
@@ -180,9 +181,11 @@ export const listMyOrders = createServerFn({ method: "GET" })
     const sql = await getSql();
     const rows = await sql<{
       id: number; status: string; total_cents: number; created_at: string;
+      payment_provider: string | null;
       fulfillment_status: string | null; tracking_number: string | null;
     }>`
       select o.id, o.status, o.total_cents, o.created_at::text as created_at,
+             o.payment_provider,
              (select f.status from fulfillments f where f.order_id = o.id order by f.id desc limit 1) as fulfillment_status,
              (select so.tracking_number from supplier_orders so where so.order_id = o.id order by so.id desc limit 1) as tracking_number
       from orders o
@@ -201,6 +204,7 @@ export const listMyOrders = createServerFn({ method: "GET" })
         status: r.status,
         totalCents: r.total_cents,
         createdAt: r.created_at,
+        paymentProvider: r.payment_provider,
         items: items.map((i) => ({
           productName: i.product_name,
           quantity: i.quantity,

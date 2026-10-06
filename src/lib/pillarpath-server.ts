@@ -356,6 +356,7 @@ export interface MarketplaceProduct {
   description: string | null;
   imageUrl: string | null;
   unitPrice: number;
+  retailPriceCents: number;
   category: string | null;
   stockQuantity: number;
 }
@@ -370,13 +371,14 @@ export const getMarketplaceProducts = createServerFn({ method: "GET" })
     const sql = await getSql();
     const rows = await sql<{
       id: string; name: string; description: string | null;
-      image_url: string | null; unit_price: number; category: string | null;
-      stock_quantity: number | null;
-    }>`select id, name, description, image_url, unit_price, category, stock_quantity from store_products where active = true order by name`;
+      image_url: string | null; unit_price: number; retail_price_cents: number;
+      category: string | null; stock_quantity: number | null;
+    }>`select id, name, description, image_url, unit_price, retail_price_cents, category, stock_quantity from store_products where active = true order by name`;
     return {
       products: rows.map((r) => ({
         id: r.id, name: r.name, description: r.description,
         imageUrl: r.image_url, unitPrice: r.unit_price,
+        retailPriceCents: r.retail_price_cents ?? 0,
         category: r.category, stockQuantity: r.stock_quantity ?? 50,
       })),
     };
@@ -408,6 +410,43 @@ export const setCartQuantity = createServerFn({ method: "POST" })
       await sql`update cart_items ci set quantity = ${Math.floor(data.quantity)} from carts c where ci.cart_id = c.id and c.user_id = ${context.userId} and c.status = 'open' and ci.product_id = ${data.productId}`;
     }
     return { ok: true };
+  });
+
+export interface CartItem {
+  productId: string;
+  name: string;
+  imageUrl: string | null;
+  retailPriceCents: number;
+  quantity: number;
+  stockQuantity: number | null;
+}
+
+/** Parent's shopping cart with product details. */
+export const getCart = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<{ items: CartItem[] }> => {
+    const sql = await getSql();
+    const rows = await sql<{
+      product_id: string; name: string; image_url: string | null;
+      retail_price_cents: number; quantity: number; stock_quantity: number | null;
+    }>`
+      select ci.product_id, p.name, p.image_url, p.retail_price_cents, ci.quantity, p.stock_quantity
+      from cart_items ci
+      join carts c on c.id = ci.cart_id
+      join store_products p on p.id = ci.product_id
+      where c.user_id = ${context.userId} and c.status = 'open' and p.active = true
+      order by ci.id
+    `;
+    return {
+      items: rows.map((r) => ({
+        productId: r.product_id,
+        name: r.name,
+        imageUrl: r.image_url,
+        retailPriceCents: r.retail_price_cents,
+        quantity: r.quantity,
+        stockQuantity: r.stock_quantity,
+      })),
+    };
   });
 
 export const createCheckout = createServerFn({ method: "POST" })
