@@ -31,6 +31,7 @@ import { suggestRetailPrice, suggestRetailPriceNoCost } from "@/lib/suppliers/pr
 import { cn } from "@/lib/utils";
 import { CorporateHQ } from "@/components/society/corporate-hq";
 import { CjSourcingPanel } from "@/components/society/cj-sourcing-panel";
+import { EproloSourcingPanel } from "@/components/society/eprolo-sourcing-panel";
 
 /**
  * /society — PillarPath Society Network internal stock page.
@@ -70,6 +71,7 @@ function SocietyPage() {
   const [defaultMargin, setDefaultMargin] = useState(40);
   const [busy, setBusy] = useState(false);
   const [societyTab, setSocietyTab] = useState<"stockroom" | "sourcing" | "hq">("stockroom");
+  const [sourcingSupplier, setSourcingSupplier] = useState<"cj" | "eprolo">("cj");
   const [loadError, setLoadError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
@@ -207,8 +209,28 @@ function SocietyPage() {
               <CorporateHQ />
             </div>
           ) : societyTab === "sourcing" ? (
-            <div className="mt-6">
-              <CjSourcingPanel onImported={() => void load()} />
+            <div className="mt-6 space-y-4">
+              <div className="flex gap-2">
+                <Button
+                  variant={sourcingSupplier === "cj" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSourcingSupplier("cj")}
+                >
+                  CJ Dropshipping
+                </Button>
+                <Button
+                  variant={sourcingSupplier === "eprolo" ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setSourcingSupplier("eprolo")}
+                >
+                  Eprolo
+                </Button>
+              </div>
+              {sourcingSupplier === "cj" ? (
+                <CjSourcingPanel onImported={() => void load()} />
+              ) : (
+                <EproloSourcingPanel onImported={() => void load()} />
+              )}
             </div>
           ) : (
         <div className="mt-8 space-y-8">

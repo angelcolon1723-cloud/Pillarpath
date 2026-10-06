@@ -17,6 +17,7 @@ import type {
   CjVariant,
   CjWarehouseStock,
 } from "@/lib/suppliers/cjdropshipping";
+import type { EproloProductDetail } from "@/lib/suppliers/eprolo";
 import type { PrintifyClient } from "@/lib/suppliers/printify";
 import type {
   PrintifyBlueprint,
@@ -149,6 +150,46 @@ export function cjDetailToImport(
     compliance: {
       safetyCertMentioned: /cpsia|astm|en\s*71|cpc|phthalate|bpa[\s-]*free|non[\s-]*toxic/i.test(
         `${detail.nameEn} ${detail.description}`,
+      ),
+    },
+  };
+}
+
+/** Build an import payload from an Eprolo product detail response. */
+export function eproloDetailToImport(
+  detail: EproloProductDetail,
+  opts: { shipFromCountry?: string } = {},
+): ImportProductInput {
+  const usStock = detail.warehouseStocks.find(
+    (w) => w.countryCode === (opts.shipFromCountry ?? "US"),
+  );
+  const stock = usStock ?? detail.warehouseStocks[0];
+  const variantPrices = detail.variants.map((v) => v.price).filter((n) => n > 0);
+  const cheapest = variantPrices.length ? Math.min(...variantPrices) : detail.price;
+  return {
+    supplier: "eprolo",
+    supplierProductId: detail.id,
+    supplierSku: detail.sku,
+    title: detail.title,
+    description: detail.description || null,
+    images: detail.images,
+    costCents: cheapest > 0 ? Math.round(cheapest * 100) : null,
+    currency: "USD",
+    categoryId: detail.categoryId,
+    categoryName: detail.categoryName,
+    variants: detail.variants.map((v) => ({
+      id: v.id,
+      sku: v.sku,
+      name: v.name,
+      price: v.price,
+      inventory: v.inventory,
+      image: v.image,
+    })),
+    shipFromCountry: stock?.countryCode || opts.shipFromCountry || "US",
+    inventory: stock?.inventory ?? (detail.inventory || null),
+    compliance: {
+      safetyCertMentioned: /cpsia|astm|en\s*71|cpc|phthalate|bpa[\s-]*free|non[\s-]*toxic/i.test(
+        `${detail.title} ${detail.description}`,
       ),
     },
   };

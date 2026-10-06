@@ -25,6 +25,7 @@ export const DEFAULT_MARGIN_PCT = 40;
 
 const SUPPLIER_LABELS: Record<string, string> = {
   cjdropshipping: "CJ Dropshipping",
+  eprolo: "Eprolo",
   printify: "Printify",
 };
 

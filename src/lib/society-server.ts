@@ -13,6 +13,9 @@ import { authMiddleware, roleMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import { importPrintifyBlueprints } from "@/lib/suppliers/catalog";
 import { createPrintifyClientFromEnv } from "@/lib/suppliers/printify";
+import { createEproloClientFromEnv } from "@/lib/suppliers/eprolo";
+import { eproloDetailToImport, recordScreening } from "@/lib/suppliers/catalog";
+import { screenProduct } from "@/lib/suppliers/screening";
 import {
   DEFAULT_MARGIN_PCT,
   getStockOverview,
@@ -670,3 +673,113 @@ export const importCjSelection = createServerFn({ method: "POST" })
     }
     return { imported, verdicts };
   });
+
+/* ------------------------------------------------------------------ */
+/* Eprolo product sourcing — live catalog search + import to stockroom  */
+/* ------------------------------------------------------------------ */
+
+export interface EproloSearchHit {
+  id: string;
+  name: string;
+  image: string | null;
+  price: number;
+  category: string | null;
+  usStock: number;
+  deliveryEstimate: string | null;
+}
+
+/** Admin-only: search Eprolo's live catalog. US warehouse preferred for kids' products. */
+export const searchEproloProducts = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("admin")])
+  .validator((input: { keyword: string; usOnly?: boolean; maxPrice?: number }) => input)
+  .handler(async ({ data }): Promise<{ hits: EproloSearchHit[]; total: number }> => {
+    const kw = data.keyword.trim();
+    if (!kw) return { hits: [], total: 0 };
+    const client = createEproloClientFromEnv();
+    if (!client) {
+      throw new Error(
+        "Eprolo API key not configured. Add EPROLO_API_KEY (from your Eprolo support rep) to the server env.",
+      );
+    }
+    const page = await client.searchProducts({
+      keyword: kw,
+      pageSize: 24,
+      warehouseCountry: "US",
+      maxPrice: data.maxPrice,
+    });
+    // Fetch full detail per hit for real photos, variants, and US stock
+    // (Eprolo list payloads may be sparse). Limit to 12 to keep it fast.
+    const details = await Promise.all(
+      page.items.slice(0, 12).map(async (p) => {
+        try {
+          return await client.getProductDetail(p.id);
+        } catch {
+          return null;
+        }
+      }),
+    );
+    const hits: (EproloSearchHit & { warehouseCountry: string | null })[] = [];
+    const cheapestOf = (d: { price: number; variants: { price: number }[] }): number => {
+      const vp = d.variants.map((v) => v.price).filter((n) => n > 0);
+      if (vp.length) return Math.min(...vp);
+      return d.price;
+    };
+    page.items.slice(0, 12).forEach((p, i) => {
+      const d = details[i];
+      hits.push({
+        id: p.id,
+        name: (d?.title || p.title).slice(0, 120),
+        image: d?.images[0] ?? p.image,
+        price: d ? cheapestOf(d) : p.price,
+        category: d?.categoryName ?? p.categoryName,
+        usStock: d?.usStock ?? p.usStock,
+        deliveryEstimate: d?.deliveryEstimate ?? p.deliveryEstimate,
+        warehouseCountry: d?.warehouseStocks[0]?.countryCode ?? p.warehouseCountry,
+      });
+    });
+    // US-warehouse filter: only exclude products explicitly marked non-US.
+    const filtered = data.usOnly === false
+      ? hits
+      : hits.filter((h) => h.warehouseCountry === "US" || h.warehouseCountry == null);
+    // Filter out products with no usable price — $0 items can't be sourced.
+    const priced = filtered
+      .filter((h) => (h.price ?? 0) > 0)
+      .map(({ warehouseCountry: _wc, ...h }) => h);
+    return { total: data.usOnly === false ? page.total : priced.length, hits: priced };
+  });
+
+/**
+ * Admin-only: import chosen Eprolo products through kid-safety screening
+ * into the stockroom. Screening runs at import time (same pattern as
+ * Printify blueprint imports) so nothing lands unscreened.
+ */
+export const importEproloSelection = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("admin")])
+  .validator((input: { ids: string[] }) => input)
+  .handler(async ({ data }): Promise<{ imported: number; verdicts: string[] }> => {
+    const client = createEproloClientFromEnv();
+    if (!client) throw new Error("Eprolo API key not configured.");
+    const ids = [...new Set(data.ids)].slice(0, 12);
+    if (!ids.length) throw new Error("Pick at least one product.");
+    const verdicts: string[] = [];
+    let imported = 0;
+    for (const id of ids) {
+      const detail = await client.getProductDetail(id);
+      const payload = eproloDetailToImport(detail, { shipFromCountry: "US" });
+      const row = await upsertSupplierProduct(payload);
+      // Kid-safety screening is mandatory for every import.
+      const result = await screenProduct({
+        title: row.title,
+        description: row.description ?? undefined,
+        category: row.category_name ?? undefined,
+        imageUrls: row.images,
+        supplierProductId: row.supplier_product_id,
+        supplier: row.supplier,
+      });
+      await recordScreening(row.supplier, row.supplier_product_id, result);
+      imported += 1;
+      verdicts.push(`${detail.title.slice(0, 40)}… → ${result.verdict}`);
+    }
+    return { imported, verdicts };
+  });
+
