@@ -84,6 +84,9 @@ const AISLE_HINTS: Record<AisleName, string> = {
 function aisleFor(category: string | null, name: string): AisleName {
   const c = (category ?? "").toLowerCase();
   const n = name.toLowerCase();
+  const has = (...terms: string[]) =>
+    terms.some((t) => c.includes(t) || n.includes(t));
+  // Strict priority: each product lands in exactly one aisle.
   if (
     n.includes("pillarpath") ||
     n.includes("pillar path") ||
@@ -92,58 +95,31 @@ function aisleFor(category: string | null, name: string): AisleName {
     (c.includes("brand") && !c.includes("branded toys"))
   )
     return "Society Gear";
-  if (
-    c.includes("toy") ||
-    c.includes("plush") ||
-    c.includes("doll") ||
-    c.includes("stuffed") ||
-    c.includes("action figure")
-  )
+  if (has("toy", "plush", "doll", "stuffed", "action figure", "lego", "blocks"))
     return "Toy Workshop";
-  if (c.includes("game") || c.includes("puzzle") || c.includes("board"))
+  if (has("game", "puzzle", "board", "card game"))
     return "Game Zone";
   if (
-    c.includes("electronic") ||
-    c.includes("gadget") ||
-    c.includes("tech") ||
-    c.includes("headphone") ||
-    c.includes("speaker") ||
-    c.includes("watch") ||
-    c.includes("tablet") ||
-    c.includes("camera") ||
-    c.includes("robot") ||
-    n.includes("electronic") ||
-    n.includes("headphone") ||
-    n.includes("earbud")
+    has(
+      "electronic", "gadget", "tech", "headphone", "earbud",
+      "speaker", "watch", "tablet", "camera", "robot", "drone", "console",
+    )
   )
     return "Tech Lab";
   if (
-    c.includes("cloth") ||
-    c.includes("apparel") ||
-    c.includes("shirt") ||
-    c.includes("dress") ||
-    c.includes("pants") ||
-    c.includes("jacket") ||
-    c.includes("hoodie") ||
-    c.includes("tee")
+    has(
+      "cloth", "apparel", "shirt", "dress", "pants", "jacket",
+      "hoodie", "tee", "t-shirt", "sweatshirt", "jersey", "legging",
+    )
   )
     return "Society Styles";
-  if (
-    c.includes("shoe") ||
-    c.includes("sneaker") ||
-    c.includes("boot") ||
-    c.includes("sandal") ||
-    c.includes("slipper")
-  )
+  if (has("shoe", "sneaker", "boot", "sandal", "slipper", "footwear"))
     return "The Outfitters";
   if (
-    c.includes("school") ||
-    c.includes("suppl") ||
-    c.includes("stationer") ||
-    c.includes("backpack") ||
-    c.includes("pencil") ||
-    c.includes("notebook") ||
-    c.includes("book")
+    has(
+      "school", "suppl", "stationer", "backpack", "pencil",
+      "notebook", "book", "crayon", "marker",
+    )
   )
     return "Scholar's Corner";
   return "More Fun";
@@ -326,12 +302,22 @@ export function Storefront({ products, onSelect, balance }: StorefrontProps) {
   const searching = q.length > 0;
 
   const filtered = useMemo(() => {
-    if (!searching) return products;
-    return products.filter(
-      (p) =>
-        p.name.toLowerCase().includes(q) ||
-        (p.description ?? "").toLowerCase().includes(q),
-    );
+    const list = !searching
+      ? products
+      : products.filter(
+          (p) =>
+            p.name.toLowerCase().includes(q) ||
+            (p.description ?? "").toLowerCase().includes(q),
+        );
+    // Deduplicate: same product name (normalized) appears only once.
+    // Keeps the first occurrence — no repeats across or within aisles.
+    const seen = new Set<string>();
+    return list.filter((p) => {
+      const key = p.name.toLowerCase().trim().replace(/\s+/g, " ");
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
   }, [products, q, searching]);
 
   const featured = useMemo(() => {
