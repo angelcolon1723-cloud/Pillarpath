@@ -159,13 +159,17 @@ export const searchPrintifyBlueprints = createServerFn({ method: "POST" })
   .middleware([roleMiddleware("admin")])
   .validator((input: { query: string }) => input)
   .handler(async ({ data }): Promise<{ blueprints: BlueprintChoice[] }> => {
-    const q = data.query.trim().toLowerCase();
+    const q = data.query.trim().toLowerCase().replace(/-/g, " ");
     if (q.length < 2) return { blueprints: [] };
     const client = createPrintifyClientFromEnv();
     if (!client) throw new Error("Printify is not connected (PRINTIFY_API_KEY missing).");
     const all = await client.listBlueprints();
+    const terms = q.split(/\s+/).filter(Boolean);
     const matches = all
-      .filter((b) => b.title.toLowerCase().includes(q))
+      .filter((b) => {
+        const hay = `${b.title} ${b.description ?? ""} ${b.brand ?? ""}`.toLowerCase().replace(/-/g, " ");
+        return terms.every((t) => hay.includes(t));
+      })
       .slice(0, 30)
       .map((b) => ({
         id: b.id,
