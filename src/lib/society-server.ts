@@ -523,9 +523,11 @@ export const searchCjProducts = createServerFn({ method: "POST" })
       deliveryCycle: p.deliveryCycle,
     }));
     // Client-side US-warehouse filter (CJ's server-side filter is broken).
+    // Permissive: only exclude products explicitly marked non-US. Products
+    // with unknown warehouse (null countryCode) are included — King decides.
     const hits = data.usOnly === false
       ? allHits
-      : allHits.filter((h) => h.countryCode === "US");
+      : allHits.filter((h) => h.countryCode === "US" || h.countryCode == null);
     return {
       total: data.usOnly === false ? page.total : hits.length,
       hits,
