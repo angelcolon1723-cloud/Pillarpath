@@ -876,25 +876,13 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
         const page = await freshClient.searchProducts({ keyWord: "squishy", size: 1 });
         out.clientProbe = `OK — ${page.total} total, ${page.items.length} items`;
         // Use the client's own debug hook to see the raw unmapped response.
-        // total=60 but empty list — the countryCode filter breaks pagination.
-        // Test without it.
+        // Try product DETAIL with a known real ID from the catalog sweep.
         try {
-          const rawDebug = await freshClient.debugRawSearch({
-            keyWord: "back to school",
-            size: 5,
-            sort: "desc",
-          }) as any;
-          const d = rawDebug as any;
-          const pl = d?.content?.productList;
-          out.debugTest = `no countryCode: total=${d?.totalRecords}, items=${Array.isArray(pl) ? pl.length : "?"}`;
-          if (Array.isArray(pl) && pl.length > 0 && typeof pl[0] === "object") {
-            out.debugItemKeys = Object.keys(pl[0]).slice(0, 30).join(",");
-            out.debugItemSample = JSON.stringify(pl[0]).slice(0, 800);
-          } else {
-            out.debugItemKeys = "still empty without countryCode";
-          }
+          const detail = await freshClient.getProductDetail("1943004344020148226") as any;
+          out.debugItemKeys = "detail: " + Object.keys(detail).slice(0, 30).join(",");
+          out.debugItemSample = JSON.stringify(detail).slice(0, 800);
         } catch (de) {
-          out.debugItemKeys = `debug failed: ${de instanceof Error ? de.message.slice(0, 80) : "?"}`;
+          out.debugItemKeys = `detail failed: ${de instanceof Error ? de.message.slice(0, 100) : "?"}`;
         }
       } catch (ce) {
         out.clientProbe = `FAIL — ${ce instanceof Error ? ce.message.slice(0, 160) : "unknown"}`;
