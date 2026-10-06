@@ -31,7 +31,6 @@ export function CjSourcingPanel({ onImported }: { onImported: () => void }) {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [importing, setImporting] = useState(false);
   const [usOnly, setUsOnly] = useState(true);
-  const [debugKeys, setDebugKeys] = useState<string | null>(null);
 
   const search = async (kw: string, maxPrice?: number) => {
     const q = kw.trim();
@@ -44,7 +43,6 @@ export function CjSourcingPanel({ onImported }: { onImported: () => void }) {
       });
       setHits(res.hits);
       setTotal(res.total);
-      setDebugKeys((res as any)._debugRawKeys ?? null);
       if (!res.hits.length) toast.message("No products found — try a different search.");
     } catch (e) {
       const msg = e instanceof Error ? e.message : "Search failed.";
@@ -176,12 +174,6 @@ export function CjSourcingPanel({ onImported }: { onImported: () => void }) {
               {hits.length} of {total.toLocaleString()} results
               {selected.size > 0 && ` · ${selected.size} selected`}
             </p>
-            {debugKeys && (
-              <details className="text-xs text-muted">
-                <summary className="cursor-pointer">Debug fields</summary>
-                <p className="mt-1 break-all font-mono">{debugKeys}</p>
-              </details>
-            )}
             {selected.size > 0 && (
               <Button size="sm" onClick={importSelected} disabled={importing}>
                 {importing ? (
