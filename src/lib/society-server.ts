@@ -245,6 +245,35 @@ export const unpublishStockItem = createServerFn({ method: "POST" })
     return { ok: true };
   });
 
+/** Remove duplicate supplier products, keeping the first of each normalized name. */
+export const dedupeStock = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("admin")])
+  .handler(async ({ context }) => {
+    const sql = await getSql();
+    const rows = await sql<{ id: number; title: string }>`
+      select id, title from supplier_products order by id`;
+    const seen = new Set<string>();
+    const dupIds: number[] = [];
+    for (const r of rows) {
+      const key = r.title
+        .toLowerCase()
+        .replace(/[’‘`]/g, "'")
+        .replace(/[""]/g, '"')
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (seen.has(key)) dupIds.push(r.id);
+      else seen.add(key);
+    }
+    if (dupIds.length > 0) {
+      await sql`delete from supplier_products where id = any(${dupIds})`;
+    }
+    await audit(context.identity.userId, "stock.dedupe", `${dupIds.length}`, {
+      removed: dupIds.length,
+    });
+    return { ok: true, removed: dupIds.length };
+  });
+
 /**
  * Create draft products in the Printify shop for every approved Printify
  * supplier row that doesn't have one yet. Drafts are NEVER published to a

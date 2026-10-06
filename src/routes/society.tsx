@@ -20,6 +20,7 @@ import {
   searchPrintifyBlueprints,
   syncPrintifyCosts,
   unpublishStockItem,
+  dedupeStock,
   type BlueprintChoice,
   type SocietyStatus,
   type TeacherVerificationRequest,
@@ -217,18 +218,33 @@ function SocietyPage() {
                 {items != null && items.length > 0 && ` (${items.length})`}
               </h2>
               {items != null && items.some((it) => it.screening_status === "approved" && it.store_active !== true) && (
-                <Button
-                  size="sm"
-                  disabled={busy}
-                  onClick={() =>
-                    void run(async () => {
-                      const res = await publishAllApproved({ data: { stockQuantity: 50 } });
-                      return res;
-                    }, "Published all approved products.")
-                  }
-                >
-                  Publish all approved
-                </Button>
+                <>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        const res = await dedupeStock({});
+                        return res;
+                      }, "Removed duplicates.")
+                    }
+                  >
+                    Remove duplicates
+                  </Button>
+                  <Button
+                    size="sm"
+                    disabled={busy}
+                    onClick={() =>
+                      void run(async () => {
+                        const res = await publishAllApproved({ data: { stockQuantity: 50 } });
+                        return res;
+                      }, "Published all approved products.")
+                    }
+                  >
+                    Publish all approved
+                  </Button>
+                </>
               )}
             </div>
             {loadError && (
