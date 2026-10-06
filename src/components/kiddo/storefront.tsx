@@ -17,6 +17,7 @@ import {
   Sparkles,
   Star,
   Store,
+  Zap,
   type LucideIcon,
 } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
@@ -41,6 +42,7 @@ interface StorefrontProps {
 /** Branded aisle names, in the order kids walk them. */
 const AISLE_ORDER = [
   "Toy Workshop",
+  "Tech Lab",
   "Game Zone",
   "Society Gear",
   "Society Styles",
@@ -53,6 +55,7 @@ type AisleName = (typeof AISLE_ORDER)[number];
 
 const AISLE_ICONS: Record<AisleName, LucideIcon> = {
   "Toy Workshop": Puzzle,
+  "Tech Lab": Zap,
   "Game Zone": Gamepad2,
   "Society Gear": Star,
   "Society Styles": Shirt,
@@ -64,6 +67,7 @@ const AISLE_ICONS: Record<AisleName, LucideIcon> = {
 /** Plain-language hint under each branded aisle name — shoppable first. */
 const AISLE_HINTS: Record<AisleName, string> = {
   "Toy Workshop": "Toys & playtime",
+  "Tech Lab": "Gadgets & electronics",
   "Game Zone": "Games & puzzles",
   "Society Gear": "Official PillarPath merch",
   "Society Styles": "Clothes & outfits",
@@ -98,6 +102,21 @@ function aisleFor(category: string | null, name: string): AisleName {
     return "Toy Workshop";
   if (c.includes("game") || c.includes("puzzle") || c.includes("board"))
     return "Game Zone";
+  if (
+    c.includes("electronic") ||
+    c.includes("gadget") ||
+    c.includes("tech") ||
+    c.includes("headphone") ||
+    c.includes("speaker") ||
+    c.includes("watch") ||
+    c.includes("tablet") ||
+    c.includes("camera") ||
+    c.includes("robot") ||
+    n.includes("electronic") ||
+    n.includes("headphone") ||
+    n.includes("earbud")
+  )
+    return "Tech Lab";
   if (
     c.includes("cloth") ||
     c.includes("apparel") ||
