@@ -104,10 +104,10 @@ function BottomNav() {
 
   return (
     <nav
-      className="fixed bottom-0 left-1/2 z-20 w-full max-w-[430px] -translate-x-1/2 border-t border-border bg-surface/95 px-2 pt-2 pb-[max(0.5rem,env(safe-area-inset-bottom))] backdrop-blur-sm"
+      className="fixed bottom-3 left-1/2 z-20 w-[calc(100%-1.5rem)] max-w-[430px] -translate-x-1/2 rounded-3xl border border-white/10 bg-surface/90 px-2 py-2 shadow-[var(--shadow-float)] backdrop-blur-md"
       aria-label="Primary"
     >
-      <div className="flex">
+      <div className="flex gap-1">
         {items.map((item) => {
           const active = screen === item.id;
           const Icon = item.icon;
@@ -117,8 +117,10 @@ function BottomNav() {
               type="button"
               onClick={() => setScreen(item.id)}
               className={cn(
-                "relative flex h-12 flex-1 flex-col items-center justify-center gap-0.5 text-xs font-medium transition-colors duration-150",
-                active ? "text-accent" : "text-muted",
+                "relative flex h-12 flex-1 flex-col items-center justify-center gap-0.5 rounded-2xl text-xs font-medium transition-all duration-150 active:scale-95",
+                active
+                  ? "bg-accent/15 text-accent shadow-[var(--shadow-float)]"
+                  : "text-muted hover:bg-surface-2 hover:text-ink",
               )}
             >
               <Icon className="size-5" strokeWidth={active ? 2 : 1.7} />

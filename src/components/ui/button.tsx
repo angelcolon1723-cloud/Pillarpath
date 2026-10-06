@@ -4,30 +4,30 @@ import { cva, type VariantProps } from "class-variance-authority";
 import { cn } from "@/lib/utils";
 
 const buttonVariants = cva(
-  "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium select-none outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:pointer-events-none disabled:opacity-45 transition-[scale,background-color,color,opacity,box-shadow] duration-150 ease-out active:not-disabled:scale-[0.96]",
+  "inline-flex items-center justify-center gap-2 whitespace-nowrap font-medium select-none outline-none focus-visible:ring-2 focus-visible:ring-accent/35 disabled:pointer-events-none disabled:opacity-45 transition-[scale,background-color,color,opacity,box-shadow,translate] duration-150 ease-out active:not-disabled:scale-[0.96] hover:not-disabled:-translate-y-px",
   {
     variants: {
       variant: {
         default:
-          "bg-accent text-accent-foreground shadow-[var(--shadow-border)] hover:bg-accent/92",
+          "bg-accent text-accent-foreground shadow-[var(--shadow-float)] hover:shadow-[var(--shadow-float-hover)] hover:bg-accent/92",
         secondary:
-          "bg-surface text-ink shadow-[var(--shadow-border)] hover:bg-surface-2",
+          "bg-surface text-ink shadow-[var(--shadow-float)] hover:shadow-[var(--shadow-float-hover)] hover:bg-surface-2",
         outline:
-          "bg-transparent text-ink shadow-[var(--shadow-border)] hover:bg-surface",
+          "bg-transparent text-ink shadow-[var(--shadow-float)] hover:shadow-[var(--shadow-float-hover)] hover:bg-surface",
         ghost: "bg-transparent text-ink hover:bg-surface-2",
         danger:
-          "bg-danger text-danger-foreground hover:bg-danger/92",
+          "bg-danger text-danger-foreground shadow-[var(--shadow-float)] hover:shadow-[var(--shadow-float-hover)] hover:bg-danger/92",
         success:
-          "bg-success text-success-foreground hover:bg-success/92",
+          "bg-success text-success-foreground shadow-[var(--shadow-float)] hover:shadow-[var(--shadow-float-hover)] hover:bg-success/92",
         vault:
-          "bg-vault text-vault-foreground hover:bg-vault/92",
+          "bg-vault text-vault-foreground shadow-[var(--shadow-float)] hover:shadow-[var(--shadow-float-hover)] hover:bg-vault/92",
       },
       size: {
-        default: "h-11 rounded-md px-4 text-sm",
-        sm: "h-9 rounded-sm px-3 text-sm",
-        lg: "h-12 rounded-md px-5 text-sm",
-        icon: "size-11 rounded-md",
-        "icon-sm": "size-9 rounded-sm",
+        default: "h-11 rounded-2xl px-5 text-sm",
+        sm: "h-9 rounded-xl px-4 text-sm",
+        lg: "h-12 rounded-2xl px-6 text-sm",
+        icon: "size-11 rounded-2xl",
+        "icon-sm": "size-9 rounded-xl",
       },
     },
     defaultVariants: {
