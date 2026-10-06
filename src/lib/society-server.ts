@@ -578,9 +578,11 @@ export const searchCjProducts = createServerFn({ method: "POST" })
     const hits = data.usOnly === false
       ? detailHits
       : detailHits.filter((h) => h.countryCode === "US" || h.countryCode == null);
+    // Filter out products with no usable price — $0 items can't be sourced.
+    const pricedHits = hits.filter((h) => (h.price ?? 0) > 0);
     return {
-      total: data.usOnly === false ? page.total : hits.length,
-      hits,
+      total: data.usOnly === false ? page.total : pricedHits.length,
+      hits: pricedHits,
     };
   });
 
