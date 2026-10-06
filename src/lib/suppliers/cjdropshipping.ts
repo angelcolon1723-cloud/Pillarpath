@@ -413,7 +413,7 @@ export class CjDropshippingClient {
 
   /** Debug: return the raw unmapped listV2 response for diagnostics. */
   async debugRawSearch(params: CjProductSearchParams = {}): Promise<unknown> {
-    return this.request<unknown>("GET", "/product/listV2", {
+    const raw = await this.request<unknown>("GET", "/product/listV2", {
       query: {
         keyWord: params.keyWord,
         page: params.page ?? 1,
@@ -426,6 +426,14 @@ export class CjDropshippingClient {
         sort: params.sort ?? "desc",
       },
     });
+    // Also stash the raw first product for field inspection.
+    const r = raw as any;
+    const content = r?.content;
+    const pl = Array.isArray(content?.productList) ? content.productList
+      : Array.isArray(r?.productList) ? r.productList
+      : Array.isArray(r?.list) ? r.list : [];
+    (raw as any)._debugFirstRaw = pl[0];
+    return raw;
   }
 
   async searchProducts(params: CjProductSearchParams = {}): Promise<CjPage<CjProductSummary>> {
