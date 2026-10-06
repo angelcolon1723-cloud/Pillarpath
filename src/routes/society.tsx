@@ -249,6 +249,17 @@ function SocietyPage() {
                 Your products
                 {items != null && items.length > 0 && ` (${items.length})`}
               </h2>
+              {items != null && items.length > 0 && (
+                <p className="w-full text-xs text-muted">
+                  {["cjdropshipping", "printify", "eprolo"]
+                    .map((s) => {
+                      const n = items.filter((it) => it.supplier === s).length;
+                      return n > 0 ? `${n} ${s === "cjdropshipping" ? "CJ" : s}` : null;
+                    })
+                    .filter(Boolean)
+                    .join(" · ")}
+                </p>
+              )}
               {items != null && items.some((it) => it.screening_status === "approved" && it.store_active !== true) && (
                 <>
                   <Button
