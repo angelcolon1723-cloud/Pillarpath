@@ -876,13 +876,26 @@ export const cjDeepDiagnostic = createServerFn({ method: "POST" })
         const page = await freshClient.searchProducts({ keyWord: "squishy", size: 1 });
         out.clientProbe = `OK — ${page.total} total, ${page.items.length} items`;
         // Use the client's own debug hook to see the raw unmapped response.
-        // Try product DETAIL with a known real ID from the catalog sweep.
+        // total=60 but page 1 empty — try page 2.
         try {
-          const detail = await freshClient.getProductDetail("1943004344020148226") as any;
-          out.debugItemKeys = "detail: " + Object.keys(detail).slice(0, 30).join(",");
-          out.debugItemSample = JSON.stringify(detail).slice(0, 800);
+          const rawDebug = await freshClient.debugRawSearch({
+            keyWord: "back to school",
+            size: 5,
+            page: 2,
+            countryCode: "US",
+            sort: "desc",
+          }) as any;
+          const d = rawDebug as any;
+          const pl = d?.content?.productList;
+          out.debugTest = `page 2: total=${d?.totalRecords}, items=${Array.isArray(pl) ? pl.length : "?"}`;
+          if (Array.isArray(pl) && pl.length > 0 && typeof pl[0] === "object") {
+            out.debugItemKeys = Object.keys(pl[0]).slice(0, 30).join(",");
+            out.debugItemSample = JSON.stringify(pl[0]).slice(0, 800);
+          } else {
+            out.debugItemKeys = "page 2 also empty";
+          }
         } catch (de) {
-          out.debugItemKeys = `detail failed: ${de instanceof Error ? de.message.slice(0, 100) : "?"}`;
+          out.debugItemKeys = `debug failed: ${de instanceof Error ? de.message.slice(0, 80) : "?"}`;
         }
       } catch (ce) {
         out.clientProbe = `FAIL — ${ce instanceof Error ? ce.message.slice(0, 160) : "unknown"}`;

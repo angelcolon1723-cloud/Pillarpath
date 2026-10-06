@@ -466,12 +466,15 @@ export class CjDropshippingClient {
           ? raw.productList
           : (listArray ?? [])
     ) as Record<string, unknown>[];
-    return {
+    const result = {
       items: items.map(mapProductSummary),
       total: toNumber(raw.total ?? raw.totalRecords),
       page: toNumber(raw.pageNum ?? raw.pageNumber, 1),
       pageSize: toNumber(raw.pageSize, items.length),
     };
+    // Attach raw first item for diagnostics (stripped in production use).
+    (result as any)._rawFirst = items[0];
+    return result;
   }
 
   async getProductDetail(pid: string): Promise<CjProductDetail> {
