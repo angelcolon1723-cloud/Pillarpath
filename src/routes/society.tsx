@@ -24,7 +24,7 @@ import {
   type TeacherVerificationRequest,
 } from "@/lib/society-server";
 import type { StockItem } from "@/lib/suppliers/publish";
-import { suggestRetailPrice } from "@/lib/suppliers/pricing";
+import { suggestRetailPrice, suggestRetailPriceNoCost } from "@/lib/suppliers/pricing";
 import { cn } from "@/lib/utils";
 import { CorporateHQ } from "@/components/society/corporate-hq";
 import { CjSourcingPanel } from "@/components/society/cj-sourcing-panel";
@@ -583,10 +583,8 @@ function StockCard({
   const suggestion =
     item.cost_cents != null
       ? suggestRetailPrice(item.title, item.cost_cents, defaultMargin)
-      : null;
-  const [price, setPrice] = useState(
-    suggestion != null ? (suggestion.cents / 100).toFixed(2) : "",
-  );
+      : suggestRetailPriceNoCost(item.title);
+  const [price, setPrice] = useState((suggestion.cents / 100).toFixed(2));
   const live = item.store_active === true;
 
   return (
@@ -674,6 +672,7 @@ function StockCard({
                 onClick={() => setPrice((suggestion.cents / 100).toFixed(2))}
               >
                 Use ${(suggestion.cents / 100).toFixed(2)}
+                {item.cost_cents == null && " (est.)"}
               </button>
             )}
             {item.screening_status !== "approved" && (

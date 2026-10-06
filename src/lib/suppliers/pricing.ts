@@ -58,3 +58,14 @@ export function suggestRetailPrice(
     return { cents: charm(band.high), clamped: "high", category: band.label };
   return { cents: charm(base), clamped: null, category: band.label };
 }
+
+/**
+ * Fallback suggestion when supplier cost is unknown: midpoint of the
+ * category's typical market band, charm-priced. Lets King publish
+ * products that arrived without cost data.
+ */
+export function suggestRetailPriceNoCost(title: string): PriceSuggestion {
+  const band = BANDS.find((b) => b.match.test(title)) ?? FALLBACK_BAND;
+  const mid = Math.round((band.low + band.high) / 2);
+  return { cents: charm(mid), clamped: null, category: band.label };
+}
