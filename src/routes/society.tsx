@@ -22,7 +22,10 @@ import {
   syncPrintifyCosts,
   unpublishStockItem,
   dedupeStock,
+  syncCjStockNow,
+  getLowStockProducts,
   type BlueprintChoice,
+  type LowStockProduct,
   type SocietyStatus,
   type TeacherVerificationRequest,
 } from "@/lib/society-server";
@@ -73,6 +76,8 @@ function SocietyPage() {
   const [societyTab, setSocietyTab] = useState<"stockroom" | "sourcing" | "hq">("stockroom");
   const [sourcingSupplier, setSourcingSupplier] = useState<"cj" | "eprolo">("cj");
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [lowStock, setLowStock] = useState<LowStockProduct[] | null>(null);
+  const [lastSync, setLastSync] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoadError(null);
@@ -95,7 +100,11 @@ function SocietyPage() {
           (tv) => setVerifications(tv.items),
           () => setVerifications([]),
         );
-        await Promise.all([stockP, tvP]);
+        const lowP = getLowStockProducts().then(
+          (res) => setLowStock(res.items),
+          () => setLowStock([]),
+        );
+        await Promise.all([stockP, tvP, lowP]);
       }
     } catch {
       setDenied(true);
@@ -257,6 +266,32 @@ function SocietyPage() {
                   </Button>
                   <Button
                     size="sm"
+                    variant="outline"
+                    disabled={busy}
+                    onClick={() =>
+                      void (async () => {
+                        setBusy(true);
+                        try {
+                          const res = await syncCjStockNow({});
+                          const errs = res.errors.length;
+                          setLastSync(
+                            `Checked ${res.checked} · updated ${res.updated} · ${res.zeroed} out of stock` +
+                              (errs > 0 ? ` · ${errs} error${errs === 1 ? "" : "s"}` : ""),
+                          );
+                          toast.success("Stock synced from CJ warehouses.");
+                          await load();
+                        } catch (e) {
+                          toast.error(e instanceof Error ? e.message : "Sync failed.");
+                        } finally {
+                          setBusy(false);
+                        }
+                      })()
+                    }
+                  >
+                    Sync stock from CJ
+                  </Button>
+                  <Button
+                    size="sm"
                     disabled={busy}
                     onClick={() =>
                       void run(async () => {
@@ -297,6 +332,11 @@ function SocietyPage() {
               defaultMargin={defaultMargin}
               busy={busy}
               onAction={(fn, msg) => void run(fn, msg)}
+            />
+            <LowStockQueue
+              items={lowStock}
+              lastSync={lastSync}
+              onRefresh={() => void load()}
             />
           </div>
           <ImportPanel busy={busy} onImported={() => void load()} />
@@ -684,6 +724,73 @@ function StockAisles({
         );
       })}
     </div>
+  );
+}
+
+/**
+ * Quiet review queue: live-shelf products at 5 or fewer units.
+ * Display only — King decides to keep listed, delist, or switch suppliers.
+ */
+function LowStockQueue({
+  items,
+  lastSync,
+  onRefresh,
+}: {
+  items: LowStockProduct[] | null;
+  lastSync: string | null;
+  onRefresh: () => void;
+}) {
+  if (items == null || items.length === 0) {
+    return lastSync ? (
+      <p className="text-xs text-muted">Last stock sync: {lastSync}</p>
+    ) : null;
+  }
+  return (
+    <Card className="border-warn/40 p-4">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h3 className="font-display text-base font-semibold">
+          Low stock — needs your eyes ({items.length})
+        </h3>
+        <Button size="sm" variant="outline" onClick={onRefresh}>
+          Refresh
+        </Button>
+      </div>
+      {lastSync && (
+        <p className="mt-1 text-xs text-muted">Last stock sync: {lastSync}</p>
+      )}
+      <p className="mt-1 text-xs text-muted">
+        These are CJ's real warehouse numbers. Keep them listed, unpublish
+        them, or find another supplier — your call.
+      </p>
+      <ul className="mt-3 space-y-2">
+        {items.map((p) => (
+          <li
+            key={p.storeProductId}
+            className="flex items-center gap-3 rounded-xl border border-border bg-bg p-2"
+          >
+            {p.imageUrl ? (
+              <img
+                src={p.imageUrl}
+                alt=""
+                className="size-10 shrink-0 rounded-lg object-cover"
+              />
+            ) : (
+              <div className="size-10 shrink-0 rounded-lg bg-surface-2" />
+            )}
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-medium">{p.name}</p>
+              <p className="text-xs text-muted">{p.supplierName}</p>
+            </div>
+            <Badge
+              tone={p.stockQuantity === 0 ? "danger" : "warn"}
+              className="shrink-0"
+            >
+              {p.stockQuantity === 0 ? "Out of stock" : `${p.stockQuantity} left`}
+            </Badge>
+          </li>
+        ))}
+      </ul>
+    </Card>
   );
 }
 

@@ -277,6 +277,42 @@ export const dedupeStock = createServerFn({ method: "POST" })
     return { ok: true, removed: dupIds.length };
   });
 
+export interface LowStockProduct {
+  storeProductId: string;
+  name: string;
+  stockQuantity: number;
+  supplierName: string;
+  imageUrl: string | null;
+}
+
+/**
+ * Admin-only: refresh every live CJ product's `stock_quantity` from CJ's
+ * real warehouse numbers. Same entry point the nightly cron calls.
+ * Printify (made-to-order) and Eprolo (no key yet) products are skipped
+ * by the sync module itself.
+ */
+export const syncCjStockNow = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("admin")])
+  .handler(async ({ context }) => {
+    const { syncCjStock } = await import("@/lib/suppliers/stock-sync");
+    const result = await syncCjStock();
+    await audit(context.identity.userId, "stock.sync", "cjdropshipping", {
+      checked: result.checked,
+      updated: result.updated,
+      zeroed: result.zeroed,
+      errors: result.errors.length,
+    });
+    return result;
+  });
+
+/** Admin-only: live-shelf products at 5 or fewer units, for review. */
+export const getLowStockProducts = createServerFn({ method: "GET" })
+  .middleware([roleMiddleware("admin")])
+  .handler(async (): Promise<{ items: LowStockProduct[] }> => {
+    const { getLowStockProducts } = await import("@/lib/suppliers/stock-sync");
+    return { items: await getLowStockProducts() };
+  });
+
 /**
  * Create draft products in the Printify shop for every approved Printify
  * supplier row that doesn't have one yet. Drafts are NEVER published to a

@@ -16,6 +16,7 @@ import { Route as SocietyRouteImport } from './routes/society'
 import { Route as TermsRouteImport } from './routes/terms'
 import { Route as CheckoutSuccessRouteImport } from './routes/checkout/success'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
+import { Route as ApiCronSyncStockRouteImport } from './routes/api/cron/sync-stock'
 import { Route as ApiWebhooksDropshipRouteImport } from './routes/api/webhooks/dropship'
 import { Route as ApiWebhooksStripeRouteImport } from './routes/api/webhooks/stripe'
 
@@ -54,6 +55,11 @@ const ApiAuthSplatRoute = ApiAuthSplatRouteImport.update({
   path: '/api/auth/$',
   getParentRoute: () => rootRouteImport,
 } as any)
+const ApiCronSyncStockRoute = ApiCronSyncStockRouteImport.update({
+  id: '/api/cron/sync-stock',
+  path: '/api/cron/sync-stock',
+  getParentRoute: () => rootRouteImport,
+} as any)
 const ApiWebhooksDropshipRoute = ApiWebhooksDropshipRouteImport.update({
   id: '/api/webhooks/dropship',
   path: '/api/webhooks/dropship',
@@ -73,6 +79,7 @@ export interface FileRoutesByFullPath {
   '/terms': typeof TermsRoute
   '/checkout/success': typeof CheckoutSuccessRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/cron/sync-stock': typeof ApiCronSyncStockRoute
   '/api/webhooks/dropship': typeof ApiWebhooksDropshipRoute
   '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
 }
@@ -84,6 +91,7 @@ export interface FileRoutesByTo {
   '/terms': typeof TermsRoute
   '/checkout/success': typeof CheckoutSuccessRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/cron/sync-stock': typeof ApiCronSyncStockRoute
   '/api/webhooks/dropship': typeof ApiWebhooksDropshipRoute
   '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
 }
@@ -96,6 +104,7 @@ export interface FileRoutesById {
   '/terms': typeof TermsRoute
   '/checkout/success': typeof CheckoutSuccessRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
+  '/api/cron/sync-stock': typeof ApiCronSyncStockRoute
   '/api/webhooks/dropship': typeof ApiWebhooksDropshipRoute
   '/api/webhooks/stripe': typeof ApiWebhooksStripeRoute
 }
@@ -109,6 +118,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/checkout/success'
     | '/api/auth/$'
+    | '/api/cron/sync-stock'
     | '/api/webhooks/dropship'
     | '/api/webhooks/stripe'
   fileRoutesByTo: FileRoutesByTo
@@ -120,6 +130,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/checkout/success'
     | '/api/auth/$'
+    | '/api/cron/sync-stock'
     | '/api/webhooks/dropship'
     | '/api/webhooks/stripe'
   id:
@@ -131,6 +142,7 @@ export interface FileRouteTypes {
     | '/terms'
     | '/checkout/success'
     | '/api/auth/$'
+    | '/api/cron/sync-stock'
     | '/api/webhooks/dropship'
     | '/api/webhooks/stripe'
   fileRoutesById: FileRoutesById
@@ -143,6 +155,7 @@ export interface RootRouteChildren {
   TermsRoute: typeof TermsRoute
   CheckoutSuccessRoute: typeof CheckoutSuccessRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
+  ApiCronSyncStockRoute: typeof ApiCronSyncStockRoute
   ApiWebhooksDropshipRoute: typeof ApiWebhooksDropshipRoute
   ApiWebhooksStripeRoute: typeof ApiWebhooksStripeRoute
 }
@@ -198,6 +211,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ApiAuthSplatRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/api/cron/sync-stock': {
+      id: '/api/cron/sync-stock'
+      path: '/api/cron/sync-stock'
+      fullPath: '/api/cron/sync-stock'
+      preLoaderRoute: typeof ApiCronSyncStockRouteImport
+      parentRoute: typeof rootRouteImport
+    }
     '/api/webhooks/dropship': {
       id: '/api/webhooks/dropship'
       path: '/api/webhooks/dropship'
@@ -223,6 +243,7 @@ const rootRouteChildren: RootRouteChildren = {
   TermsRoute: TermsRoute,
   CheckoutSuccessRoute: CheckoutSuccessRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
+  ApiCronSyncStockRoute: ApiCronSyncStockRoute,
   ApiWebhooksDropshipRoute: ApiWebhooksDropshipRoute,
   ApiWebhooksStripeRoute: ApiWebhooksStripeRoute,
 }
