@@ -40,7 +40,7 @@ interface StorefrontProps {
 }
 
 /** Branded aisle names, in the order kids walk them. */
-const AISLE_ORDER = [
+export const AISLE_ORDER = [
   "Toy Workshop",
   "Tech Lab",
   "Game Zone",
@@ -51,9 +51,9 @@ const AISLE_ORDER = [
   "More Fun",
 ] as const;
 
-type AisleName = (typeof AISLE_ORDER)[number];
+export type AisleName = (typeof AISLE_ORDER)[number];
 
-const AISLE_ICONS: Record<AisleName, LucideIcon> = {
+export const AISLE_ICONS: Record<AisleName, LucideIcon> = {
   "Toy Workshop": Puzzle,
   "Tech Lab": Zap,
   "Game Zone": Gamepad2,
@@ -65,7 +65,7 @@ const AISLE_ICONS: Record<AisleName, LucideIcon> = {
 };
 
 /** Plain-language hint under each branded aisle name — shoppable first. */
-const AISLE_HINTS: Record<AisleName, string> = {
+export const AISLE_HINTS: Record<AisleName, string> = {
   "Toy Workshop": "Toys & playtime",
   "Tech Lab": "Gadgets & electronics",
   "Game Zone": "Games & puzzles",
@@ -81,7 +81,7 @@ const AISLE_HINTS: Record<AisleName, string> = {
  * PillarPath-branded merch goes to Society Gear — it's a category, not a
  * separate section, so it lives right in the aisles with everything else.
  */
-function aisleFor(category: string | null, name: string): AisleName {
+export function aisleFor(category: string | null, name: string): AisleName {
   const c = (category ?? "").toLowerCase();
   const n = name.toLowerCase();
   const has = (...terms: string[]) =>

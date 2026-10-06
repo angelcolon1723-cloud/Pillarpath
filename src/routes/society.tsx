@@ -1,10 +1,11 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { createFileRoute, Link } from "@tanstack/react-router";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Card } from "@/components/ui/card";
+import { AISLE_ORDER, AISLE_ICONS, AISLE_HINTS, aisleFor, type AisleName } from "@/components/kiddo/storefront";
 import {
   approveStockItem,
   claimSocietyAdmin,
@@ -269,15 +270,12 @@ function SocietyPage() {
                 </p>
               </Card>
             )}
-            {items?.map((item) => (
-              <StockCard
-                key={item.id}
-                item={item}
-                defaultMargin={defaultMargin}
-                busy={busy}
-                onAction={(fn, msg) => void run(fn, msg)}
-              />
-            ))}
+            <StockAisles
+              items={items ?? []}
+              defaultMargin={defaultMargin}
+              busy={busy}
+              onAction={(fn, msg) => void run(fn, msg)}
+            />
           </div>
           <ImportPanel busy={busy} onImported={() => void load()} />
           <TeacherVerificationsPanel
@@ -597,16 +595,88 @@ function TeacherVerificationsPanel({
   );
 }
 
+/** Stockroom products grouped by store aisle — same layout as the kid's store. */
+function StockAisles({
+  items,
+  defaultMargin,
+  busy,
+  onAction,
+}: {
+  items: StockItem[];
+  defaultMargin: number;
+  busy: boolean;
+  onAction: (fn: () => Promise<unknown>, msg: string) => void;
+}) {
+  const aisles = useMemo(() => {
+    const groups = new Map<AisleName, StockItem[]>();
+    // Deduplicate by normalized name.
+    const seen = new Set<string>();
+    for (const item of items) {
+      const key = item.title
+        .toLowerCase()
+        .replace(/[’‘`]/g, "'")
+        .replace(/[^a-z0-9\s]/g, " ")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const aisle = aisleFor(item.category_name, item.title);
+      const list = groups.get(aisle);
+      if (list) list.push(item);
+      else groups.set(aisle, [item]);
+    }
+    return AISLE_ORDER.filter((a) => (groups.get(a)?.length ?? 0) > 0).map(
+      (a) => ({ name: a, products: groups.get(a) ?? [] }),
+    );
+  }, [items]);
+
+  if (aisles.length === 0) return null;
+
+  return (
+    <div className="space-y-6">
+      {aisles.map(({ name, products }) => {
+        const Icon = AISLE_ICONS[name];
+        return (
+          <section key={name} aria-label={name}>
+            <div className="mb-2 flex items-center gap-2">
+              <Icon className="size-5 text-accent" />
+              <h3 className="font-display text-lg font-semibold">{name}</h3>
+              <span className="text-xs text-muted">
+                {AISLE_HINTS[name]} · {products.length}
+              </span>
+            </div>
+            <div className="flex gap-3 overflow-x-auto pb-2 snap-x">
+              {products.map((item) => (
+                <div key={item.id} className="w-72 shrink-0 snap-start">
+                  <StockCard
+                    item={item}
+                    defaultMargin={defaultMargin}
+                    busy={busy}
+                    onAction={onAction}
+                    compact
+                  />
+                </div>
+              ))}
+            </div>
+          </section>
+        );
+      })}
+    </div>
+  );
+}
+
 function StockCard({
   item,
   defaultMargin,
   busy,
   onAction,
+  compact = false,
 }: {
   item: StockItem;
   defaultMargin: number;
   busy: boolean;
   onAction: (fn: () => Promise<unknown>, msg: string) => void;
+  compact?: boolean;
 }) {
   const images = Array.isArray(item.images) ? item.images : [];
   const thumb = typeof images[0] === "string" ? images[0] : null;
