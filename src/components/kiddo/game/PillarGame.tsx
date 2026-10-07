@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useLedger } from "@/store/ledger";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Gamepad2, Sparkles, CloudLightning } from "lucide-react";
+import { ArrowLeft, Gamepad2, Sparkles, CloudLightning, Lock, Heart } from "lucide-react";
+import { rankForScore, societyScore } from "@/components/kiddo/world/WorldMap";
 
 /* ------------------------------------------------------------------ */
 /* PillarPath Game — "The Scattered Orbs"                               */
@@ -45,6 +46,8 @@ const ORB_SPOTS: Vec[] = [
 const KEEPER_POS: Vec = { x: 800, y: 760 };
 const MAYA_POS: Vec = { x: 1080, y: 950 };
 const CHORE_DOOR: Vec = { x: 195, y: 250 };
+const VAULT_DOOR: Vec = { x: 1405, y: 250 };
+const MARKET_DOOR: Vec = { x: 1405, y: 1090 };
 
 const JOBS = [
   { id: "dishes", name: "Dish Dynamo", desc: "Wash the dinner dishes without being asked.", reward: 30 },
@@ -75,6 +78,22 @@ export function PillarGame() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
+  /* Real-life state — the game reads your actual life */
+  const completedChoreIds = useLedger((s) => s.completedChoreIds);
+  const vault = useLedger((s) => s.vault);
+  const vaultTarget = useLedger((s) => s.vaultTarget);
+  const choresDone = completedChoreIds.length;
+  const score = societyScore({
+    choresDone,
+    vaultPct: vaultTarget > 0 ? Math.min(1, vault / vaultTarget) : 0,
+    studioPct: 0,
+  });
+  const { rank } = rankForScore(score);
+
+  /* Building gates — real life unlocks the game */
+  const vaultUnlocked = vault >= 50;
+  const marketUnlocked = choresDone >= 3;
+
   const [quest, setQuest] = useState<"intro" | "active" | "done">("intro");
   const [orbsHeld, setOrbsHeld] = useState(0);
   const [dialog, setDialog] = useState<string | null>(
@@ -85,8 +104,11 @@ export function PillarGame() {
   const [interior, setInterior] = useState<null | "chore">(null);
   const [dilemma, setDilemma] = useState<null | { q: string; a: string; b: string; c: string }>(null);
   const [missionsDone, setMissionsDone] = useState<string[]>([]);
-  const [nearWhat, setNearWhat] = useState<null | "keeper" | "maya" | "chore">(null);
+  const [nearWhat, setNearWhat] = useState<null | "keeper" | "maya" | "chore" | "vault" | "market">(null);
   const [inStorm, setInStorm] = useState(false);
+  /* Trust — your character shapes the game world. Good decisions weaken Doubtlings. */
+  const [trust, setTrust] = useState(50);
+  const trustRef = useRef(50);
 
   const stateRef = useRef({
     player: { x: 800, y: 950 } as Vec,
@@ -125,6 +147,8 @@ export function PillarGame() {
       if (d(p, KEEPER_POS) < 95) setNearWhat("keeper");
       else if (d(p, MAYA_POS) < 95) setNearWhat("maya");
       else if (d(p, CHORE_DOOR) < 110) setNearWhat("chore");
+      else if (d(p, VAULT_DOOR) < 110) setNearWhat("vault");
+      else if (d(p, MARKET_DOOR) < 110) setNearWhat("market");
       else setNearWhat(null);
       setInStorm(stateRef.current.inStorm);
     }, 250);
@@ -178,11 +202,20 @@ export function PillarGame() {
   const answerDilemma = (choice: "a" | "b" | "c") => {
     setDilemma(null);
     if (choice === "b") {
-      setDialog("Maya nods slowly... \"You're right. Saving half grows my future, and trying to find the owner is the honest move. That's what a Pillar would do.\" The plaza feels a little brighter.");
+      const nt = Math.min(100, trustRef.current + 10);
+      trustRef.current = nt;
+      setTrust(nt);
+      setDialog("Maya nods slowly... \"You're right. Saving half grows my future, and trying to find the owner is the honest move. That's what a Pillar would do.\" Your Trust grows — the Doubtlings seem weaker.");
     } else if (choice === "a") {
-      setDialog("Maya pockets it all... but she looks uneasy. \"I guess... it doesn't feel as good as I thought.\" The Doubtlings seem bolder. Honest money feels better than found money.");
+      const nt = Math.max(0, trustRef.current - 10);
+      trustRef.current = nt;
+      setTrust(nt);
+      setDialog("Maya pockets it all... but she looks uneasy. \"I guess... it doesn't feel as good as I thought.\" Your Trust falls — and the Doubtlings grow bolder.");
     } else {
-      setDialog("Maya buys candy for everyone! Fun for a day... but tomorrow the Units are gone and there's nothing to show for it. Sweet now, empty later — that's the trap.");
+      const nt = Math.max(0, trustRef.current - 5);
+      trustRef.current = nt;
+      setTrust(nt);
+      setDialog("Maya buys candy for everyone! Fun for a day... but tomorrow the Units are gone. Sweet now, empty later — that's the trap. Your Trust dips.");
     }
   };
 
@@ -387,8 +420,9 @@ export function PillarGame() {
         }
       }
 
-      /* doubtlings */
+      /* doubtlings — Trust shapes them: high trust weakens, low trust emboldens */
       const heldForSpeed = S.orbs.filter((o) => o.taken).length;
+      const trustFactor = 1.3 - (trustRef.current / 100) * 0.6; // trust 100 → 0.7x, trust 0 → 1.3x
       let nearestDist = Infinity;
       for (const d of S.doubtlings) {
         if (d.stun > 0) { d.stun -= dt; continue; }
@@ -396,7 +430,7 @@ export function PillarGame() {
         const dy = p.y - d.y;
         const dist = Math.hypot(dx, dy);
         nearestDist = Math.min(nearestDist, dist);
-        const rageSpeed = d.speed * (1 + heldForSpeed * 0.18);
+        const rageSpeed = d.speed * (1 + heldForSpeed * 0.18) * trustFactor;
         let mx = 0;
         let my = 0;
         if (questRef.current === "active" && dist < 260) {
@@ -726,8 +760,14 @@ export function PillarGame() {
             Prototype
           </span>
         </div>
-        <div className="flex items-center gap-1 text-sm font-bold text-accent">
-          <Sparkles className="size-4" /> {orbsHeld}/5
+        <div className="flex items-center gap-3">
+          <div className="flex items-center gap-1 text-xs font-bold" title="Trust: good decisions weaken Doubtlings">
+            <Heart className="size-4" style={{ color: trust >= 70 ? "#4ade80" : trust >= 40 ? "#fbbf24" : "#ef4444" }} />
+            <span style={{ color: trust >= 70 ? "#4ade80" : trust >= 40 ? "#fbbf24" : "#ef4444" }}>{trust}</span>
+          </div>
+          <div className="flex items-center gap-1 text-sm font-bold text-accent">
+            <Sparkles className="size-4" /> {orbsHeld}/5
+          </div>
         </div>
       </div>
 
@@ -792,6 +832,28 @@ export function PillarGame() {
                 Enter Chore Village
               </Button>
             )}
+            {nearWhat === "vault" && (
+              vaultUnlocked ? (
+                <Button size="sm" onClick={() => setDialog("Vault Mountain opens soon — your savings are growing! Keep saving to unlock savings challenges.")} className="bg-amber-400 font-bold text-black hover:bg-amber-300">
+                  Enter Vault Mountain
+                </Button>
+              ) : (
+                <div className="flex items-center gap-1.5 rounded-lg bg-black/70 px-3 py-2 text-xs font-semibold text-white">
+                  <Lock className="size-4 text-amber-300" /> Save {50 - vault} more Units to enter
+                </div>
+              )
+            )}
+            {nearWhat === "market" && (
+              marketUnlocked ? (
+                <Button size="sm" onClick={() => setDialog("Market Harbor opens soon — smart shoppers only!")} className="bg-violet-400 font-bold text-black hover:bg-violet-300">
+                  Enter Market Harbor
+                </Button>
+              ) : (
+                <div className="flex items-center gap-1.5 rounded-lg bg-black/70 px-3 py-2 text-xs font-semibold text-white">
+                  <Lock className="size-4 text-violet-300" /> Complete {3 - choresDone} more chore{3 - choresDone === 1 ? "" : "s"} to enter
+                </div>
+              )
+            )}
           </div>
         )}
 
@@ -809,6 +871,32 @@ export function PillarGame() {
       <div className="flex items-center justify-between text-xs text-muted">
         <p>🕹️ Drag left side to move · WASD on desktop</p>
         <p>🌩️ Storms slow you · 👾 Doubtlings steal orbs</p>
+      </div>
+
+      {/* Real-life unlocks — the game is part of your life */}
+      <div className="rounded-2xl border border-accent/20 bg-card p-4">
+        <p className="font-display text-sm font-bold">Your life unlocks the game</p>
+        <div className="mt-2 space-y-1.5 text-xs">
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              {vaultUnlocked ? "✅" : "🔒"} Vault Mountain
+            </span>
+            <span className="text-muted">{vaultUnlocked ? "Open!" : `Save ${50 - vault} more Units`}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="flex items-center gap-1.5">
+              {marketUnlocked ? "✅" : "🔒"} Market Harbor
+            </span>
+            <span className="text-muted">{marketUnlocked ? "Open!" : `${3 - choresDone} more chore${3 - choresDone === 1 ? "" : "s"} to go`}</span>
+          </div>
+          <div className="flex items-center justify-between">
+            <span>🏅 Your rank: {rank}</span>
+            <span className="text-muted">{choresDone} chore{choresDone === 1 ? "" : "s"} done · {vault} Units saved</span>
+          </div>
+        </div>
+        <p className="mt-2 text-[11px] leading-relaxed text-muted">
+          This game can't be beaten by playing more — only by living better. Do chores, save Units, make smart choices, and watch the world open up.
+        </p>
       </div>
     </div>
   );
