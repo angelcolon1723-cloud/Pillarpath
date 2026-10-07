@@ -679,7 +679,14 @@ export function PillarGame() {
       const ny = p.y + iy * sp * dt;
       if (!circleHit(nx, p.y, PLAYER_R)) p.x = Math.max(PLAYER_R, Math.min(WORLD_W - PLAYER_R, nx));
       if (!circleHit(p.x, ny, PLAYER_R)) p.y = Math.max(PLAYER_R, Math.min(WORLD_H - PLAYER_R, ny));
-      if (il > 0.1) S.faceAngle = Math.atan2(iy, ix) - Math.PI / 4;
+      if (il > 0.25) {
+        // Smooth angle to avoid jitter from touch noise.
+        const target = Math.atan2(iy, ix) - Math.PI / 4;
+        let diff = target - S.faceAngle;
+        while (diff > Math.PI) diff -= Math.PI * 2;
+        while (diff < -Math.PI) diff += Math.PI * 2;
+        S.faceAngle += diff * Math.min(1, dt * 10);
+      }
 
       if (questRef.current === "active") {
         for (const o of S.orbs) {
@@ -1073,7 +1080,7 @@ export function PillarGame() {
       {
         const playerImg = sprites.player;
         const moving = il > 0.1;
-        const bob = moving ? Math.abs(Math.sin(S.time * 10)) * 2 : Math.sin(S.time * 2.5) * 1.5;
+        const bob = moving ? Math.abs(Math.sin(S.time * 6)) * 1.5 : Math.sin(S.time * 2) * 1;
         drawShadow(p.x, p.y + 22, 20, 8);
         if (playerImg.complete && playerImg.naturalWidth > 0) {
           ctx.save();
@@ -1148,7 +1155,7 @@ export function PillarGame() {
 
       if (questRef.current === "active" && nearestDist < 170) {
         const danger = 1 - nearestDist / 170;
-        const pulse = 0.25 + Math.sin(S.time * 8) * 0.12;
+        const pulse = 0.22 + Math.sin(S.time * 3) * 0.08;
         const vg = ctx.createRadialGradient(svw / 2, svh / 2, Math.min(svw, svh) * 0.35, svw / 2, svh / 2, Math.max(svw, svh) * 0.75);
         vg.addColorStop(0, "rgba(239,68,68,0)");
         vg.addColorStop(1, `rgba(239,68,68,${(danger * pulse).toFixed(3)})`);
