@@ -15,6 +15,48 @@ const QUOTES = [
   { text: "The future belongs to those who believe in the beauty of their dreams.", author: "Eleanor Roosevelt" },
 ];
 
+function makeNebulaTexture(): THREE.CanvasTexture {
+  const s = 1024;
+  const canvas = document.createElement("canvas");
+  canvas.width = s;
+  canvas.height = s;
+  const ctx = canvas.getContext("2d")!;
+  // Deep space base.
+  ctx.fillStyle = "#04060e";
+  ctx.fillRect(0, 0, s, s);
+  // Nebula blobs in brand colors.
+  const blobs: Array<[number, number, number, string]> = [
+    [300, 300, 260, "rgba(139,92,246,0.20)"],
+    [750, 650, 300, "rgba(34,211,238,0.14)"],
+    [550, 800, 220, "rgba(232,121,249,0.16)"],
+    [150, 750, 180, "rgba(99,102,241,0.18)"],
+    [850, 200, 200, "rgba(34,211,238,0.10)"],
+  ];
+  for (const [x, y, r, c] of blobs) {
+    const g = ctx.createRadialGradient(x, y, 0, x, y, r);
+    g.addColorStop(0, c);
+    g.addColorStop(1, "rgba(0,0,0,0)");
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, s, s);
+  }
+  // Stars.
+  for (let i = 0; i < 350; i++) {
+    const x = Math.random() * s;
+    const y = Math.random() * s;
+    const r = Math.random() * 1.6 + 0.4;
+    const tw = 0.35 + Math.random() * 0.65;
+    ctx.fillStyle = `rgba(220,230,255,${tw})`;
+    ctx.beginPath();
+    ctx.arc(x, y, r, 0, Math.PI * 2);
+    ctx.fill();
+  }
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.colorSpace = THREE.SRGBColorSpace;
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}
+
 function makePlaqueTexture(accent: string): THREE.CanvasTexture {
   const w = 512;
   const h = 512;
@@ -22,24 +64,44 @@ function makePlaqueTexture(accent: string): THREE.CanvasTexture {
   canvas.width = w;
   canvas.height = h;
   const ctx = canvas.getContext("2d")!;
-  const grad = ctx.createRadialGradient(w / 2, h / 2, 40, w / 2, h / 2, w / 2);
-  grad.addColorStop(0, "#1a1a3d");
-  grad.addColorStop(1, "#0a0a20");
+  // Glassmorphic deep-space plaque.
+  const grad = ctx.createLinearGradient(0, 0, w, h);
+  grad.addColorStop(0, "rgba(11,17,50,0.96)");
+  grad.addColorStop(1, "rgba(4,6,14,0.96)");
+  // Rounded rect.
+  const r = 48;
+  ctx.beginPath();
+  ctx.roundRect(8, 8, w - 16, h - 16, r);
   ctx.fillStyle = grad;
-  ctx.fillRect(0, 0, w, h);
-  // Big decorative quote mark.
-  ctx.font = "bold 200px Georgia";
-  ctx.textAlign = "center";
-  ctx.fillStyle = accent;
-  ctx.globalAlpha = 0.9;
-  ctx.fillText("\u201C", w / 2, 220);
-  // Glow ring.
-  ctx.globalAlpha = 1;
-  ctx.strokeStyle = accent;
+  ctx.fill();
+  // Brand gradient border (cyan -> violet -> magenta).
+  const bg = ctx.createLinearGradient(0, 0, w, h);
+  bg.addColorStop(0, "#22d3ee");
+  bg.addColorStop(0.55, "#818cf8");
+  bg.addColorStop(1, "#e879f9");
+  ctx.strokeStyle = bg;
   ctx.lineWidth = 10;
   ctx.beginPath();
-  ctx.arc(w / 2, h / 2, w / 2 - 24, 0, Math.PI * 2);
+  ctx.roundRect(14, 14, w - 28, h - 28, r - 6);
   ctx.stroke();
+  // Big decorative quote mark in accent.
+  ctx.font = "bold 190px Georgia";
+  ctx.textAlign = "center";
+  ctx.fillStyle = accent;
+  ctx.globalAlpha = 0.95;
+  ctx.shadowColor = accent;
+  ctx.shadowBlur = 30;
+  ctx.fillText("\u201C", w / 2, 235);
+  ctx.shadowBlur = 0;
+  ctx.globalAlpha = 1;
+  // Small orbit ring accent at the bottom.
+  ctx.strokeStyle = accent;
+  ctx.lineWidth = 6;
+  ctx.globalAlpha = 0.7;
+  ctx.beginPath();
+  ctx.ellipse(w / 2, h - 110, 120, 34, -0.3, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.globalAlpha = 1;
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
@@ -93,8 +155,8 @@ export function WisdomRoom3D({ score }: { score: number }) {
     const H = Math.min(window.innerHeight * 0.62, 560);
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x060618);
-    scene.fog = new THREE.Fog(0x060618, 20, 46);
+    scene.background = new THREE.Color(0x04060e);
+    scene.fog = new THREE.Fog(0x0b1132, 20, 48);
 
     const camera = new THREE.PerspectiveCamera(68, W / H, 0.1, 120);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -102,20 +164,35 @@ export function WisdomRoom3D({ score }: { score: number }) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     mount.appendChild(renderer.domElement);
 
-    // ---- Lights ----
-    scene.add(new THREE.AmbientLight(0x99aaff, 0.55));
-    const centerLight = new THREE.PointLight(0xaa77ff, 80, 34);
-    centerLight.position.set(0, 5, 0);
+    // ---- Lights (brand trio: cyan / violet / magenta) ----
+    scene.add(new THREE.AmbientLight(0x8a9bff, 0.5));
+    const centerLight = new THREE.PointLight(0x8b5cf6, 90, 36);
+    centerLight.position.set(0, 5.4, 0);
     scene.add(centerLight);
-    const warm = new THREE.PointLight(0xffb347, 40, 26);
-    warm.position.set(0, 3, 6);
-    scene.add(warm);
+    const cyanLight = new THREE.PointLight(0x22d3ee, 55, 30);
+    cyanLight.position.set(-7, 3.4, 5);
+    scene.add(cyanLight);
+    const magentaLight = new THREE.PointLight(0xe879f9, 55, 30);
+    magentaLight.position.set(7, 3.4, -5);
+    scene.add(magentaLight);
 
     // ---- Room ----
     const ROOM = 18;
     const HROOM = 7;
-    const wallMat = new THREE.MeshStandardMaterial({ color: 0x141438, roughness: 0.8, metalness: 0.2 });
-    const floorMat = new THREE.MeshStandardMaterial({ color: 0x0b0b26, roughness: 0.35, metalness: 0.65 });
+    const nebulaTex = makeNebulaTexture();
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: 0xffffff,
+      map: nebulaTex,
+      roughness: 0.92,
+      metalness: 0.08,
+    });
+    const floorNeb = makeNebulaTexture();
+    const floorMat = new THREE.MeshStandardMaterial({
+      color: 0xbfd0ff,
+      map: floorNeb,
+      roughness: 0.32,
+      metalness: 0.72,
+    });
 
     const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM, ROOM), floorMat);
     floor.rotation.x = -Math.PI / 2;
@@ -238,23 +315,48 @@ export function WisdomRoom3D({ score }: { score: number }) {
       billboards.push(label);
     });
 
-    // ---- Central Pillar of Becoming ----
+    // ---- Central Pillar of Becoming (echoes the PillarMark: pillar + orbit rings) ----
     const centralMat = new THREE.MeshStandardMaterial({
-      color: 0x2a2a66,
-      emissive: 0x9966ff,
-      emissiveIntensity: 0.8,
-      roughness: 0.2,
+      color: 0x2a2f66,
+      emissive: 0x818cf8,
+      emissiveIntensity: 0.85,
+      roughness: 0.22,
       metalness: 0.85,
     });
-    const central = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.8, 5.2, 16), centralMat);
+    const central = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.85, 5.2, 16), centralMat);
     central.position.set(0, 2.6, 0);
     scene.add(central);
-    const capMat = new THREE.MeshBasicMaterial({ color: 0xffffff });
-    const orb = new THREE.Mesh(new THREE.SphereGeometry(0.42, 20, 20), capMat);
-    orb.position.set(0, 5.6, 0);
+    // Capital + base slabs.
+    const slabMat = new THREE.MeshStandardMaterial({
+      color: 0x1c2150, emissive: 0x22d3ee, emissiveIntensity: 0.35,
+      roughness: 0.3, metalness: 0.8,
+    });
+    for (const y of [0.25, 5.05]) {
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.32, 2.0), slabMat);
+      slab.position.set(0, y, 0);
+      scene.add(slab);
+    }
+    // Orbit rings (cyan + magenta, tilted like the logo).
+    const ringMatA = new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.85 });
+    const ringMatB = new THREE.MeshBasicMaterial({ color: 0xe879f9, transparent: true, opacity: 0.85 });
+    const ringA = new THREE.Mesh(new THREE.TorusGeometry(2.1, 0.045, 12, 72), ringMatA);
+    ringA.position.set(0, 3.4, 0);
+    ringA.rotation.x = Math.PI / 2 - 0.42;
+    scene.add(ringA);
+    const ringB = new THREE.Mesh(new THREE.TorusGeometry(2.55, 0.045, 12, 72), ringMatB);
+    ringB.position.set(0, 3.1, 0);
+    ringB.rotation.x = Math.PI / 2 + 0.35;
+    ringB.rotation.y = 0.5;
+    scene.add(ringB);
+    // Glowing orb atop the pillar.
+    const orb = new THREE.Mesh(
+      new THREE.SphereGeometry(0.4, 20, 20),
+      new THREE.MeshBasicMaterial({ color: 0xffffff }),
+    );
+    orb.position.set(0, 5.75, 0);
     scene.add(orb);
-    const orbLight = new THREE.PointLight(0xcc99ff, 50, 16);
-    orbLight.position.set(0, 5.6, 0);
+    const orbLight = new THREE.PointLight(0xcc99ff, 60, 18);
+    orbLight.position.set(0, 5.75, 0);
     scene.add(orbLight);
 
     // ---- Floating wisdom orbs ----
@@ -329,9 +431,11 @@ export function WisdomRoom3D({ score }: { score: number }) {
 
       // Ambient animation.
       central.rotation.y = t * 0.25;
-      centralMat.emissiveIntensity = 0.7 + Math.sin(t * 1.8) * 0.25;
-      orb.position.y = 5.6 + Math.sin(t * 1.4) * 0.18;
-      orbLight.intensity = 45 + Math.sin(t * 1.8) * 10;
+      centralMat.emissiveIntensity = 0.75 + Math.sin(t * 1.8) * 0.25;
+      ringA.rotation.z = t * 0.22;
+      ringB.rotation.z = -t * 0.16;
+      orb.position.y = 5.75 + Math.sin(t * 1.4) * 0.16;
+      orbLight.intensity = 55 + Math.sin(t * 1.8) * 12;
       disc.rotation.z = t * 0.05;
       for (const o of orbs) {
         const u = o.userData;
