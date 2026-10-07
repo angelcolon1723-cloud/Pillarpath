@@ -3,16 +3,63 @@ import * as THREE from "three";
 import { useLedger } from "@/store/ledger";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { ArrowLeft, Lock, Pause, Play, Quote } from "lucide-react";
+import { ArrowLeft, Lock, Pause, Play, Quote, Shirt } from "lucide-react";
 import { RANKS, rankForScore } from "./WorldMap";
 
-const QUOTES = [
-  { text: "I never dreamed about success. I worked for it.", author: "Estée Lauder" },
-  { text: "The only way to do great work is to love what you do.", author: "Steve Jobs" },
-  { text: "Whether you think you can or you think you can't, you're right.", author: "Henry Ford" },
-  { text: "It always seems impossible until it's done.", author: "Nelson Mandela" },
-  { text: "Don't watch the clock; do what it does. Keep going.", author: "Sam Levenson" },
-  { text: "The future belongs to those who believe in the beauty of their dreams.", author: "Eleanor Roosevelt" },
+/* ------------------------------------------------------------------ */
+/* Rank stories + quotes — one per alcove.                              */
+/* ------------------------------------------------------------------ */
+const ALCOVES = [
+  {
+    rank: "Seedling",
+    color: "#4ade80",
+    candles: 1,
+    story:
+      "Every pillar starts as a seed. You took the first step — you showed up. That matters more than you know.",
+    quote: "The expert in anything was once a beginner.",
+    quoteBy: "Helen Hayes",
+    shirt: "/designs/ranks/rank-seedling.png",
+  },
+  {
+    rank: "Sprout",
+    color: "#22d3ee",
+    candles: 3,
+    story:
+      "Look at you growing. Every chore done, every Unit saved — you're stronger than yesterday. Keep going.",
+    quote: "Don't watch the clock; do what it does. Keep going.",
+    quoteBy: "Sam Levenson",
+    shirt: "/designs/ranks/rank-sprout.png",
+  },
+  {
+    rank: "Trailblazer",
+    color: "#a78bfa",
+    candles: 5,
+    story:
+      "You're not following the path anymore — you're making one. Trailblazers try new things and aren't afraid to fail.",
+    quote: "Whether you think you can or you think you can't, you're right.",
+    quoteBy: "Henry Ford",
+    shirt: "/designs/ranks/rank-trailblazer.png",
+  },
+  {
+    rank: "Luminary",
+    color: "#e879f9",
+    candles: 8,
+    story:
+      "Your glow guides others now. Younger kids look at you and think: I want to be like that. Shine on.",
+    quote: "The future belongs to those who believe in the beauty of their dreams.",
+    quoteBy: "Eleanor Roosevelt",
+    shirt: "/designs/ranks/rank-luminary.png",
+  },
+  {
+    rank: "Pillar",
+    color: "#fbbf24",
+    candles: 12,
+    story:
+      "A pillar others can lean on. You didn't just become better — you became someone who lifts others. This is what the Society is for.",
+    quote: "I never dreamed about success. I worked for it.",
+    quoteBy: "Estée Lauder",
+    shirt: "/designs/ranks/rank-pillar.png",
+  },
 ];
 
 function makeNebulaTexture(): THREE.CanvasTexture {
@@ -21,16 +68,13 @@ function makeNebulaTexture(): THREE.CanvasTexture {
   canvas.width = s;
   canvas.height = s;
   const ctx = canvas.getContext("2d")!;
-  // Deep space base.
   ctx.fillStyle = "#04060e";
   ctx.fillRect(0, 0, s, s);
-  // Nebula blobs in brand colors.
   const blobs: Array<[number, number, number, string]> = [
-    [300, 300, 260, "rgba(139,92,246,0.20)"],
-    [750, 650, 300, "rgba(34,211,238,0.14)"],
-    [550, 800, 220, "rgba(232,121,249,0.16)"],
-    [150, 750, 180, "rgba(99,102,241,0.18)"],
-    [850, 200, 200, "rgba(34,211,238,0.10)"],
+    [300, 300, 280, "rgba(139,92,246,0.22)"],
+    [750, 650, 320, "rgba(34,211,238,0.15)"],
+    [550, 800, 240, "rgba(232,121,249,0.17)"],
+    [150, 750, 200, "rgba(99,102,241,0.19)"],
   ];
   for (const [x, y, r, c] of blobs) {
     const g = ctx.createRadialGradient(x, y, 0, x, y, r);
@@ -39,13 +83,11 @@ function makeNebulaTexture(): THREE.CanvasTexture {
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, s, s);
   }
-  // Stars.
-  for (let i = 0; i < 350; i++) {
+  for (let i = 0; i < 400; i++) {
     const x = Math.random() * s;
     const y = Math.random() * s;
-    const r = Math.random() * 1.6 + 0.4;
-    const tw = 0.35 + Math.random() * 0.65;
-    ctx.fillStyle = `rgba(220,230,255,${tw})`;
+    const r = Math.random() * 1.7 + 0.4;
+    ctx.fillStyle = `rgba(220,230,255,${0.3 + Math.random() * 0.7})`;
     ctx.beginPath();
     ctx.arc(x, y, r, 0, Math.PI * 2);
     ctx.fill();
@@ -57,58 +99,8 @@ function makeNebulaTexture(): THREE.CanvasTexture {
   return tex;
 }
 
-function makePlaqueTexture(accent: string): THREE.CanvasTexture {
-  const w = 512;
-  const h = 512;
-  const canvas = document.createElement("canvas");
-  canvas.width = w;
-  canvas.height = h;
-  const ctx = canvas.getContext("2d")!;
-  // Glassmorphic deep-space plaque.
-  const grad = ctx.createLinearGradient(0, 0, w, h);
-  grad.addColorStop(0, "rgba(11,17,50,0.96)");
-  grad.addColorStop(1, "rgba(4,6,14,0.96)");
-  // Rounded rect.
-  const r = 48;
-  ctx.beginPath();
-  ctx.roundRect(8, 8, w - 16, h - 16, r);
-  ctx.fillStyle = grad;
-  ctx.fill();
-  // Brand gradient border (cyan -> violet -> magenta).
-  const bg = ctx.createLinearGradient(0, 0, w, h);
-  bg.addColorStop(0, "#22d3ee");
-  bg.addColorStop(0.55, "#818cf8");
-  bg.addColorStop(1, "#e879f9");
-  ctx.strokeStyle = bg;
-  ctx.lineWidth = 10;
-  ctx.beginPath();
-  ctx.roundRect(14, 14, w - 28, h - 28, r - 6);
-  ctx.stroke();
-  // Big decorative quote mark in accent.
-  ctx.font = "bold 190px Georgia";
-  ctx.textAlign = "center";
-  ctx.fillStyle = accent;
-  ctx.globalAlpha = 0.95;
-  ctx.shadowColor = accent;
-  ctx.shadowBlur = 30;
-  ctx.fillText("\u201C", w / 2, 235);
-  ctx.shadowBlur = 0;
-  ctx.globalAlpha = 1;
-  // Small orbit ring accent at the bottom.
-  ctx.strokeStyle = accent;
-  ctx.lineWidth = 6;
-  ctx.globalAlpha = 0.7;
-  ctx.beginPath();
-  ctx.ellipse(w / 2, h - 110, 120, 34, -0.3, 0, Math.PI * 2);
-  ctx.stroke();
-  ctx.globalAlpha = 1;
-  const tex = new THREE.CanvasTexture(canvas);
-  tex.colorSpace = THREE.SRGBColorSpace;
-  return tex;
-}
-
-function makeLabelTexture(text: string, sub: string, accent: string): THREE.CanvasTexture {
-  const w = 512;
+function makeRankNameTexture(name: string, color: string): THREE.CanvasTexture {
+  const w = 1024;
   const h = 256;
   const canvas = document.createElement("canvas");
   canvas.width = w;
@@ -116,21 +108,15 @@ function makeLabelTexture(text: string, sub: string, accent: string): THREE.Canv
   const ctx = canvas.getContext("2d")!;
   ctx.clearRect(0, 0, w, h);
   ctx.textAlign = "center";
-  ctx.font = "bold 72px system-ui";
-  ctx.fillStyle = accent;
-  ctx.shadowColor = accent;
-  ctx.shadowBlur = 24;
-  ctx.fillText(text, w / 2, 110);
-  ctx.shadowBlur = 0;
-  ctx.font = "40px system-ui";
-  ctx.fillStyle = "#cdd2ff";
-  ctx.fillText(sub, w / 2, 180);
+  ctx.font = "bold 120px system-ui";
+  ctx.fillStyle = color;
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 40;
+  ctx.fillText(name.toUpperCase(), w / 2, 165);
   const tex = new THREE.CanvasTexture(canvas);
   tex.colorSpace = THREE.SRGBColorSpace;
   return tex;
 }
-
-type TourStop = { pos: THREE.Vector3; look: THREE.Vector3; quote: number };
 
 export function WisdomRoom3D({ score }: { score: number }) {
   const mountRef = useRef<HTMLDivElement>(null);
@@ -139,10 +125,10 @@ export function WisdomRoom3D({ score }: { score: number }) {
   const rankIndex = RANKS.indexOf(rank);
   const unlocked = score >= 50;
   const [paused, setPaused] = useState(false);
-  const [activeQuote, setActiveQuote] = useState(0);
+  const [activeAlcove, setActiveAlcove] = useState(0);
   const pausedRef = useRef(false);
-  const setActiveQuoteRef = useRef(setActiveQuote);
-  setActiveQuoteRef.current = setActiveQuote;
+  const setAlcoveRef = useRef(setActiveAlcove);
+  setAlcoveRef.current = setActiveAlcove;
 
   useEffect(() => {
     pausedRef.current = paused;
@@ -152,253 +138,244 @@ export function WisdomRoom3D({ score }: { score: number }) {
     if (!unlocked || !mountRef.current) return;
     const mount = mountRef.current;
     const W = mount.clientWidth;
-    const H = Math.min(window.innerHeight * 0.62, 560);
+    const H = Math.min(window.innerHeight * 0.58, 520);
 
     const scene = new THREE.Scene();
     scene.background = new THREE.Color(0x04060e);
-    scene.fog = new THREE.Fog(0x0b1132, 20, 48);
+    scene.fog = new THREE.Fog(0x0b1132, 24, 60);
 
-    const camera = new THREE.PerspectiveCamera(68, W / H, 0.1, 120);
+    const camera = new THREE.PerspectiveCamera(66, W / H, 0.1, 140);
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setSize(W, H);
     renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     mount.appendChild(renderer.domElement);
 
-    // ---- Lights (brand trio: cyan / violet / magenta) ----
-    scene.add(new THREE.AmbientLight(0x8a9bff, 0.5));
-    const centerLight = new THREE.PointLight(0x8b5cf6, 90, 36);
-    centerLight.position.set(0, 5.4, 0);
-    scene.add(centerLight);
-    const cyanLight = new THREE.PointLight(0x22d3ee, 55, 30);
-    cyanLight.position.set(-7, 3.4, 5);
-    scene.add(cyanLight);
-    const magentaLight = new THREE.PointLight(0xe879f9, 55, 30);
-    magentaLight.position.set(7, 3.4, -5);
-    scene.add(magentaLight);
+    // ---- Lights ----
+    scene.add(new THREE.AmbientLight(0x8a9bff, 0.45));
 
-    // ---- Room ----
-    const ROOM = 18;
-    const HROOM = 7;
+    // ---- Hallway: long corridor along Z. 5 alcoves. ----
+    const HALL_W = 10;
+    const HALL_H = 6;
+    const SECTION = 14; // length per alcove
+    const TOTAL = SECTION * ALCOVES.length; // 70
     const nebulaTex = makeNebulaTexture();
+
     const wallMat = new THREE.MeshStandardMaterial({
-      color: 0xffffff,
-      map: nebulaTex,
-      roughness: 0.92,
-      metalness: 0.08,
+      color: 0xffffff, map: nebulaTex, roughness: 0.92, metalness: 0.08,
     });
-    const floorNeb = makeNebulaTexture();
     const floorMat = new THREE.MeshStandardMaterial({
-      color: 0xbfd0ff,
-      map: floorNeb,
-      roughness: 0.32,
-      metalness: 0.72,
+      color: 0xbfd0ff, map: makeNebulaTexture(), roughness: 0.32, metalness: 0.72,
     });
 
-    const floor = new THREE.Mesh(new THREE.PlaneGeometry(ROOM, ROOM), floorMat);
+    const floor = new THREE.Mesh(new THREE.PlaneGeometry(HALL_W, TOTAL + 20), floorMat);
     floor.rotation.x = -Math.PI / 2;
+    floor.position.z = -TOTAL / 2;
     scene.add(floor);
 
-    // Reflective-feel center circle.
-    const disc = new THREE.Mesh(
-      new THREE.RingGeometry(2.4, 4.4, 48),
-      new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.25, side: THREE.DoubleSide }),
-    );
-    disc.rotation.x = -Math.PI / 2;
-    disc.position.y = 0.02;
-    scene.add(disc);
-    const disc2 = new THREE.Mesh(
-      new THREE.RingGeometry(4.7, 4.85, 48),
-      new THREE.MeshBasicMaterial({ color: 0xe879f9, transparent: true, opacity: 0.3, side: THREE.DoubleSide }),
-    );
-    disc2.rotation.x = -Math.PI / 2;
-    disc2.position.y = 0.02;
-    scene.add(disc2);
-
     const ceil = new THREE.Mesh(
-      new THREE.PlaneGeometry(ROOM, ROOM),
-      new THREE.MeshStandardMaterial({ color: 0x090920, roughness: 0.95 }),
+      new THREE.PlaneGeometry(HALL_W, TOTAL + 20),
+      new THREE.MeshStandardMaterial({ color: 0x070716, roughness: 0.95 }),
     );
     ceil.rotation.x = Math.PI / 2;
-    ceil.position.y = HROOM;
+    ceil.position.set(0, HALL_H, -TOTAL / 2);
     scene.add(ceil);
 
-    const mkWall = () => new THREE.Mesh(new THREE.PlaneGeometry(ROOM, HROOM), wallMat);
-    const wallN = mkWall(); wallN.position.set(0, HROOM / 2, -ROOM / 2); scene.add(wallN);
-    const wallS = mkWall(); wallS.position.set(0, HROOM / 2, ROOM / 2); wallS.rotation.y = Math.PI; scene.add(wallS);
-    const wallE = mkWall(); wallE.position.set(ROOM / 2, HROOM / 2, 0); wallE.rotation.y = -Math.PI / 2; scene.add(wallE);
-    const wallW = mkWall(); wallW.position.set(-ROOM / 2, HROOM / 2, 0); wallW.rotation.y = Math.PI / 2; scene.add(wallW);
+    const mkWall = (len: number) => new THREE.Mesh(new THREE.PlaneGeometry(len, HALL_H), wallMat);
+    const wallL = mkWall(TOTAL + 20);
+    wallL.position.set(-HALL_W / 2, HALL_H / 2, -TOTAL / 2);
+    wallL.rotation.y = Math.PI / 2;
+    scene.add(wallL);
+    const wallR = mkWall(TOTAL + 20);
+    wallR.position.set(HALL_W / 2, HALL_H / 2, -TOTAL / 2);
+    wallR.rotation.y = -Math.PI / 2;
+    scene.add(wallR);
+    // End cap behind the last alcove.
+    const wallEnd = new THREE.Mesh(new THREE.PlaneGeometry(HALL_W, HALL_H), wallMat);
+    wallEnd.position.set(0, HALL_H / 2, -TOTAL - 6);
+    scene.add(wallEnd);
 
-    // Neon trim.
-    const trimMatA = new THREE.MeshBasicMaterial({ color: 0x22d3ee });
-    const trimMatB = new THREE.MeshBasicMaterial({ color: 0xe879f9 });
-    const mkTrim = (len: number, mat: THREE.Material) => new THREE.Mesh(new THREE.BoxGeometry(len, 0.08, 0.08), mat);
-    for (const [z, mat] of [[-ROOM / 2 + 0.06, trimMatA], [ROOM / 2 - 0.06, trimMatB]] as const) {
-      for (const y of [0.5, HROOM - 0.5]) {
-        const t = mkTrim(ROOM, mat);
-        t.position.set(0, y, z);
+    // Neon trim along the hallway.
+    const trimMat = new THREE.MeshBasicMaterial({ color: 0x22d3ee });
+    const trimMat2 = new THREE.MeshBasicMaterial({ color: 0xe879f9 });
+    for (const [x, mat] of [[-HALL_W / 2 + 0.08, trimMat], [HALL_W / 2 - 0.08, trimMat2]] as const) {
+      for (const y of [0.4, HALL_H - 0.4]) {
+        const t = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, TOTAL + 20), mat);
+        t.position.set(x, y, -TOTAL / 2);
         scene.add(t);
       }
     }
-    const mkTrimV = (len: number, mat: THREE.Material) => new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.08, len), mat);
-    for (const [x, mat] of [[-ROOM / 2 + 0.06, trimMatA], [ROOM / 2 - 0.06, trimMatB]] as const) {
-      for (const y of [0.5, HROOM - 0.5]) {
-        const t = mkTrimV(ROOM, mat);
-        t.position.set(x, y, 0);
-        scene.add(t);
-      }
-    }
 
-    // ---- Quote plaques (big, glowing, easy to spot) ----
-    const accents = ["#22d3ee", "#e879f9", "#a78bfa", "#fbbf24", "#4ade80", "#f472b6"];
-    const plaquePositions: Array<[number, number, number, number]> = [
-      [-4.5, 3.2, -ROOM / 2 + 0.08, 0],
-      [4.5, 3.2, -ROOM / 2 + 0.08, 0],
-      [-4.5, 3.2, ROOM / 2 - 0.08, Math.PI],
-      [4.5, 3.2, ROOM / 2 - 0.08, Math.PI],
-      [-ROOM / 2 + 0.08, 3.2, 0, Math.PI / 2],
-      [ROOM / 2 - 0.08, 3.2, 0, -Math.PI / 2],
-    ];
-    const plaqueMeshes: THREE.Mesh[] = [];
-    QUOTES.forEach((_, i) => {
-      const tex = makePlaqueTexture(accents[i % accents.length]);
-      const m = new THREE.Mesh(
-        new THREE.PlaneGeometry(2.6, 2.6),
-        new THREE.MeshBasicMaterial({ map: tex, transparent: true }),
-      );
-      const [x, y, z, ry] = plaquePositions[i];
-      m.position.set(x, y, z);
-      m.rotation.y = ry;
-      scene.add(m);
-      plaqueMeshes.push(m);
-      // Pedestal glow under each plaque.
-      const glow = new THREE.Mesh(
-        new THREE.PlaneGeometry(3.4, 0.5),
-        new THREE.MeshBasicMaterial({ color: new THREE.Color(accents[i % accents.length]), transparent: true, opacity: 0.35 }),
-      );
-      glow.rotation.x = -Math.PI / 2;
-      // Project wall position onto floor.
-      const fx = Math.abs(x) > ROOM / 2 - 1 ? Math.sign(x) * (ROOM / 2 - 1.2) : x;
-      const fz = Math.abs(z) > ROOM / 2 - 1 ? Math.sign(z) * (ROOM / 2 - 1.2) : z;
-      glow.position.set(fx, 0.03, fz);
-      scene.add(glow);
-    });
-
-    // ---- Rank pillars ----
+    // ---- Alcoves ----
+    const loader = new THREE.TextureLoader();
+    const candleFlames: THREE.PointLight[] = [];
     const billboards: THREE.Mesh[] = [];
-    const rankColors = ["#4ade80", "#22d3ee", "#a78bfa", "#e879f9", "#fbbf24"];
-    const pillarMeshes: THREE.MeshStandardMaterial[] = [];
-    RANKS.forEach((r, i) => {
-      const isCurrent = i === rankIndex;
-      const hgt = isCurrent ? 3.6 : 2.4 + i * 0.15;
-      const mat = new THREE.MeshStandardMaterial({
-        color: 0x181844,
-        emissive: new THREE.Color(rankColors[i]),
-        emissiveIntensity: isCurrent ? 1.0 : 0.3,
-        roughness: 0.25,
-        metalness: 0.75,
-      });
-      pillarMeshes.push(mat);
-      const pillar = new THREE.Mesh(new THREE.BoxGeometry(1.2, hgt, 1.2), mat);
-      const angle = (i / RANKS.length) * Math.PI * 2 + Math.PI / 5;
-      const px = Math.cos(angle) * 5.6;
-      const pz = Math.sin(angle) * 5.6;
-      pillar.position.set(px, hgt / 2, pz);
-      scene.add(pillar);
-
-      const labelTex = makeLabelTexture(r.name.toUpperCase(), isCurrent ? "★ YOU ★" : `${i + 1} of 5`, rankColors[i]);
-      const label = new THREE.Mesh(
-        new THREE.PlaneGeometry(2.4, 1.2),
-        new THREE.MeshBasicMaterial({ map: labelTex, transparent: true, depthWrite: false }),
-      );
-      label.position.set(px, hgt + 1.0, pz);
-      scene.add(label);
-      billboards.push(label);
-    });
-
-    // ---- Central Pillar of Becoming (echoes the PillarMark: pillar + orbit rings) ----
-    const centralMat = new THREE.MeshStandardMaterial({
-      color: 0x2a2f66,
-      emissive: 0x818cf8,
-      emissiveIntensity: 0.85,
-      roughness: 0.22,
-      metalness: 0.85,
-    });
-    const central = new THREE.Mesh(new THREE.CylinderGeometry(0.55, 0.85, 5.2, 16), centralMat);
-    central.position.set(0, 2.6, 0);
-    scene.add(central);
-    // Capital + base slabs.
-    const slabMat = new THREE.MeshStandardMaterial({
-      color: 0x1c2150, emissive: 0x22d3ee, emissiveIntensity: 0.35,
-      roughness: 0.3, metalness: 0.8,
-    });
-    for (const y of [0.25, 5.05]) {
-      const slab = new THREE.Mesh(new THREE.BoxGeometry(2.0, 0.32, 2.0), slabMat);
-      slab.position.set(0, y, 0);
-      scene.add(slab);
-    }
-    // Orbit rings (cyan + magenta, tilted like the logo).
-    const ringMatA = new THREE.MeshBasicMaterial({ color: 0x22d3ee, transparent: true, opacity: 0.85 });
-    const ringMatB = new THREE.MeshBasicMaterial({ color: 0xe879f9, transparent: true, opacity: 0.85 });
-    const ringA = new THREE.Mesh(new THREE.TorusGeometry(2.1, 0.045, 12, 72), ringMatA);
-    ringA.position.set(0, 3.4, 0);
-    ringA.rotation.x = Math.PI / 2 - 0.42;
-    scene.add(ringA);
-    const ringB = new THREE.Mesh(new THREE.TorusGeometry(2.55, 0.045, 12, 72), ringMatB);
-    ringB.position.set(0, 3.1, 0);
-    ringB.rotation.x = Math.PI / 2 + 0.35;
-    ringB.rotation.y = 0.5;
-    scene.add(ringB);
-    // Glowing orb atop the pillar.
-    const orb = new THREE.Mesh(
-      new THREE.SphereGeometry(0.4, 20, 20),
-      new THREE.MeshBasicMaterial({ color: 0xffffff }),
-    );
-    orb.position.set(0, 5.75, 0);
-    scene.add(orb);
-    const orbLight = new THREE.PointLight(0xcc99ff, 60, 18);
-    orbLight.position.set(0, 5.75, 0);
-    scene.add(orbLight);
-
-    // ---- Floating wisdom orbs ----
     const orbs: THREE.Mesh[] = [];
-    const orbGeo = new THREE.SphereGeometry(0.12, 12, 12);
-    for (let i = 0; i < 26; i++) {
-      const c = accents[i % accents.length];
-      const m = new THREE.Mesh(orbGeo, new THREE.MeshBasicMaterial({ color: new THREE.Color(c), transparent: true, opacity: 0.85 }));
-      const a = Math.random() * Math.PI * 2;
-      const r = 3 + Math.random() * 5;
-      m.position.set(Math.cos(a) * r, 1 + Math.random() * 4.5, Math.sin(a) * r);
-      m.userData = { a, r, speed: 0.15 + Math.random() * 0.25, y0: m.position.y, ph: Math.random() * Math.PI * 2 };
-      scene.add(m);
-      orbs.push(m);
-    }
+    // (declared above; kept here for clarity)
 
-    // ---- Tour path ----
-    const stops: TourStop[] = plaquePositions.map(([x, y, z], i) => {
-      // Stand back from the wall, look at the plaque.
-      const inward = new THREE.Vector3(-x, 0, -z).normalize();
-      const pos = new THREE.Vector3(x, 2.1, z).add(inward.multiplyScalar(4.2));
-      pos.y = 2.1;
-      return { pos, look: new THREE.Vector3(x, y, z), quote: i };
+    ALCOVES.forEach((alcove, i) => {
+      const zc = -(i * SECTION + SECTION / 2); // center of this section
+      const color = new THREE.Color(alcove.color);
+
+      // Alcove glow light.
+      const glow = new THREE.PointLight(color, 42, 22);
+      glow.position.set(0, 3.4, zc);
+      scene.add(glow);
+
+      // T-shirt on the wall (left side) — framed like gallery art.
+      const frameMat = new THREE.MeshStandardMaterial({
+        color: 0x1a1a3a, roughness: 0.4, metalness: 0.6,
+      });
+      const frame = new THREE.Mesh(new THREE.BoxGeometry(3.6, 4.4, 0.18), frameMat);
+      frame.position.set(-HALL_W / 2 + 0.35, 3.1, zc);
+      frame.rotation.y = Math.PI / 2;
+      scene.add(frame);
+      // Neon frame edge.
+      const edge = new THREE.Mesh(
+        new THREE.BoxGeometry(3.8, 4.6, 0.1),
+        new THREE.MeshBasicMaterial({ color: color, transparent: true, opacity: 0.55 }),
+      );
+      edge.position.set(-HALL_W / 2 + 0.28, 3.1, zc);
+      edge.rotation.y = Math.PI / 2;
+      scene.add(edge);
+
+      loader.load(
+        alcove.shirt,
+        (tex) => {
+          tex.colorSpace = THREE.SRGBColorSpace;
+          const art = new THREE.Mesh(
+            new THREE.PlaneGeometry(3.2, 4.0),
+            new THREE.MeshBasicMaterial({ map: tex }),
+          );
+          art.position.set(-HALL_W / 2 + 0.46, 3.1, zc);
+          art.rotation.y = Math.PI / 2;
+          scene.add(art);
+        },
+        undefined,
+        () => {},
+      );
+
+      // Rank name in big neon (right side).
+      const nameTex = makeRankNameTexture(alcove.rank, alcove.color);
+      const namePlane = new THREE.Mesh(
+        new THREE.PlaneGeometry(5.2, 1.3),
+        new THREE.MeshBasicMaterial({ map: nameTex, transparent: true, depthWrite: false }),
+      );
+      namePlane.position.set(HALL_W / 2 - 0.15, 4.1, zc);
+      namePlane.rotation.y = -Math.PI / 2;
+      scene.add(namePlane);
+      billboards.push(namePlane);
+
+      // "YOU ARE HERE" marker for current rank.
+      if (i === rankIndex) {
+        const hereTex = makeRankNameTexture("★ YOU ★", "#ffffff");
+        const here = new THREE.Mesh(
+          new THREE.PlaneGeometry(2.6, 0.65),
+          new THREE.MeshBasicMaterial({ map: hereTex, transparent: true, depthWrite: false }),
+        );
+        here.position.set(HALL_W / 2 - 0.15, 3.1, zc);
+        here.rotation.y = -Math.PI / 2;
+        scene.add(here);
+        billboards.push(here);
+      }
+
+      // Candles — small glowing flames along the floor, more per rank.
+      const candleGeo = new THREE.CylinderGeometry(0.09, 0.11, 0.5, 8);
+      const candleMat = new THREE.MeshStandardMaterial({ color: 0x3a2c1a, roughness: 0.8 });
+      const flameGeo = new THREE.SphereGeometry(0.09, 8, 8);
+      for (let c = 0; c < alcove.candles; c++) {
+        const side = c % 2 === 0 ? -1 : 1;
+        const cx = side * (HALL_W / 2 - 1.1);
+        const cz = zc - SECTION / 2 + 2 + (c * (SECTION - 4)) / Math.max(1, alcove.candles - 1);
+        const candle = new THREE.Mesh(candleGeo, candleMat);
+        candle.position.set(cx, 0.25, cz);
+        scene.add(candle);
+        const flame = new THREE.PointLight(0xffb347, 7, 7);
+        flame.position.set(cx, 0.75, cz);
+        flame.userData = { base: 7, ph: Math.random() * Math.PI * 2, cz };
+        scene.add(flame);
+        candleFlames.push(flame);
+        const flameMesh = new THREE.Mesh(
+          flameGeo,
+          new THREE.MeshBasicMaterial({ color: 0xffd27a }),
+        );
+        flameMesh.position.set(cx, 0.62, cz);
+        flameMesh.userData = { ph: flame.userData.ph };
+        scene.add(flameMesh);
+        (flame.userData as { mesh?: THREE.Mesh }).mesh = flameMesh;
+      }
+
+      // Richness: extra floating orbs for higher ranks.
+      const orbCount = i * 4;
+      const orbGeo = new THREE.SphereGeometry(0.08, 8, 8);
+      for (let o = 0; o < orbCount; o++) {
+        const m = new THREE.Mesh(
+          orbGeo,
+          new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.7 }),
+        );
+        const a = Math.random() * Math.PI * 2;
+        const r = 1.5 + Math.random() * 2.5;
+        m.position.set(Math.cos(a) * r, 1.5 + Math.random() * 3.5, zc + (Math.random() - 0.5) * SECTION * 0.7);
+        m.userData = { y0: m.position.y, ph: Math.random() * Math.PI * 2 };
+        scene.add(m);
+        orbs.push(m);
+      }
     });
-    // Start with a wide view of the ranks.
-    stops.unshift({
-      pos: new THREE.Vector3(0, 2.6, 8.2),
-      look: new THREE.Vector3(0, 2.4, 0),
-      quote: -1,
+
+
+    // Grand finale: golden Pillar monument at the very end.
+    const endZ = -TOTAL - 2;
+    const monMat = new THREE.MeshStandardMaterial({
+      color: 0x3a2f14, emissive: 0xfbbf24, emissiveIntensity: 0.55,
+      roughness: 0.25, metalness: 0.85,
     });
+    const monument = new THREE.Mesh(new THREE.CylinderGeometry(0.7, 1.0, 5.4, 14), monMat);
+    monument.position.set(0, 2.7, endZ);
+    scene.add(monument);
+    const mRingA = new THREE.Mesh(
+      new THREE.TorusGeometry(2.0, 0.05, 10, 64),
+      new THREE.MeshBasicMaterial({ color: 0xfbbf24, transparent: true, opacity: 0.9 }),
+    );
+    mRingA.position.set(0, 3.6, endZ);
+    mRingA.rotation.x = Math.PI / 2 - 0.4;
+    scene.add(mRingA);
+    const mRingB = new THREE.Mesh(
+      new THREE.TorusGeometry(2.5, 0.05, 10, 64),
+      new THREE.MeshBasicMaterial({ color: 0xe879f9, transparent: true, opacity: 0.9 }),
+    );
+    mRingB.position.set(0, 3.2, endZ);
+    mRingB.rotation.x = Math.PI / 2 + 0.35;
+    mRingB.rotation.y = 0.5;
+    scene.add(mRingB);
+    const endLight = new THREE.PointLight(0xfbbf24, 90, 30);
+    endLight.position.set(0, 4.5, endZ + 2);
+    scene.add(endLight);
+
+    // ---- Camera tour: glide down the hallway, pause at each alcove ----
+    type Stop = { pos: THREE.Vector3; look: THREE.Vector3; alcove: number };
+    const stops: Stop[] = ALCOVES.map((_, i) => {
+      const zc = -(i * SECTION + SECTION / 2);
+      return {
+        pos: new THREE.Vector3(1.6, 2.3, zc + 5.2),
+        look: new THREE.Vector3(-1.2, 2.8, zc - 1),
+        alcove: i,
+      };
+    });
+    // Opening wide shot.
+    stops.unshift({ pos: new THREE.Vector3(0, 2.8, 7), look: new THREE.Vector3(0, 2.6, -12), alcove: -1 });
+    // Finale at the monument.
+    stops.push({ pos: new THREE.Vector3(0, 2.6, endZ + 9), look: new THREE.Vector3(0, 3.2, endZ), alcove: 4 });
 
     let stopIdx = 0;
     let stopTime = 0;
-    const STOP_DURATION = 7; // seconds per stop
-    const TRANSITION = 2.2;
-    let transT = 0;
-    let fromPos = stops[0].pos.clone();
-    let fromLook = stops[0].look.clone();
+    const STOP_DURATION = 8;
+    const TRANSITION = 2.6;
+    let transT = 1;
+    const fromPos = stops[0].pos.clone();
+    const fromLook = stops[0].look.clone();
     const tmpPos = new THREE.Vector3();
     const tmpLook = new THREE.Vector3();
+    const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
 
-    // Manual look (drag) offsets the tour.
     let yaw = 0;
     let pitch = 0;
     let dragging = false;
@@ -411,7 +388,7 @@ export function WisdomRoom3D({ score }: { score: number }) {
       if (!dragging) return;
       yaw -= (e.clientX - lastX) * 0.004;
       pitch -= (e.clientY - lastY) * 0.0025;
-      pitch = Math.max(-0.5, Math.min(0.5, pitch));
+      pitch = Math.max(-0.45, Math.min(0.45, pitch));
       lastX = e.clientX;
       lastY = e.clientY;
     };
@@ -422,38 +399,32 @@ export function WisdomRoom3D({ score }: { score: number }) {
 
     let raf = 0;
     const clock = new THREE.Clock();
-    const easeInOut = (t: number) => (t < 0.5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2);
-
     const animate = () => {
       raf = requestAnimationFrame(animate);
       const dt = Math.min(clock.getDelta(), 0.1);
       const t = clock.elapsedTime;
 
-      // Ambient animation.
-      central.rotation.y = t * 0.25;
-      centralMat.emissiveIntensity = 0.75 + Math.sin(t * 1.8) * 0.25;
-      ringA.rotation.z = t * 0.22;
-      ringB.rotation.z = -t * 0.16;
-      orb.position.y = 5.75 + Math.sin(t * 1.4) * 0.16;
-      orbLight.intensity = 55 + Math.sin(t * 1.8) * 12;
-      disc.rotation.z = t * 0.05;
-      for (const o of orbs) {
-        const u = o.userData;
-        u.a += dt * u.speed * 0.4;
-        o.position.x = Math.cos(u.a) * u.r;
-        o.position.z = Math.sin(u.a) * u.r;
-        o.position.y = u.y0 + Math.sin(t * 0.9 + u.ph) * 0.35;
+      // Candle flicker.
+      for (const f of candleFlames) {
+        const u = f.userData as { base: number; ph: number; mesh?: THREE.Mesh };
+        f.intensity = u.base + Math.sin(t * 11 + u.ph) * 1.6 + Math.sin(t * 23 + u.ph) * 0.8;
+        if (u.mesh) {
+          const s = 1 + Math.sin(t * 13 + u.ph) * 0.18;
+          u.mesh.scale.set(s, 1 + Math.sin(t * 17 + u.ph) * 0.25, s);
+        }
       }
-      plaqueMeshes.forEach((p, i) => {
-        const s = 1 + Math.sin(t * 1.6 + i) * 0.02;
-        p.scale.set(s, s, 1);
-      });
-      pillarMeshes.forEach((m, i) => {
-        if (i === rankIndex) m.emissiveIntensity = 0.9 + Math.sin(t * 2.4) * 0.3;
-      });
+      // Orbs drift.
+      for (const o of orbs) {
+        const u = o.userData as { y0: number; ph: number };
+        o.position.y = u.y0 + Math.sin(t * 0.8 + u.ph) * 0.4;
+      }
+      // Monument rings rotate.
+      mRingA.rotation.z = t * 0.25;
+      mRingB.rotation.z = -t * 0.18;
+      monMat.emissiveIntensity = 0.5 + Math.sin(t * 1.6) * 0.15;
       for (const b of billboards) b.quaternion.copy(camera.quaternion);
 
-      // Tour logic.
+      // Tour.
       if (!pausedRef.current) {
         stopTime += dt;
         const stop = stops[stopIdx];
@@ -465,16 +436,14 @@ export function WisdomRoom3D({ score }: { score: number }) {
         } else {
           tmpPos.copy(stop.pos);
           tmpLook.copy(stop.look);
-          // Gentle sway while dwelling.
-          tmpPos.x += Math.sin(t * 0.5) * 0.15;
+          tmpPos.x += Math.sin(t * 0.45) * 0.12;
           if (stopTime >= STOP_DURATION) {
             stopTime = 0;
             transT = 0;
             fromPos.copy(stop.pos);
             fromLook.copy(stop.look);
             stopIdx = (stopIdx + 1) % stops.length;
-            const nq = stops[stopIdx].quote;
-            setActiveQuoteRef.current(nq);
+            setAlcoveRef.current(stops[stopIdx].alcove);
           }
         }
       } else {
@@ -483,21 +452,19 @@ export function WisdomRoom3D({ score }: { score: number }) {
       }
 
       camera.position.copy(tmpPos);
-      const lookDir = tmpLook.clone().sub(tmpPos).normalize();
-      // Apply manual yaw/pitch offset.
+      const dir = tmpLook.clone().sub(tmpPos).normalize();
       const yawQ = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), yaw);
-      lookDir.applyQuaternion(yawQ);
-      lookDir.y += pitch;
-      lookDir.normalize();
-      camera.lookAt(tmpPos.clone().add(lookDir));
-
+      dir.applyQuaternion(yawQ);
+      dir.y += pitch;
+      dir.normalize();
+      camera.lookAt(tmpPos.clone().add(dir));
       renderer.render(scene, camera);
     };
     animate();
 
     const onResize = () => {
       const nw = mount.clientWidth;
-      const nh = Math.min(window.innerHeight * 0.62, 560);
+      const nh = Math.min(window.innerHeight * 0.58, 520);
       camera.aspect = nw / nh;
       camera.updateProjectionMatrix();
       renderer.setSize(nw, nh);
@@ -514,8 +481,13 @@ export function WisdomRoom3D({ score }: { score: number }) {
         const mesh = o as THREE.Mesh;
         if (mesh.geometry) mesh.geometry.dispose();
         const mat = mesh.material as THREE.Material | THREE.Material[];
-        if (Array.isArray(mat)) mat.forEach((m) => { const mm = m as THREE.MeshBasicMaterial; if (mm.map) mm.map.dispose(); m.dispose(); });
-        else if (mat) { const mm = mat as THREE.MeshBasicMaterial; if (mm.map) mm.map.dispose(); mat.dispose(); }
+        const dispose = (m: THREE.Material) => {
+          const mm = m as THREE.MeshBasicMaterial;
+          if (mm.map) mm.map.dispose();
+          m.dispose();
+        };
+        if (Array.isArray(mat)) mat.forEach(dispose);
+        else if (mat) dispose(mat);
       });
       renderer.dispose();
       if (mount.contains(renderer.domElement)) mount.removeChild(renderer.domElement);
@@ -534,7 +506,7 @@ export function WisdomRoom3D({ score }: { score: number }) {
         </div>
         <h1 className="font-display text-2xl font-bold">The Hall of Becoming</h1>
         <p className="text-muted">
-          This sacred hall opens to those who reach the{" "}
+          This sacred hallway opens to those who reach the{" "}
           <span className="font-semibold text-ink">Sprout</span> rank. Keep doing
           chores, saving, and creating — you're on your way.
         </p>
@@ -549,7 +521,7 @@ export function WisdomRoom3D({ score }: { score: number }) {
     );
   }
 
-  const q = activeQuote >= 0 ? QUOTES[activeQuote] : null;
+  const alcove = activeAlcove >= 0 ? ALCOVES[activeAlcove] : null;
 
   return (
     <div className="mx-auto max-w-3xl space-y-4 px-4 py-6">
@@ -559,48 +531,78 @@ export function WisdomRoom3D({ score }: { score: number }) {
         </Button>
         <Button variant="outline" size="sm" onClick={() => setPaused((p) => !p)} className="gap-1">
           {paused ? <Play className="size-4" /> : <Pause className="size-4" />}
-          {paused ? "Resume tour" : "Pause"}
+          {paused ? "Resume" : "Pause"}
         </Button>
       </div>
       <div className="text-center">
         <p className="text-xs font-semibold uppercase tracking-widest text-accent">
-          A sacred hall of the Society
+          Walk the path of becoming
         </p>
         <h1 className="font-display text-3xl font-bold">The Hall of Becoming</h1>
       </div>
 
-      <div ref={mountRef} className="overflow-hidden rounded-2xl border border-accent/20" style={{ minHeight: 380 }} />
+      <div ref={mountRef} className="overflow-hidden rounded-2xl border border-accent/20" style={{ minHeight: 360 }} />
 
-      {/* Big readable quote card */}
-      <div className="min-h-28">
-        {q ? (
-          <Card key={activeQuote} className="screen-enter border-accent/30 p-5 text-center">
-            <Quote className="mx-auto mb-2 size-5 text-accent" />
-            <p className="font-display text-lg leading-relaxed">"{q.text}"</p>
-            <p className="mt-2 text-sm text-muted">— {q.author}</p>
+      {/* Alcove story card */}
+      <div className="min-h-44">
+        {alcove ? (
+          <Card key={activeAlcove} className="screen-enter space-y-3 border-accent/30 p-5">
+            <div className="flex items-center gap-2">
+              <span
+                className="inline-block size-3 rounded-full"
+                style={{ backgroundColor: alcove.color, boxShadow: `0 0 12px ${alcove.color}` }}
+              />
+              <p className="font-display text-xl font-bold" style={{ color: alcove.color }}>
+                {alcove.rank}
+              </p>
+              {ALCOVES.indexOf(alcove) === rankIndex && (
+                <span className="rounded-full bg-accent px-2 py-0.5 text-[11px] font-bold text-white">
+                  YOUR RANK
+                </span>
+              )}
+            </div>
+            <p className="text-[15px] leading-relaxed">{alcove.story}</p>
+            <div className="rounded-xl bg-surface p-4">
+              <Quote className="mb-1 size-4" style={{ color: alcove.color }} />
+              <p className="font-display text-base italic">"{alcove.quote}"</p>
+              <p className="mt-1 text-sm text-muted">— {alcove.quoteBy}</p>
+            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              className="gap-1"
+              onClick={() => setScreen("market")}
+            >
+              <Shirt className="size-4" /> See the {alcove.rank} shirt
+            </Button>
           </Card>
         ) : (
           <Card className="p-5 text-center">
-            <p className="font-display text-lg">The Ranks of the Society</p>
+            <p className="font-display text-lg">The Hall of Becoming</p>
             <p className="mt-1 text-sm text-muted">
-              You are <span className="font-semibold text-ink">{rank.name}</span> — {rank.tagline}
+              Five ranks. Five stories. One journey — yours.
             </p>
-            <div className="mt-3 flex justify-center gap-2">
-              {RANKS.map((r, i) => (
-                <span
-                  key={r.name}
-                  className={`rounded-full px-3 py-1 text-xs font-semibold ${i === rankIndex ? "bg-accent text-white" : i < rankIndex ? "bg-accent-soft text-accent" : "bg-surface text-muted"}`}
-                >
-                  {r.name}
-                </span>
-              ))}
-            </div>
           </Card>
         )}
       </div>
 
+      {/* Progress dots */}
+      <div className="flex justify-center gap-2">
+        {ALCOVES.map((a, i) => (
+          <span
+            key={a.rank}
+            className="size-2.5 rounded-full transition-all"
+            style={{
+              backgroundColor: i === activeAlcove ? a.color : "var(--surface)",
+              boxShadow: i === activeAlcove ? `0 0 10px ${a.color}` : "none",
+              transform: i === activeAlcove ? "scale(1.35)" : "scale(1)",
+            }}
+          />
+        ))}
+      </div>
+
       <p className="text-center text-xs text-muted">
-        Sit back — the hall guides you. Drag to peek around, tap pause anytime.
+        Sit back — the hall guides you. Each alcove grows richer than the last.
       </p>
     </div>
   );
