@@ -30,31 +30,31 @@ interface RectObs { x: number; y: number; w: number; h: number; label?: string; 
    - Buildings at perimeter where the visual structures are
    - Gardens and pathways: open */
 const CIRCLE_OBS: CircleObs[] = [
-  { x: 800, y: 600, r: 135 }, // central pillar monument
+  { x: 800, y: 600, r: 75 }, // central pillar monument (just the pillar, rings are walkable)
 ];
 
 const RECT_OBS: RectObs[] = [
-  { x: 620, y: 30, w: 360, h: 110, label: "Hall of Becoming", color: "#f472b6" },
-  { x: 80, y: 90, w: 200, h: 150, label: "Chore Village", color: "#4ade80" },
-  { x: 1320, y: 90, w: 200, h: 150, label: "Vault Mountain", color: "#fbbf24" },
-  { x: 80, y: 960, w: 200, h: 150, label: "Studio Island", color: "#e879f9" },
-  { x: 1320, y: 960, w: 200, h: 150, label: "Market Harbor", color: "#a78bfa" },
-  { x: 620, y: 1060, w: 360, h: 110, label: "Learning Lagoon", color: "#38bdf8" },
+  { x: 660, y: 20, w: 280, h: 80, label: "Hall of Becoming", color: "#f472b6" },
+  { x: 40, y: 60, w: 140, h: 100, label: "Chore Village", color: "#4ade80" },
+  { x: 1420, y: 60, w: 140, h: 100, label: "Vault Mountain", color: "#fbbf24" },
+  { x: 40, y: 1040, w: 140, h: 100, label: "Studio Island", color: "#e879f9" },
+  { x: 1420, y: 1040, w: 140, h: 100, label: "Market Harbor", color: "#a78bfa" },
+  { x: 660, y: 1100, w: 280, h: 80, label: "Learning Lagoon", color: "#38bdf8" },
 ];
 
 const ORB_SPOTS: Vec[] = [
-  { x: 350, y: 600 }, { x: 1250, y: 600 }, { x: 800, y: 280 },
-  { x: 280, y: 850 }, { x: 1320, y: 850 }, { x: 550, y: 350 },
-  { x: 1050, y: 350 }, { x: 800, y: 920 },
+  { x: 350, y: 600 }, { x: 1250, y: 600 }, { x: 800, y: 300 },
+  { x: 300, y: 900 }, { x: 1300, y: 900 }, { x: 500, y: 300 },
+  { x: 1100, y: 300 }, { x: 800, y: 950 },
 ];
 
 const KEEPER_POS: Vec = { x: 800, y: 800 };
 const MAYA_POS: Vec = { x: 1050, y: 950 };
 const PEER_POS: Vec = { x: 550, y: 950 };
 const SAM_POS: Vec = { x: 800, y: 200 };
-const CHORE_DOOR: Vec = { x: 180, y: 280 };
-const VAULT_DOOR: Vec = { x: 1420, y: 280 };
-const MARKET_DOOR: Vec = { x: 1420, y: 1090 };
+const CHORE_DOOR: Vec = { x: 110, y: 200 };
+const VAULT_DOOR: Vec = { x: 1490, y: 200 };
+const MARKET_DOOR: Vec = { x: 1490, y: 1100 };
 
 const JOBS = [
   { id: "dishes", name: "Dish Dynamo", desc: "Wash the dinner dishes without being asked.", reward: 30 },
@@ -123,8 +123,17 @@ export function PillarGame() {
   const [mayaMemory, setMayaMemory] = useState<null | "good" | "bad">(null);
   const [marketChoice, setMarketChoice] = useState<null | string>(null);
   const [courage, setCourage] = useState(0);
-  const [chestMsg, setChestMsg] = useState<null | string>(null);
   const [trust, setTrust] = useState(50);
+  const [toasts, setToasts] = useState<Array<{ id: number; title: string; msg: string; color: string }>>([]);
+  const toastId = useRef(0);
+
+  const pushToast = (title: string, msg: string, color = "#fbbf24") => {
+    const id = ++toastId.current;
+    setToasts((t) => [...t.slice(-2), { id, title, msg, color }]);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
+  };
+  const toastRef = useRef(pushToast);
+  toastRef.current = pushToast;
 
   const trustRef = useRef(50);
   const stateRef = useRef({
@@ -216,7 +225,8 @@ export function PillarGame() {
   const startQuest = useCallback(() => {
     questRef.current = "active";
     setQuest("active");
-    setDialog("8 orbs glow across the plaza. Storms will slow you, Doubtlings will hunt you. Plan your path — the brave earn more. Go!");
+    setDialog(null);
+    toastRef.current("Quest started!", "8 orbs glow across the plaza. Storms slow you, Doubtlings hunt you. The brave earn more.", "#22d3ee");
   }, []);
 
   const talkToKeeper = () => {
@@ -246,9 +256,14 @@ export function PillarGame() {
           life: 1.2 + Math.random() * 0.8, color: colors[i % colors.length],
         });
       }
-      setDialog(hitCount === 0
-        ? "FLAWLESS! Not a single Doubtling touched you. That's not luck — that's mastery. +15 Trust, +20 Courage. The plaza whispers your name."
-        : "You did it! Every orb recovered. That's what a Pillar does — protects what's valuable. Take 50 Units. You've earned them.");
+      setDialog(null);
+      toastRef.current(
+        hitCount === 0 ? "FLAWLESS!" : "Quest complete!",
+        hitCount === 0
+          ? "Not a single Doubtling touched you. +15 Trust, +20 Courage. The plaza whispers your name."
+          : `Every orb recovered in ${hitCount} hits. That's what a Pillar does. +50 Units.`,
+        "#fbbf24"
+      );
     } else if (q === "active") {
       setDialog(`You carry ${held} of 8 orbs. ${8 - held} still out there. Watch the shadows, mind the storms.`);
     } else {
@@ -311,13 +326,13 @@ export function PillarGame() {
       const nt = Math.min(100, trustRef.current + 10);
       trustRef.current = nt;
       setTrust(nt);
-      setDialog(msg + " Trust up — Doubtlings weaken.");
+      toastRef.current("Good choice!", `${msg} Trust up — Doubtlings weaken.`, "#4ade80");
     };
     const bad = (msg: string, penalty = 10) => {
       const nt = Math.max(0, trustRef.current - penalty);
       trustRef.current = nt;
       setTrust(nt);
-      setDialog(msg + " Trust down — Doubtlings grow bolder.");
+      toastRef.current("Tough call...", `${msg} Trust down — Doubtlings grow bolder.`, "#ef4444");
     };
     if (kind === "maya") {
       const setMem = (m: "good" | "bad") => {
@@ -354,18 +369,18 @@ export function PillarGame() {
       const nt = Math.min(100, trustRef.current + 5);
       trustRef.current = nt;
       setTrust(nt);
-      setChestMsg("✨ +5 Trust — the Doubtlings shrink.");
+      pushToast("Treasure!", "+5 Trust — the Doubtlings shrink.", "#4ade80");
     } else if (roll < 0.7) {
       setCourage((c) => c + 10);
       stateRef.current.courage += 10;
-      setChestMsg("💪 +10 Courage — bravery compounds.");
+      pushToast("Treasure!", "+10 Courage — bravery compounds.", "#fbbf24");
     } else {
       const wisdoms = [
         "💎 \"Wealth is what you don't see.\"",
         "💎 \"A habit saved is a fortune built.\"",
         "💎 \"The best investment is yourself.\"",
       ];
-      setChestMsg(wisdoms[Math.floor(Math.random() * wisdoms.length)]);
+      pushToast("Wisdom found!", wisdoms[Math.floor(Math.random() * wisdoms.length)], "#e879f9");
     }
     const S = stateRef.current;
     for (let i = 0; i < 20; i++) {
@@ -373,14 +388,13 @@ export function PillarGame() {
       const sp = 60 + Math.random() * 120;
       S.particles.push({ x: chest.x, y: chest.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.8 + Math.random() * 0.4, color: "#fbbf24" });
     }
-    setTimeout(() => setChestMsg(null), 4000);
   };
 
   const acceptJob = (id: string) => {
     if (missionsDone.includes(id)) return;
     setMissionsDone((m) => [...m, id]);
     setInterior(null);
-    setDialog("Mission accepted! Do this chore in real life, tell your parent — Units incoming.");
+    pushToast("Mission accepted!", "Do this chore in real life, tell your parent — Units incoming.", "#4ade80");
   };
 
   /* ------------------------------ game loop ------------------------------ */
@@ -530,7 +544,7 @@ export function PillarGame() {
       if (emotion) {
         const encounters = recordEncounter(emotionId);
         const count = encounters[emotionId];
-        setDialog(`${emotion.icon} ${emotion.name}: "${emotion.whisper}"\n\nTruth: ${emotion.truth}\n\nFaced ${count}×. Growing stronger.`);
+        toastRef.current(`${emotion.icon} ${emotion.name}`, `"${emotion.whisper}" — ${emotion.truth} (Faced ${count}×)`, emotion.color);
       }
     };
 
@@ -1160,9 +1174,14 @@ export function PillarGame() {
         </div>
       )}
 
-      {chestMsg && (
-        <div className="absolute inset-x-8 top-16 rounded-2xl border border-amber-300/40 bg-black/85 p-4 text-center backdrop-blur-sm">
-          <p className="text-sm leading-relaxed text-white">{chestMsg}</p>
+      {toasts.length > 0 && (
+        <div className="pointer-events-none absolute inset-x-3 top-14 z-30 space-y-2">
+          {toasts.map((t) => (
+            <div key={t.id} className="rounded-2xl border bg-black/85 p-3 backdrop-blur-sm" style={{ borderColor: `${t.color}55` }}>
+              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: t.color }}>{t.title}</p>
+              <p className="mt-0.5 text-sm leading-snug text-white">{t.msg}</p>
+            </div>
+          ))}
         </div>
       )}
 
@@ -1202,13 +1221,12 @@ export function PillarGame() {
         </div>
       )}
 
-      {/* Real-life gates panel (collapsible) */}
-      <details className="absolute bottom-3 left-3 rounded-2xl border border-accent/20 bg-black/70 p-3 backdrop-blur-sm">
-        <summary className="cursor-pointer text-xs font-bold text-white">Your life unlocks the game</summary>
-        <div className="mt-2 space-y-1 text-[11px] text-white/80">
-          <p>{vaultUnlocked ? "✅" : "🔒"} Vault Mountain — {vaultUnlocked ? "open" : `save ${50 - vault} more`}</p>
-          <p>{marketUnlocked ? "✅" : "🔒"} Market Harbor — {marketUnlocked ? "open" : `${3 - choresDone} chores to go`}</p>
-          <p>🏅 {rank.name} · {choresDone} chores · {vault} saved</p>
+      {/* Real-life gates panel — top-left, compact, never overlaps dialogs */}
+      <details className="absolute left-3 top-14 rounded-xl border border-accent/20 bg-black/70 px-2.5 py-1.5 backdrop-blur-sm">
+        <summary className="cursor-pointer text-[11px] font-bold text-white">🔓 Unlocks</summary>
+        <div className="mt-1.5 space-y-1 text-[11px] text-white/80">
+          <p>{vaultUnlocked ? "✅" : "🔒"} Vault — {vaultUnlocked ? "open" : `${50 - vault} to save`}</p>
+          <p>{marketUnlocked ? "✅" : "🔒"} Market — {marketUnlocked ? "open" : `${3 - choresDone} chores left`}</p>
         </div>
       </details>
 
