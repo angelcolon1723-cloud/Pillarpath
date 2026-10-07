@@ -109,6 +109,21 @@ export function PillarGame() {
     const ctx = canvas.getContext("2d")!;
     const S = stateRef.current;
 
+    /* Sprite loading */
+    const sprites: Record<string, HTMLImageElement> = {};
+    const spritePaths: Record<string, string> = {
+      player: "/designs/game/game-player.webp",
+      doubtling: "/designs/game/game-doubtling.webp",
+      orb: "/designs/game/game-orb.webp",
+      keeper: "/designs/game/game-keeper.webp",
+      plaza: "/designs/game/game-plaza-bg.webp",
+    };
+    for (const [k, src] of Object.entries(spritePaths)) {
+      const img = new Image();
+      img.src = src;
+      sprites[k] = img;
+    }
+
     const resize = () => {
       const w = wrap.clientWidth;
       const h = Math.min(window.innerHeight * 0.62, 560);
@@ -298,24 +313,18 @@ export function PillarGame() {
       ctx.save();
       ctx.translate(-S.cam.x, -S.cam.y);
 
-      // Ground.
-      const g = ctx.createLinearGradient(0, 0, 0, WORLD_H);
-      g.addColorStop(0, "#0a0f24");
-      g.addColorStop(0.5, "#070b1c");
-      g.addColorStop(1, "#0a0f24");
-      ctx.fillStyle = g;
-      ctx.fillRect(S.cam.x - 20, S.cam.y - 20, vw + 40, vh + 40);
-
-      // Stars.
-      ctx.fillStyle = "rgba(200,220,255,0.5)";
-      for (let i = 0; i < 90; i++) {
-        const sx = ((i * 397) % WORLD_W);
-        const sy = ((i * 631) % WORLD_H);
-        const tw = 0.4 + 0.6 * Math.abs(Math.sin(S.time * 1.5 + i));
-        ctx.globalAlpha = 0.25 * tw;
-        ctx.fillRect(sx, sy, 2, 2);
+      // Painted plaza backdrop (falls back to gradient while loading).
+      const plazaImg = sprites.plaza;
+      if (plazaImg.complete && plazaImg.naturalWidth > 0) {
+        ctx.drawImage(plazaImg, 0, 0, WORLD_W, WORLD_H);
+      } else {
+        const g = ctx.createLinearGradient(0, 0, 0, WORLD_H);
+        g.addColorStop(0, "#0a0f24");
+        g.addColorStop(0.5, "#070b1c");
+        g.addColorStop(1, "#0a0f24");
+        ctx.fillStyle = g;
+        ctx.fillRect(S.cam.x - 20, S.cam.y - 20, vw + 40, vh + 40);
       }
-      ctx.globalAlpha = 1;
 
       // Plaza ring around monument.
       ctx.strokeStyle = "rgba(34,211,238,0.25)";
@@ -379,50 +388,44 @@ export function PillarGame() {
         }
       }
 
-      // Orbs.
+      // Orbs — sprite with bob + pulse.
+      const orbImg = sprites.orb;
       for (const o of S.orbs) {
         if (o.taken) continue;
         const bob = Math.sin(S.time * 3 + o.ph) * 5;
         const pulse = 1 + Math.sin(S.time * 4 + o.ph) * 0.12;
-        ctx.save();
-        ctx.translate(o.x, o.y + bob);
-        ctx.scale(pulse, pulse);
-        ctx.shadowColor = "#22d3ee";
-        ctx.shadowBlur = 18;
-        const og = ctx.createRadialGradient(0, 0, 2, 0, 0, 14);
-        og.addColorStop(0, "#fff");
-        og.addColorStop(0.4, "#67e8f9");
-        og.addColorStop(1, "#0e7490");
-        ctx.fillStyle = og;
-        ctx.beginPath();
-        ctx.arc(0, 0, 13, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        const size = 44 * pulse;
+        if (orbImg.complete && orbImg.naturalWidth > 0) {
+          ctx.drawImage(orbImg, o.x - size / 2, o.y + bob - size / 2, size, size);
+        } else {
+          ctx.save();
+          ctx.translate(o.x, o.y + bob);
+          ctx.shadowColor = "#22d3ee";
+          ctx.shadowBlur = 18;
+          ctx.fillStyle = "#67e8f9";
+          ctx.beginPath();
+          ctx.arc(0, 0, 13, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
       }
 
-      // Keeper NPC.
+      // Keeper NPC — sprite.
       {
+        const keeperImg = sprites.keeper;
         const bob = Math.sin(S.time * 2) * 3;
-        ctx.save();
-        ctx.translate(KEEPER_POS.x, KEEPER_POS.y + bob);
-        ctx.shadowColor = "#fbbf24";
-        ctx.shadowBlur = 20;
-        ctx.fillStyle = "#fbbf24";
-        ctx.beginPath();
-        ctx.arc(0, 0, 18, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        ctx.fillStyle = "#92400e";
-        ctx.beginPath();
-        ctx.arc(-6, -4, 3, 0, Math.PI * 2);
-        ctx.arc(6, -4, 3, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.strokeStyle = "#92400e";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(0, 4, 7, 0.2, Math.PI - 0.2);
-        ctx.stroke();
-        ctx.restore();
+        const ks = 64;
+        if (keeperImg.complete && keeperImg.naturalWidth > 0) {
+          ctx.drawImage(keeperImg, KEEPER_POS.x - ks / 2, KEEPER_POS.y + bob - ks / 2, ks, ks);
+        } else {
+          ctx.save();
+          ctx.translate(KEEPER_POS.x, KEEPER_POS.y + bob);
+          ctx.fillStyle = "#fbbf24";
+          ctx.beginPath();
+          ctx.arc(0, 0, 18, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
         // Name tag.
         ctx.fillStyle = "rgba(0,0,0,0.55)";
         roundRect(ctx, KEEPER_POS.x - 45, KEEPER_POS.y - 44 + bob, 90, 20, 8);
@@ -440,65 +443,56 @@ export function PillarGame() {
         }
       }
 
-      // Doubtlings — shadow creatures.
+      // Doubtlings — sprite shadow creatures.
+      const doubtImg = sprites.doubtling;
       for (const d of S.doubtlings) {
         const wob = Math.sin(S.time * 6 + d.ph) * 4;
-        ctx.save();
-        ctx.translate(d.x, d.y + wob);
-        // Shadowy body.
-        ctx.fillStyle = "rgba(30,20,60,0.92)";
-        ctx.shadowColor = "#a78bfa";
-        ctx.shadowBlur = 14;
-        ctx.beginPath();
-        ctx.arc(0, 0, 15, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        // Angry glowing eyes.
-        const lookX = Math.max(-4, Math.min(4, (p.x - d.x) / 40));
-        ctx.fillStyle = "#e879f9";
-        ctx.beginPath();
-        ctx.arc(-5 + lookX, -3, 3.2, 0, Math.PI * 2);
-        ctx.arc(5 + lookX, -3, 3.2, 0, Math.PI * 2);
-        ctx.fill();
-        // Jagged mouth.
-        ctx.strokeStyle = "#e879f9";
-        ctx.lineWidth = 1.6;
-        ctx.beginPath();
-        ctx.moveTo(-7, 6);
-        ctx.lineTo(-3, 9);
-        ctx.lineTo(0, 6);
-        ctx.lineTo(3, 9);
-        ctx.lineTo(7, 6);
-        ctx.stroke();
-        ctx.restore();
+        const ds = 56;
+        // Face toward the player when hunting.
+        const dx = p.x - d.x;
+        const flip = dx < 0 ? -1 : 1;
+        if (doubtImg.complete && doubtImg.naturalWidth > 0) {
+          ctx.save();
+          ctx.translate(d.x, d.y + wob);
+          ctx.scale(flip, 1);
+          ctx.drawImage(doubtImg, -ds / 2, -ds / 2, ds, ds);
+          ctx.restore();
+        } else {
+          ctx.save();
+          ctx.translate(d.x, d.y + wob);
+          ctx.fillStyle = "rgba(30,20,60,0.92)";
+          ctx.beginPath();
+          ctx.arc(0, 0, 15, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
       }
 
-      // Player — little glowing traveler.
+      // Player — sprite traveler.
       {
+        const playerImg = sprites.player;
         const moving = il > 0.1;
         const bob = moving ? Math.abs(Math.sin(S.time * 10)) * 4 : Math.sin(S.time * 2.5) * 2;
-        ctx.save();
-        ctx.translate(p.x, p.y - bob);
-        ctx.shadowColor = "#22d3ee";
-        ctx.shadowBlur = 22;
-        const pg = ctx.createRadialGradient(0, 0, 4, 0, 0, PLAYER_R + 4);
-        pg.addColorStop(0, "#fff");
-        pg.addColorStop(0.5, "#67e8f9");
-        pg.addColorStop(1, "#0891b2");
-        ctx.fillStyle = pg;
-        ctx.beginPath();
-        ctx.arc(0, 0, PLAYER_R, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.shadowBlur = 0;
-        // Eyes look toward movement.
-        const ex = il > 0.1 ? ix * 4 : 0;
-        const ey = il > 0.1 ? iy * 3 : 0;
-        ctx.fillStyle = "#083344";
-        ctx.beginPath();
-        ctx.arc(-5 + ex, -2 + ey, 2.6, 0, Math.PI * 2);
-        ctx.arc(5 + ex, -2 + ey, 2.6, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
+        const ps = 52;
+        // Face movement direction.
+        const flip = il > 0.1 && ix < -0.1 ? -1 : 1;
+        if (playerImg.complete && playerImg.naturalWidth > 0) {
+          ctx.save();
+          ctx.translate(p.x, p.y - bob);
+          ctx.scale(flip, 1);
+          ctx.shadowColor = "#22d3ee";
+          ctx.shadowBlur = 18;
+          ctx.drawImage(playerImg, -ps / 2, -ps / 2, ps, ps);
+          ctx.restore();
+        } else {
+          ctx.save();
+          ctx.translate(p.x, p.y - bob);
+          ctx.fillStyle = "#67e8f9";
+          ctx.beginPath();
+          ctx.arc(0, 0, PLAYER_R, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
       }
 
       // Particles.
