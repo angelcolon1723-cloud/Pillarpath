@@ -403,7 +403,7 @@ export const createPrintifyDrafts = createServerFn({ method: "POST" })
             placeholders: (a.positions.length ? a.positions : ["front"]).map(
               (position) => ({
                 position,
-                images: [{ id: uploadId, x: 0.5, y: 0.5, scale: 0.55, angle: 0 }],
+                images: [{ id: uploadId, x: 0.5, y: 0.45, scale: 0.85, angle: 0 }],
               }),
             ),
           }),
