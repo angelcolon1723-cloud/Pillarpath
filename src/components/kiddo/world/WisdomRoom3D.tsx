@@ -205,6 +205,7 @@ export function WisdomRoom3D({ score }: { score: number }) {
     });
 
     // Rank pillars in the center — 5 glowing monoliths.
+    const billboards: THREE.Mesh[] = [];
     const rankColors = [0x4ade80, 0x22d3ee, 0xa78bfa, 0xe879f9, 0xfbbf24];
     RANKS.forEach((r, i) => {
       const isCurrent = i === rankIndex;
@@ -270,7 +271,6 @@ export function WisdomRoom3D({ score }: { score: number }) {
     scene.add(stars);
 
     // Drag-to-look controls.
-    const billboards: THREE.Mesh[] = [];
     let dragging = false;
     let lastX = 0;
     let lastY = 0;
