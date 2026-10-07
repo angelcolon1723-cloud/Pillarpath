@@ -141,39 +141,16 @@ export function WisdomRoom3D({ score }: { score: number }) {
   const setScreen = useLedger((s) => s.setScreen);
   const { rank } = rankForScore(score);
   const rankIndex = RANKS.indexOf(rank);
-  const unlocked = score >= 50;
   const [journeyIdx, setJourneyIdx] = useState<number | null>(null);
   const [chapterIdx, setChapterIdx] = useState(0);
+
+  // Each journey unlocks at its rank's threshold — kids earn the story.
+  const journeyUnlocked = (i: number) => score >= RANKS[i].min;
 
   // Reset chapter when switching journeys.
   useEffect(() => {
     setChapterIdx(0);
   }, [journeyIdx]);
-
-  if (!unlocked) {
-    return (
-      <div className="mx-auto max-w-xl space-y-6 px-4 py-8 text-center">
-        <Button variant="ghost" size="sm" onClick={() => setScreen("home")} className="gap-1">
-          <ArrowLeft className="size-4" /> Back to the World
-        </Button>
-        <div className="mx-auto grid size-20 place-items-center rounded-full bg-accent-soft text-accent">
-          <Lock className="size-10" />
-        </div>
-        <h1 className="font-display text-2xl font-bold">The Hall of Becoming</h1>
-        <p className="text-muted">
-          Five journeys await — one for each rank. This sacred hall opens to those
-          who reach the <span className="font-semibold text-ink">Sprout</span> rank.
-        </p>
-        <div className="mx-auto h-2 max-w-xs overflow-hidden rounded-full bg-surface">
-          <div
-            className="h-full rounded-full bg-gradient-to-r from-cyan-400 to-fuchsia-500 transition-all"
-            style={{ width: `${Math.min(100, Math.round((score / 50) * 100))}%` }}
-          />
-        </div>
-        <p className="text-sm text-muted">{score} / 50 to unlock</p>
-      </div>
-    );
-  }
 
   // ---- Full-screen journey view ----
   if (journeyIdx !== null) {
@@ -326,39 +303,61 @@ export function WisdomRoom3D({ score }: { score: number }) {
         <h1 className="font-display text-3xl font-bold">The Hall of Becoming</h1>
         <p className="mx-auto mt-2 max-w-md text-sm text-muted">
           Walk each rank's path — from the first seed in dark soil to the golden
-          temple at the top of the climb. This is what becoming looks like.
+          temple at the top of the climb. Each journey unlocks when you earn its rank.
         </p>
       </div>
 
       <div className="space-y-4">
-        {JOURNEYS.map((j, i) => (
-          <button
-            key={j.rank}
-            onClick={() => setJourneyIdx(i)}
-            className="group relative block w-full overflow-hidden rounded-2xl border border-accent/20 text-left transition-transform active:scale-[0.99]"
-          >
-            <img src={j.bg} alt={`${j.rank} world`} className="h-40 w-full object-cover transition-transform duration-500 group-hover:scale-105" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
-            <div className="absolute inset-x-0 bottom-0 flex items-end justify-between p-4">
-              <div>
-                <div className="flex items-center gap-2">
-                  <span
-                    className="inline-block size-2.5 rounded-full"
-                    style={{ backgroundColor: j.color, boxShadow: `0 0 10px ${j.color}` }}
-                  />
-                  <p className="font-display text-xl font-bold text-white">{j.rank}</p>
-                  {i === rankIndex && (
-                    <span className="rounded-full px-2 py-0.5 text-[10px] font-bold text-black" style={{ backgroundColor: j.color }}>
-                      YOUR RANK
-                    </span>
-                  )}
+        {JOURNEYS.map((j, i) => {
+          const isLocked = !journeyUnlocked(i);
+          return (
+            <button
+              key={j.rank}
+              onClick={() => { if (!isLocked) setJourneyIdx(i); }}
+              className="group relative block w-full overflow-hidden rounded-2xl border border-accent/20 text-left transition-transform active:scale-[0.99]"
+            >
+              <img
+                src={j.bg}
+                alt={`${j.rank} world`}
+                className={`h-40 w-full object-cover transition-transform duration-500 group-hover:scale-105 ${isLocked ? "grayscale-[0.6] brightness-[0.55]" : ""}`}
+              />
+              <div className="absolute inset-0 bg-gradient-to-t from-black/85 via-black/30 to-transparent" />
+              {isLocked && (
+                <div className="absolute inset-0 grid place-items-center">
+                  <div className="flex flex-col items-center gap-1 rounded-2xl bg-black/60 px-5 py-3 backdrop-blur-sm">
+                    <Lock className="size-6 text-white/90" />
+                    <p className="text-sm font-semibold text-white">
+                      Earn the {j.rank} rank to unlock
+                    </p>
+                    <p className="text-xs text-white/70">{RANKS[i].min} pts needed</p>
+                  </div>
                 </div>
-                <p className="mt-0.5 line-clamp-1 text-sm text-white/75">{j.chapters[0].heading}</p>
+              )}
+              <div className="absolute inset-x-0 bottom-0 flex items-end justify-between p-4">
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span
+                      className="inline-block size-2.5 rounded-full"
+                      style={{ backgroundColor: j.color, boxShadow: `0 0 10px ${j.color}` }}
+                    />
+                    <p className="font-display text-xl font-bold text-white">{j.rank}</p>
+                    {i === rankIndex && (
+                      <span className="rounded-full px-2 py-0.5 text-[10px] font-bold text-black" style={{ backgroundColor: j.color }}>
+                        YOUR RANK
+                      </span>
+                    )}
+                  </div>
+                  <p className="mt-0.5 line-clamp-1 text-sm text-white/75">
+                    {isLocked ? "A journey waiting for you..." : j.chapters[0].heading}
+                  </p>
+                </div>
+                {!isLocked && (
+                  <ChevronRight className="size-6 shrink-0 text-white/80 transition-transform group-hover:translate-x-1" />
+                )}
               </div>
-              <ChevronRight className="size-6 shrink-0 text-white/80 transition-transform group-hover:translate-x-1" />
-            </div>
-          </button>
-        ))}
+            </button>
+          );
+        })}
       </div>
     </div>
   );
