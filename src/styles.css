@@ -929,3 +929,13 @@
   background-size: 32px 32px;
   mix-blend-mode: multiply;
 }
+
+/* Hall of Becoming — slow cinematic Ken Burns drift */
+@keyframes hall-kenburns {
+  0% { transform: scale(1) translate(0, 0); }
+  100% { transform: scale(1.12) translate(-1.5%, -1%); }
+}
+.hall-kenburns {
+  animation: hall-kenburns 24s ease-in-out infinite alternate;
+  will-change: transform;
+}
