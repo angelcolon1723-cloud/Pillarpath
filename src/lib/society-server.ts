@@ -421,7 +421,7 @@ export const createPrintifyDrafts = createServerFn({ method: "POST" })
           tags: ["pillarpath-draft", "cost-discovery"],
         });
 
-        // 4. Read back real fulfillment costs and backfill.
+        // 4. Read back real fulfillment costs and mockup images, and backfill.
         const full = await client.getProduct(shopId, product.id);
         const costs = full.variants
           .map((v) => v.cost)
@@ -431,15 +431,18 @@ export const createPrintifyDrafts = createServerFn({ method: "POST" })
           printify_draft_product_id: product.id,
           printify_draft_created_at: new Date().toISOString(),
         };
-        if (costs.length) {
-          const minCost = Math.round(Math.min(...costs));
+        // Update images to the designed mockups so the store shows the logo.
+        const mockupImages = full.images.length ? full.images : null;
+        if (costs.length || mockupImages) {
+          const minCost = costs.length ? Math.round(Math.min(...costs)) : null;
           await sql`
             update supplier_products
-            set cost_cents = ${minCost},
+            set cost_cents = coalesce(${minCost}, cost_cents),
+                images = coalesce(${mockupImages ? JSON.stringify(mockupImages) : null}::jsonb, images),
                 compliance = ${JSON.stringify(compliance)}::jsonb,
                 updated_at = now()
             where id = ${row.id}`;
-          withCosts += 1;
+          if (minCost) withCosts += 1;
         } else {
           await sql`
             update supplier_products
