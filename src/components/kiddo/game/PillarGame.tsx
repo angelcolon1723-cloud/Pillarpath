@@ -46,6 +46,8 @@ const ORB_SPOTS: Vec[] = [
 
 const KEEPER_POS: Vec = { x: 800, y: 760 };
 const MAYA_POS: Vec = { x: 1080, y: 950 };
+const PEER_POS: Vec = { x: 450, y: 950 }; // peer pressure kid
+const SAM_POS: Vec = { x: 800, y: 180 }; // impulse buyer near Hall
 const CHORE_DOOR: Vec = { x: 195, y: 250 };
 const VAULT_DOOR: Vec = { x: 1405, y: 250 };
 const MARKET_DOOR: Vec = { x: 1405, y: 1090 };
@@ -102,13 +104,17 @@ export function PillarGame() {
   );
   const [hits, setHits] = useState(0);
   const [won, setWon] = useState(false);
-  const [interior, setInterior] = useState<null | "chore">(null);
+  const [interior, setInterior] = useState<null | "chore" | "vault" | "market">(null);
   const [dilemma, setDilemma] = useState<null | { q: string; a: string; b: string; c: string }>(null);
+  const [dilemmaKind, setDilemmaKind] = useState<null | "maya" | "peer" | "sam">(null);
   const [missionsDone, setMissionsDone] = useState<string[]>([]);
-  const [nearWhat, setNearWhat] = useState<null | "keeper" | "maya" | "chore" | "vault" | "market">(null);
+  const [nearWhat, setNearWhat] = useState<null | "keeper" | "maya" | "peer" | "sam" | "chore" | "vault" | "market">(null);
   const [inStorm, setInStorm] = useState(false);
   const [showCodex, setShowCodex] = useState(false);
   const [encounters, setEncounters] = useState<Record<string, number>>({});
+  const [ceremony, setCeremony] = useState<null | string>(null);
+  const [mayaMemory, setMayaMemory] = useState<null | "good" | "bad">(null);
+  const [marketChoice, setMarketChoice] = useState<null | string>(null);
   /* Trust — your character shapes the game world. Good decisions weaken Doubtlings. */
   const [trust, setTrust] = useState(50);
   const trustRef = useRef(50);
@@ -141,6 +147,26 @@ export function PillarGame() {
   const questRef = useRef(quest);
   questRef.current = quest;
 
+  /* Load Maya's memory + check for rank-up ceremony */
+  useEffect(() => {
+    try {
+      const mem = localStorage.getItem("pillarpath-maya");
+      if (mem === "good" || mem === "bad") setMayaMemory(mem);
+    } catch { /* ignore */ }
+    try {
+      const lastRank = localStorage.getItem("pillarpath-last-rank");
+      if (lastRank && lastRank !== rank.name) {
+        // Rank changed! Ceremony time (only if rank went UP).
+        const order = ["Seedling", "Sprout", "Trailblazer", "Luminary", "Pillar"];
+        if (order.indexOf(rank.name) > order.indexOf(lastRank)) {
+          setCeremony(rank.name);
+        }
+      }
+      localStorage.setItem("pillarpath-last-rank", rank.name);
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /* Proximity polling for action buttons */
   useEffect(() => {
     const id = setInterval(() => {
@@ -149,6 +175,8 @@ export function PillarGame() {
       const d = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y);
       if (d(p, KEEPER_POS) < 95) setNearWhat("keeper");
       else if (d(p, MAYA_POS) < 95) setNearWhat("maya");
+      else if (d(p, PEER_POS) < 95) setNearWhat("peer");
+      else if (d(p, SAM_POS) < 95) setNearWhat("sam");
       else if (d(p, CHORE_DOOR) < 110) setNearWhat("chore");
       else if (d(p, VAULT_DOOR) < 110) setNearWhat("vault");
       else if (d(p, MARKET_DOOR) < 110) setNearWhat("market");
@@ -194,31 +222,129 @@ export function PillarGame() {
   };
 
   const talkToMaya = () => {
+    setDilemmaKind("maya");
+    // Maya remembers your last advice.
+    const mem = mayaMemory;
+    if (mem === "good") {
+      setDilemma({
+        q: "Maya beams at you! \"Your advice worked — I found the owner AND saved half! But now... my friend wants me to lend him ALL my savings. What should I do?\"",
+        a: "Lend it all — that's what friends do!",
+        b: "Lend a little, keep the rest safe",
+        c: "Say no — money ruins friendships",
+      });
+    } else if (mem === "bad") {
+      setDilemma({
+        q: "Maya looks down. \"I kept all that money... and I feel awful. I want to make it right. What should I do now?\"",
+        a: "It's too late — just forget about it",
+        b: "Try to find the owner and return it",
+        c: "Give it away to someone who needs it",
+      });
+    } else {
+      setDilemma({
+        q: "Maya found 100 Units on the ground! Nobody saw her pick it up. What should she do?",
+        a: "Keep it all — finders keepers!",
+        b: "Save half, try to find the owner with the other half",
+        c: "Spend it all on candy right now",
+      });
+    }
+  };
+
+  const talkToPeer = () => {
+    setDilemmaKind("peer");
     setDilemma({
-      q: "Maya found 100 Units on the ground! Nobody saw her pick it up. What should she do?",
-      a: "Keep it all — finders keepers!",
-      b: "Save half, try to find the owner with the other half",
-      c: "Spend it all on candy right now",
+      q: "Jay runs up, excited. \"Everyone's getting the new Hover Board! It's 500 Units! Just borrow from your vault — you can pay it back later!\"",
+      a: "Borrow from the vault — everyone's doing it!",
+      b: "Say no — the vault is for your future, not peer pressure",
+      c: "Suggest you both save up for it together",
+    });
+  };
+
+  const talkToSam = () => {
+    setDilemmaKind("sam");
+    setDilemma({
+      q: "Sam's eyes are wide. \"FLASH SALE! 50% off everything for the next 5 minutes! I HAVE to buy something — anything! Should I?\"",
+      a: "YES! Buy it all before it's gone!",
+      b: "Stop. Ask: do I NEED this, or do I just WANT it?",
+      c: "Buy one small thing to feel the rush",
     });
   };
 
   const answerDilemma = (choice: "a" | "b" | "c") => {
+    const kind = dilemmaKind;
     setDilemma(null);
-    if (choice === "b") {
+    setDilemmaKind(null);
+    const good = (msg: string) => {
       const nt = Math.min(100, trustRef.current + 10);
       trustRef.current = nt;
       setTrust(nt);
-      setDialog("Maya nods slowly... \"You're right. Saving half grows my future, and trying to find the owner is the honest move. That's what a Pillar would do.\" Your Trust grows — the Doubtlings seem weaker.");
-    } else if (choice === "a") {
-      const nt = Math.max(0, trustRef.current - 10);
+      setDialog(msg + " Your Trust grows — the Doubtlings seem weaker.");
+    };
+    const bad = (msg: string, penalty = 10) => {
+      const nt = Math.max(0, trustRef.current - penalty);
       trustRef.current = nt;
       setTrust(nt);
-      setDialog("Maya pockets it all... but she looks uneasy. \"I guess... it doesn't feel as good as I thought.\" Your Trust falls — and the Doubtlings grow bolder.");
-    } else {
-      const nt = Math.max(0, trustRef.current - 5);
-      trustRef.current = nt;
-      setTrust(nt);
-      setDialog("Maya buys candy for everyone! Fun for a day... but tomorrow the Units are gone. Sweet now, empty later — that's the trap. Your Trust dips.");
+      setDialog(msg + " Your Trust falls — and the Doubtlings grow bolder.");
+    };
+
+    if (kind === "maya") {
+      if (mayaMemory === "good") {
+        // Second encounter.
+        if (choice === "b") {
+          setMayaMemory("good");
+          try { localStorage.setItem("pillarpath-maya", "good"); } catch { /* ignore */ }
+          good("Maya nods. \"Lend a little, keep the rest safe. That's smart AND kind.\" She hugs you. Good friends don't ask you to risk everything.");
+        } else if (choice === "a") {
+          setMayaMemory("bad");
+          try { localStorage.setItem("pillarpath-maya", "bad"); } catch { /* ignore */ }
+          bad("Maya lends it all... and her friend 'forgets' to pay back. She learned the hard way: generosity needs boundaries too.");
+        } else {
+          bad("Maya pushes her friend away. \"You're right, money ruins everything.\" But now she's lonely AND has money. There was a middle path.", 5);
+        }
+      } else if (mayaMemory === "bad") {
+        // Redemption arc.
+        if (choice === "b") {
+          setMayaMemory("good");
+          try { localStorage.setItem("pillarpath-maya", "good"); } catch { /* ignore */ }
+          good("Maya's face lights up. \"I'll find the owner!\" A week later she returns, beaming — the owner rewarded her honesty. Redemption feels amazing.");
+        } else if (choice === "c") {
+          setMayaMemory("good");
+          try { localStorage.setItem("pillarpath-maya", "good"); } catch { /* ignore */ }
+          good("Maya gives it to a kid who lost his lunch money. \"I can't undo what I did, but I can do something good now.\" That's growth.");
+        } else {
+          bad("Maya shrugs and walks away. The guilt follows her. Some choices echo longer than we expect.");
+        }
+      } else {
+        // First encounter.
+        if (choice === "b") {
+          setMayaMemory("good");
+          try { localStorage.setItem("pillarpath-maya", "good"); } catch { /* ignore */ }
+          good("Maya nods slowly... \"You're right. Saving half grows my future, and trying to find the owner is the honest move. That's what a Pillar would do.\"");
+        } else if (choice === "a") {
+          setMayaMemory("bad");
+          try { localStorage.setItem("pillarpath-maya", "bad"); } catch { /* ignore */ }
+          bad("Maya pockets it all... but she looks uneasy. \"I guess... it doesn't feel as good as I thought.\" Honest money feels better than found money.");
+        } else {
+          setMayaMemory("bad");
+          try { localStorage.setItem("pillarpath-maya", "bad"); } catch { /* ignore */ }
+          bad("Maya buys candy for everyone! Fun for a day... but tomorrow the Units are gone. Sweet now, empty later — that's the trap.", 5);
+        }
+      }
+    } else if (kind === "peer") {
+      if (choice === "b") {
+        good("Jay blinks. \"The vault is for your future?\" He thinks... \"You're right. I don't want to steal from my own future.\" Standing up to pressure is real strength.");
+      } else if (choice === "c") {
+        good("Jay grins. \"Save up TOGETHER? That's actually more fun!\" You turned pressure into teamwork. That's leadership.");
+      } else {
+        bad("You borrow from the vault. The Hover Board is fun... for a week. But your savings goal is wrecked. Peer pressure is expensive.");
+      }
+    } else if (kind === "sam") {
+      if (choice === "b") {
+        good("Sam takes a breath. \"Do I NEED it... or WANT it?\" He puts everything back. \"I didn't need any of it. You just saved me 200 Units!\" That's the pause that saves fortunes.");
+      } else if (choice === "c") {
+        bad("Sam buys one small thing. The rush fades in minutes. \"Why did I even...\" Impulse is a thief that steals your future.", 5);
+      } else {
+        bad("Sam panic-buys everything! Bags of stuff he doesn't need. The sale ends, the regret begins. Flash sales are designed to bypass your brain.");
+      }
     }
   };
 
@@ -605,6 +731,34 @@ export function PillarGame() {
         ctx.fillText("?", MAYA_POS.x + 26, MAYA_POS.y - 32 - bounce + bob);
       }
 
+      /* peer + sam NPCs */
+      for (const [pos, name, color] of [
+        [PEER_POS, "Jay", "#fbbf24"],
+        [SAM_POS, "Sam", "#38bdf8"],
+      ] as Array<[Vec, string, string]>) {
+        const npcImg = sprites.player;
+        const bob = Math.sin(S.time * 2 + pos.x) * 3;
+        const ms = 52;
+        if (npcImg.complete && npcImg.naturalWidth > 0) {
+          ctx.save();
+          ctx.translate(pos.x, pos.y + bob);
+          ctx.rotate(Math.PI / 4 + Math.sin(S.time * 0.8 + pos.x) * 0.2);
+          ctx.drawImage(npcImg, -ms / 2, -ms / 2, ms, ms);
+          ctx.restore();
+        }
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        roundRect(ctx, pos.x - 35, pos.y - 42 + bob, 70, 20, 8);
+        ctx.fill();
+        ctx.fillStyle = color;
+        ctx.font = "bold 11px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(name, pos.x, pos.y - 28 + bob);
+        const bounce = Math.abs(Math.sin(S.time * 4 + pos.x)) * 6;
+        ctx.fillStyle = "#e879f9";
+        ctx.font = "bold 22px system-ui";
+        ctx.fillText("?", pos.x + 26, pos.y - 32 - bounce + bob);
+      }
+
       /* doubtlings */
       const doubtImg = sprites.doubtling;
       for (const d of S.doubtlings) {
@@ -818,6 +972,106 @@ export function PillarGame() {
     );
   }
 
+  /* ------------------------------ vault interior ------------------------------ */
+  if (interior === "vault") {
+    const vaultPct = vaultTarget > 0 ? Math.min(100, Math.round((vault / vaultTarget) * 100)) : 0;
+    return (
+      <div className="mx-auto max-w-3xl space-y-3 px-4 py-4">
+        <Button variant="ghost" size="sm" onClick={() => setInterior(null)} className="gap-1">
+          <ArrowLeft className="size-4" /> Back to the Plaza
+        </Button>
+        <div className="relative overflow-hidden rounded-2xl border border-accent/25">
+          <img src="/designs/game/game-interior-vault.webp" alt="Vault Mountain" className="h-56 w-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+          <div className="absolute bottom-3 left-4">
+            <h2 className="font-display text-2xl font-bold text-white">Vault Mountain</h2>
+            <p className="text-sm text-white/75">Your savings live here. Guard them well.</p>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-amber-300/25 bg-card p-5">
+          <div className="flex items-center justify-between">
+            <p className="font-display font-bold">Savings Vault</p>
+            <p className="text-2xl font-bold text-amber-300">{vault} Units</p>
+          </div>
+          <div className="mt-3 h-3 overflow-hidden rounded-full bg-surface">
+            <div
+              className="h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-200 transition-all"
+              style={{ width: `${vaultPct}%` }}
+            />
+          </div>
+          <p className="mt-2 text-sm text-muted">{vaultPct}% of your {vaultTarget}-Unit goal</p>
+          <div className="mt-4 rounded-xl bg-surface p-4">
+            <p className="font-display text-sm font-bold text-amber-300">💡 The Keeper's Wisdom</p>
+            <p className="mt-1 text-sm leading-relaxed">
+              Every Unit in your vault is a soldier working for your future. Savers don't just have more money —
+              they have more <em>choices</em>. The kids who save young become the adults who are free.
+            </p>
+          </div>
+          {vaultPct >= 100 ? (
+            <p className="mt-3 text-center font-display font-bold text-emerald-400">🎉 Goal crushed! You're a savings legend!</p>
+          ) : (
+            <p className="mt-3 text-center text-sm text-muted">
+              Save {vaultTarget - vault} more Units to hit your goal. Every chore gets you closer.
+            </p>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  /* ------------------------------ market interior ------------------------------ */
+  if (interior === "market") {
+    return (
+      <div className="mx-auto max-w-3xl space-y-3 px-4 py-4">
+        <Button variant="ghost" size="sm" onClick={() => setInterior(null)} className="gap-1">
+          <ArrowLeft className="size-4" /> Back to the Plaza
+        </Button>
+        <div className="relative overflow-hidden rounded-2xl border border-accent/25">
+          <img src="/designs/game/game-interior-market.webp" alt="Market Harbor" className="h-56 w-full object-cover" />
+          <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
+          <div className="absolute bottom-3 left-4">
+            <h2 className="font-display text-2xl font-bold text-white">Market Harbor</h2>
+            <p className="text-sm text-white/75">Every purchase is a decision. Choose wisely.</p>
+          </div>
+        </div>
+        <div className="rounded-2xl border border-violet-300/25 bg-card p-5">
+          <p className="font-display font-bold">The Merchant's Test</p>
+          <p className="mt-1 text-sm text-muted">
+            A merchant offers you three deals. You have 80 Units. What do you do?
+          </p>
+          {!marketChoice ? (
+            <div className="mt-3 space-y-2">
+              <Button variant="outline" className="w-full justify-start" onClick={() => setMarketChoice("candy")}>
+                🍬 Candy Pack — 30 Units <span className="ml-auto text-xs text-muted">Sweet now, gone tomorrow</span>
+              </Button>
+              <Button variant="outline" className="w-full justify-start" onClick={() => setMarketChoice("book")}>
+                📚 Skill Book — 50 Units <span className="ml-auto text-xs text-muted">Learn something forever</span>
+              </Button>
+              <Button variant="outline" className="w-full justify-start" onClick={() => setMarketChoice("save")}>
+                💰 Save it all <span className="ml-auto text-xs text-muted">80 Units stay in your pocket</span>
+              </Button>
+            </div>
+          ) : (
+            <div className="mt-3 rounded-xl bg-surface p-4">
+              {marketChoice === "candy" && (
+                <p className="text-sm leading-relaxed">Tasty! But tomorrow it's gone and so are 30 Units. <strong>Wants</strong> feel urgent but fade fast. Next time, pause and ask: will I care about this in a week?</p>
+              )}
+              {marketChoice === "book" && (
+                <p className="text-sm leading-relaxed">Excellent! A book pays you back forever. <strong>Needs</strong> and growth beat momentary treats every time. That's a Pillar move.</p>
+              )}
+              {marketChoice === "save" && (
+                <p className="text-sm leading-relaxed">Disciplined! 80 Units saved is 80 soldiers for your future. Sometimes the best purchase is the one you <em>don't</em> make.</p>
+              )}
+              <Button variant="ghost" size="sm" className="mt-2" onClick={() => setMarketChoice(null)}>
+                Try again
+              </Button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
   /* ------------------------------ plaza view ------------------------------ */
   return (
     <div className="mx-auto max-w-3xl space-y-3 px-4 py-4">
@@ -907,6 +1161,16 @@ export function PillarGame() {
                 Help Maya
               </Button>
             )}
+            {nearWhat === "peer" && (
+              <Button size="sm" onClick={talkToPeer} className="bg-amber-400 font-bold text-black hover:bg-amber-300">
+                Talk to Jay
+              </Button>
+            )}
+            {nearWhat === "sam" && (
+              <Button size="sm" onClick={talkToSam} className="bg-sky-400 font-bold text-black hover:bg-sky-300">
+                Talk to Sam
+              </Button>
+            )}
             {nearWhat === "chore" && (
               <Button size="sm" onClick={() => setInterior("chore")} className="bg-emerald-400 font-bold text-black hover:bg-emerald-300">
                 Enter Chore Village
@@ -914,7 +1178,7 @@ export function PillarGame() {
             )}
             {nearWhat === "vault" && (
               vaultUnlocked ? (
-                <Button size="sm" onClick={() => setDialog("Vault Mountain opens soon — your savings are growing! Keep saving to unlock savings challenges.")} className="bg-amber-400 font-bold text-black hover:bg-amber-300">
+                <Button size="sm" onClick={() => setInterior("vault")} className="bg-amber-400 font-bold text-black hover:bg-amber-300">
                   Enter Vault Mountain
                 </Button>
               ) : (
@@ -925,7 +1189,7 @@ export function PillarGame() {
             )}
             {nearWhat === "market" && (
               marketUnlocked ? (
-                <Button size="sm" onClick={() => setDialog("Market Harbor opens soon — smart shoppers only!")} className="bg-violet-400 font-bold text-black hover:bg-violet-300">
+                <Button size="sm" onClick={() => setInterior("market")} className="bg-violet-400 font-bold text-black hover:bg-violet-300">
                   Enter Market Harbor
                 </Button>
               ) : (
@@ -944,6 +1208,26 @@ export function PillarGame() {
             <Button size="sm" className="mt-3" onClick={() => setScreen("home")}>
               Back to the World
             </Button>
+          </div>
+        )}
+
+        {ceremony && (
+          <div className="absolute inset-0 z-20 grid place-items-center bg-black/70 backdrop-blur-sm">
+            <div className="mx-6 rounded-3xl border border-amber-300/50 bg-gradient-to-b from-amber-950/90 to-black/90 p-8 text-center">
+              <p className="text-5xl">🎉</p>
+              <p className="mt-2 text-xs font-bold uppercase tracking-widest text-amber-300">Rank Up Ceremony</p>
+              <p className="mt-2 font-display text-3xl font-bold text-white">Welcome, {ceremony}!</p>
+              <p className="mx-auto mt-2 max-w-xs text-sm leading-relaxed text-white/80">
+                The plaza gathers to celebrate YOU. Every chore, every saved Unit, every smart choice
+                led here. Better than yesterday — proven.
+              </p>
+              <Button
+                className="mt-4 bg-amber-400 font-bold text-black hover:bg-amber-300"
+                onClick={() => setCeremony(null)}
+              >
+                Continue the journey
+              </Button>
+            </div>
           </div>
         )}
       </div>
