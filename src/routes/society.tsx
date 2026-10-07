@@ -449,8 +449,10 @@ function ImportPanel({
       if (!res.created) {
         toast("No approved products need drafts right now.");
       } else if (res.failed.length) {
+        const firstErr = res.failed[0];
         toast(
-          `${res.created} drafts created (${res.withCosts} with real costs). ${res.failed.length} failed: ${res.failed[0]?.title}`,
+          `${res.created} drafts created (${res.withCosts} with real costs). ${res.failed.length} failed: ${firstErr?.title} — ${firstErr?.error}`,
+          { duration: 8000 },
         );
       } else {
         toast.success(
