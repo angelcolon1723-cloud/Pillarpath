@@ -890,7 +890,7 @@ export function PillarGame() {
             <span className="text-muted">{marketUnlocked ? "Open!" : `${3 - choresDone} more chore${3 - choresDone === 1 ? "" : "s"} to go`}</span>
           </div>
           <div className="flex items-center justify-between">
-            <span>🏅 Your rank: {rank}</span>
+            <span>🏅 Your rank: {rank.name}</span>
             <span className="text-muted">{choresDone} chore{choresDone === 1 ? "" : "s"} done · {vault} Units saved</span>
           </div>
         </div>
