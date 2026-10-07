@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useLedger } from "@/store/ledger";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Gamepad2, Sparkles, CloudLightning, Lock, Heart } from "lucide-react";
+import { ArrowLeft, Gamepad2, Sparkles, CloudLightning, Lock, Heart, BookOpen } from "lucide-react";
 import { rankForScore, societyScore } from "@/components/kiddo/world/WorldMap";
+import { EMOTIONS, getEncounters, recordEncounter } from "./emotions";
 
 /* ------------------------------------------------------------------ */
 /* PillarPath Game — "The Scattered Orbs"                               */
@@ -17,7 +18,7 @@ const PLAYER_R = 16;
 
 interface Vec { x: number; y: number }
 interface Orb extends Vec { taken: boolean; ph: number }
-interface Doubtling extends Vec { ph: number; dir: number; speed: number; stun: number }
+interface Doubtling extends Vec { ph: number; dir: number; speed: number; stun: number; emotionId: string }
 interface StormCloud extends Vec { r: number; vx: number; ph: number }
 interface Obstacle { x: number; y: number; w: number; h: number; label?: string; color: string }
 
@@ -106,6 +107,8 @@ export function PillarGame() {
   const [missionsDone, setMissionsDone] = useState<string[]>([]);
   const [nearWhat, setNearWhat] = useState<null | "keeper" | "maya" | "chore" | "vault" | "market">(null);
   const [inStorm, setInStorm] = useState(false);
+  const [showCodex, setShowCodex] = useState(false);
+  const [encounters, setEncounters] = useState<Record<string, number>>({});
   /* Trust — your character shapes the game world. Good decisions weaken Doubtlings. */
   const [trust, setTrust] = useState(50);
   const trustRef = useRef(50);
@@ -114,9 +117,9 @@ export function PillarGame() {
     player: { x: 800, y: 950 } as Vec,
     orbs: ORB_SPOTS.map((s) => ({ ...s, taken: false, ph: Math.random() * 6 })) as Orb[],
     doubtlings: [
-      { x: 500, y: 600, ph: 0, dir: 0, speed: 95, stun: 0 },
-      { x: 1100, y: 600, ph: 2, dir: 2, speed: 105, stun: 0 },
-      { x: 1350, y: 800, ph: 4, dir: 4, speed: 120, stun: 0 },
+      { x: 500, y: 600, ph: 0, dir: 0, speed: 95, stun: 0, emotionId: "doubt" },
+      { x: 1100, y: 600, ph: 2, dir: 2, speed: 105, stun: 0, emotionId: "impulse" },
+      { x: 1350, y: 800, ph: 4, dir: 4, speed: 120, stun: 0, emotionId: "loneliness" },
     ] as Doubtling[],
     clouds: [
       { x: 400, y: 300, r: 130, vx: 22, ph: 0 },
@@ -315,7 +318,7 @@ export function PillarGame() {
       }
     };
 
-    const dropOrb = () => {
+    const dropOrb = (emotionId: string) => {
       const p = S.player;
       const free = S.orbs.find((o) => o.taken);
       if (free) {
@@ -327,6 +330,15 @@ export function PillarGame() {
       S.slowUntil = S.time + 2.5;
       setHits((h) => h + 1);
       spawnBurst(p.x, p.y, "#a78bfa", 18);
+      // Name the feeling. Record it in the Codex.
+      const emotion = EMOTIONS.find((e) => e.id === emotionId);
+      if (emotion) {
+        const encounters = recordEncounter(emotionId);
+        const count = encounters[emotionId];
+        setDialog(
+          `${emotion.icon} ${emotion.name} touched you. It whispers: "${emotion.whisper}"\n\nBut here's the truth: ${emotion.truth}\n\nYou've faced ${emotion.name} ${count} time${count === 1 ? "" : "s"}. You're getting stronger.`
+        );
+      }
     };
 
     const drawCloud = (c: StormCloud) => {
@@ -447,8 +459,7 @@ export function PillarGame() {
         if (!OBSTACLES.some((o) => circleRect(d.x, dny, 14, o))) d.y = Math.max(20, Math.min(WORLD_H - 20, dny));
         if (questRef.current === "active" && dist < 30 && S.time > S.slowUntil) {
           d.stun = 3;
-          dropOrb();
-          setDialog("A Doubtling knocked an orb loose! Doubt makes you drop what you're building. Shake it off and keep going.");
+          dropOrb(d.emotionId);
         }
       }
 
@@ -702,6 +713,67 @@ export function PillarGame() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  /* ------------------------------ codex view ------------------------------ */
+  if (showCodex) {
+    const enc = getEncounters();
+    const discovered = EMOTIONS.filter((e) => enc[e.id] > 0).length;
+    return (
+      <div className="mx-auto max-w-3xl space-y-4 px-4 py-4">
+        <Button variant="ghost" size="sm" onClick={() => setShowCodex(false)} className="gap-1">
+          <ArrowLeft className="size-4" /> Back to the Plaza
+        </Button>
+        <div className="text-center">
+          <p className="text-xs font-semibold uppercase tracking-widest text-accent">Name it to tame it</p>
+          <h1 className="font-display text-2xl font-bold">The Emotion Codex</h1>
+          <p className="mx-auto mt-1 max-w-md text-sm text-muted">
+            Every feeling you've faced in the plaza. {discovered} of {EMOTIONS.length} discovered.
+            The more you name them, the smaller they get.
+          </p>
+        </div>
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          {EMOTIONS.map((e) => {
+            const count = enc[e.id] || 0;
+            const found = count > 0;
+            return (
+              <div
+                key={e.id}
+                className="rounded-2xl border p-4"
+                style={{
+                  borderColor: found ? `${e.color}55` : "var(--border)",
+                  background: found ? `linear-gradient(135deg, ${e.color}14, transparent)` : "var(--card)",
+                  opacity: found ? 1 : 0.55,
+                }}
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-2xl">{found ? e.icon : "❓"}</span>
+                  <div>
+                    <p className="font-display font-bold" style={{ color: found ? e.color : undefined }}>
+                      {found ? e.name : "???"}
+                    </p>
+                    <p className="text-[11px] uppercase tracking-widest text-muted">{e.family}</p>
+                  </div>
+                  {found && (
+                    <span className="ml-auto rounded-full bg-accent/15 px-2 py-0.5 text-[11px] font-bold text-accent">
+                      Faced {count}×
+                    </span>
+                  )}
+                </div>
+                {found ? (
+                  <div className="mt-2 space-y-1 text-sm">
+                    <p className="italic text-muted">Whispers: "{e.whisper}"</p>
+                    <p className="font-medium">Truth: {e.truth}</p>
+                  </div>
+                ) : (
+                  <p className="mt-2 text-sm text-muted">Not yet encountered. Keep exploring the plaza...</p>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   /* ------------------------------ interior view ------------------------------ */
   if (interior === "chore") {
     return (
@@ -761,6 +833,14 @@ export function PillarGame() {
           </span>
         </div>
         <div className="flex items-center gap-3">
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => { setEncounters(getEncounters()); setShowCodex(true); }}
+            className="gap-1 text-xs"
+          >
+            <BookOpen className="size-4" /> Codex
+          </Button>
           <div className="flex items-center gap-1 text-xs font-bold" title="Trust: good decisions weaken Doubtlings">
             <Heart className="size-4" style={{ color: trust >= 70 ? "#4ade80" : trust >= 40 ? "#fbbf24" : "#ef4444" }} />
             <span style={{ color: trust >= 70 ? "#4ade80" : trust >= 40 ? "#fbbf24" : "#ef4444" }}>{trust}</span>
