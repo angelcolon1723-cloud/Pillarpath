@@ -90,6 +90,7 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 
 export function PillarGame() {
   const setScreen = useLedger((s) => s.setScreen);
+  const awardUnits = useLedger((s) => s.awardUnits);
   const canvasRef = useRef<HTMLCanvasElement>(null);
 
   const completedChoreIds = useLedger((s) => s.completedChoreIds);
@@ -184,6 +185,8 @@ export function PillarGame() {
 
   const questRef = useRef(quest);
   questRef.current = quest;
+  const rankRef = useRef(rank);
+  rankRef.current = rank;
 
   useEffect(() => {
     try {
@@ -246,6 +249,18 @@ export function PillarGame() {
         setCourage((c) => c + 20);
         stateRef.current.courage += 20;
       }
+      // Real-life connection: award real Units once per day (anti-farm).
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        const lastClaim = localStorage.getItem("pillarpath-quest-claim");
+        if (lastClaim !== today) {
+          localStorage.setItem("pillarpath-quest-claim", today);
+          const err = awardUnits(50, "Pillar Plaza orb quest");
+          if (!err) {
+            toastRef.current("Real reward!", "+50 real Units added to your balance. Game and life, connected.", "#4ade80");
+          }
+        }
+      } catch { /* ignore */ }
       const p = stateRef.current.player;
       const colors = ["#22d3ee", "#e879f9", "#fbbf24", "#4ade80", "#a78bfa"];
       for (let i = 0; i < 100; i++) {
@@ -867,6 +882,24 @@ export function PillarGame() {
           ctx.drawImage(playerImg, -28, -28, 56, 56);
           ctx.restore();
         }
+        // Real rank badge — your real-life rank, worn in the game.
+        const rk = rankRef.current;
+        const rankColors: Record<string, string> = {
+          Seedling: "#4ade80", Sprout: "#22d3ee", Trailblazer: "#fbbf24",
+          Luminary: "#e879f9", Pillar: "#f472b6",
+        };
+        const rc = rankColors[rk.name] || "#22d3ee";
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        roundRect(ctx, p.x - 52, p.y - 52 + bob, 104, 20, 10);
+        ctx.fill();
+        ctx.strokeStyle = rc;
+        ctx.lineWidth = 1.5;
+        roundRect(ctx, p.x - 52, p.y - 52 + bob, 104, 20, 10);
+        ctx.stroke();
+        ctx.fillStyle = rc;
+        ctx.font = "bold 11px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(`🏅 ${rk.name}`, p.x, p.y - 38 + bob);
       }
 
       for (const pt of S.particles) {
