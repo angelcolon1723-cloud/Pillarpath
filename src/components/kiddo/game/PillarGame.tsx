@@ -22,8 +22,23 @@ interface StormCloud extends Vec { r: number; vx: number; ph: number }
 interface Chest extends Vec { opened: boolean; ph: number }
 interface CourageOrb extends Vec { taken: boolean; ph: number; value: number }
 interface Wanderer extends Vec { dir: number; speed: number; ph: number; pauseT: number; name: string }
-interface CircleObs { x: number; y: number; r: number }
+interface GameEvent extends Vec {
+  id: number;
+  type: "lost" | "kindness" | "shower" | "surge";
+  label: string;
+  ttl: number;
+  data: number;
+  ph: number;
+}
+
+const EVENT_DEFS = [
+  { type: "lost", label: "😢 Lost Units!", desc: "A kid dropped 3 Units nearby. Find them!" },
+  { type: "kindness", label: "🤝 Help Needed!", desc: "An elder needs help. Walk to them!" },
+  { type: "shower", label: "✨ Orb Shower!", desc: "Bonus orbs are falling! Grab them!" },
+  { type: "surge", label: "🌪️ Doubtling Surge!", desc: "Extra Doubtlings! Survive 30 seconds!" },
+] as const;
 interface RectObs { x: number; y: number; w: number; h: number; label?: string; color: string }
+interface CircleObs { x: number; y: number; r: number }
 
 /* Collision remapped to the AAA plaza background:
    - Central monument: circular
@@ -126,7 +141,9 @@ export function PillarGame() {
   const [courage, setCourage] = useState(0);
   const [trust, setTrust] = useState(50);
   const [toasts, setToasts] = useState<Array<{ id: number; title: string; msg: string; color: string }>>([]);
+  const [soundOn, setSoundOn] = useState(false);
   const toastId = useRef(0);
+  const audioRef = useRef<{ ctx: AudioContext; nodes: OscillatorNode[] } | null>(null);
 
   const pushToast = (title: string, msg: string, color = "#fbbf24") => {
     const id = ++toastId.current;
@@ -135,6 +152,61 @@ export function PillarGame() {
   };
   const toastRef = useRef(pushToast);
   toastRef.current = pushToast;
+  const toggleSound = () => {
+    if (audioRef.current) {
+      audioRef.current.ctx.close();
+      audioRef.current = null;
+      setSoundOn(false);
+      return;
+    }
+    try {
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      const ctx = new AC();
+      const master = ctx.createGain();
+      master.gain.value = 0.08;
+      master.connect(ctx.destination);
+      // Gentle pentatonic pad — C major pentatonic.
+      const notes = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25];
+      const nodes: OscillatorNode[] = [];
+      const playNote = () => {
+        if (!audioRef.current) return;
+        const osc = ctx.createOscillator();
+        const g = ctx.createGain();
+        osc.type = "sine";
+        osc.frequency.value = notes[Math.floor(Math.random() * notes.length)];
+        g.gain.setValueAtTime(0, ctx.currentTime);
+        g.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 2);
+        g.gain.linearRampToValueAtTime(0, ctx.currentTime + 6);
+        osc.connect(g);
+        g.connect(master);
+        osc.start();
+        osc.stop(ctx.currentTime + 6.5);
+        setTimeout(playNote, 2500 + Math.random() * 3000);
+      };
+      playNote();
+      // Soft shimmer.
+      const shimmer = ctx.createOscillator();
+      const sg = ctx.createGain();
+      shimmer.type = "triangle";
+      shimmer.frequency.value = 1046.5;
+      sg.gain.value = 0.03;
+      shimmer.connect(sg);
+      sg.connect(master);
+      shimmer.start();
+      nodes.push(shimmer);
+      audioRef.current = { ctx, nodes };
+      setSoundOn(true);
+    } catch { /* audio unavailable */ }
+  };
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.ctx.close();
+        audioRef.current = null;
+      }
+    };
+  }, []);
 
   const trustRef = useRef(50);
   const stateRef = useRef({
@@ -170,6 +242,11 @@ export function PillarGame() {
     courageTimer: 0,
     courage: 0,
     fireflies: null as null | Array<{ x: number; y: number; ph: number; sp: number }>,
+    events: [] as GameEvent[],
+    eventTimer: 25,
+    eventId: 0,
+    dayTime: 0.25,
+    bonusOrbs: [] as Array<Vec & { taken: boolean; ph: number }>,
     keys: {} as Record<string, boolean>,
     joy: { x: 0, y: 0, active: false },
     cam: { x: 0, y: 0 } as Vec,
@@ -627,6 +704,74 @@ export function PillarGame() {
         }
       }
 
+      /* day/night cycle — full cycle ~6 minutes */
+      S.dayTime = (S.dayTime + dt / 360) % 1;
+
+      /* random living events */
+      S.eventTimer -= dt;
+      if (S.eventTimer <= 0 && S.events.length < 2) {
+        S.eventTimer = 40 + Math.random() * 40;
+        const def = EVENT_DEFS[Math.floor(Math.random() * EVENT_DEFS.length)];
+        const a = Math.random() * Math.PI * 2;
+        const ex = Math.max(100, Math.min(WORLD_W - 100, p.x + Math.cos(a) * 300));
+        const ey = Math.max(100, Math.min(WORLD_H - 100, p.y + Math.sin(a) * 300));
+        S.eventId += 1;
+        S.events.push({
+          id: S.eventId, type: def.type, label: def.label,
+          x: ex, y: ey, ttl: 60, data: 0, ph: Math.random() * 6,
+        });
+        toastRef.current(def.label, def.desc, "#e879f9");
+        if (def.type === "shower") {
+          for (let i = 0; i < 6; i++) {
+            S.bonusOrbs.push({
+              x: Math.max(60, Math.min(WORLD_W - 60, ex + (Math.random() - 0.5) * 400)),
+              y: Math.max(60, Math.min(WORLD_H - 60, ey + (Math.random() - 0.5) * 400)),
+              taken: false, ph: Math.random() * 6,
+            });
+          }
+        }
+        if (def.type === "surge") {
+          for (let i = 0; i < 2; i++) {
+            const sa = Math.random() * Math.PI * 2;
+            S.doubtlings.push({
+              x: Math.max(60, Math.min(WORLD_W - 60, p.x + Math.cos(sa) * 350)),
+              y: Math.max(60, Math.min(WORLD_H - 60, p.y + Math.sin(sa) * 350)),
+              ph: Math.random() * 6, dir: 0, speed: 110, stun: 0,
+              emotionId: ["doubt", "impulse", "loneliness"][Math.floor(Math.random() * 3)],
+            });
+          }
+        }
+      }
+      // Event interactions.
+      for (let i = S.events.length - 1; i >= 0; i--) {
+        const ev = S.events[i];
+        ev.ttl -= dt;
+        const ed = Math.hypot(p.x - ev.x, p.y - ev.y);
+        if (ev.type === "kindness" && ed < 60) {
+          S.events.splice(i, 1);
+          const nt = Math.min(100, trustRef.current + 8);
+          trustRef.current = nt;
+          setTrust(nt);
+          setCourage((c) => c + 5);
+          toastRef.current("Kindness!", "You helped the elder. +8 Trust, +5 Courage. Small acts, big pillars.", "#4ade80");
+          spawnBurst(ev.x, ev.y, "#4ade80", 16);
+        } else if (ev.ttl <= 0) {
+          S.events.splice(i, 1);
+          if (ev.type === "surge") {
+            // Remove the surge Doubtlings (keep original 4).
+            S.doubtlings.splice(4);
+          }
+        }
+      }
+      // Bonus orbs from shower.
+      for (const bo of S.bonusOrbs) {
+        if (!bo.taken && Math.hypot(p.x - bo.x, p.y - bo.y) < 34) {
+          bo.taken = true;
+          setCourage((c) => c + 3);
+          spawnBurst(bo.x, bo.y, "#e879f9", 10);
+        }
+      }
+
       for (const w of S.wanderers) {
         if (w.pauseT > 0) { w.pauseT -= dt; continue; }
         w.dir += dt * 0.4;
@@ -789,6 +934,53 @@ export function PillarGame() {
         ctx.restore();
       }
 
+      /* events — pulsing markers */
+      for (const ev of S.events) {
+        const pulse = 1 + Math.sin(S.time * 5 + ev.ph) * 0.2;
+        const bounce = Math.abs(Math.sin(S.time * 3 + ev.ph)) * 8;
+        drawShadow(ev.x, ev.y + 16, 16, 6, 0.35);
+        // Beacon beam.
+        const beamG = ctx.createLinearGradient(ev.x, ev.y - 120, ev.x, ev.y);
+        beamG.addColorStop(0, "rgba(232,121,249,0)");
+        beamG.addColorStop(1, "rgba(232,121,249,0.35)");
+        ctx.fillStyle = beamG;
+        ctx.fillRect(ev.x - 12, ev.y - 120 - bounce, 24, 120);
+        // Icon.
+        ctx.font = "bold 32px system-ui";
+        ctx.textAlign = "center";
+        const icons: Record<string, string> = { lost: "😢", kindness: "🤝", shower: "✨", surge: "🌪️" };
+        ctx.fillText(icons[ev.type] || "❗", ev.x, ev.y - 30 - bounce);
+        // Label.
+        ctx.font = "bold 12px system-ui";
+        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        const lw = ctx.measureText(ev.label).width;
+        roundRect(ctx, ev.x - lw / 2 - 8, ev.y + 22, lw + 16, 20, 10);
+        ctx.fill();
+        ctx.fillStyle = "#e879f9";
+        ctx.fillText(ev.label, ev.x, ev.y + 36);
+        void pulse;
+      }
+
+      /* bonus orbs */
+      for (const bo of S.bonusOrbs) {
+        if (bo.taken) continue;
+        const bob = Math.sin(S.time * 4 + bo.ph) * 5;
+        drawShadow(bo.x, bo.y + 12, 10, 4, 0.3);
+        ctx.save();
+        ctx.translate(bo.x, bo.y + bob);
+        ctx.shadowColor = "#e879f9";
+        ctx.shadowBlur = 14;
+        const bg = ctx.createRadialGradient(0, 0, 2, 0, 0, 11);
+        bg.addColorStop(0, "#fff");
+        bg.addColorStop(0.4, "#f5d0fe");
+        bg.addColorStop(1, "#a21caf");
+        ctx.fillStyle = bg;
+        ctx.beginPath();
+        ctx.arc(0, 0, 10, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
       /* orbs */
       const orbImg = sprites.orb;
       for (const o of S.orbs) {
@@ -882,24 +1074,22 @@ export function PillarGame() {
           ctx.drawImage(playerImg, -28, -28, 56, 56);
           ctx.restore();
         }
-        // Real rank badge — your real-life rank, worn in the game.
+        // Real rank badge — compact, above player.
         const rk = rankRef.current;
         const rankColors: Record<string, string> = {
           Seedling: "#4ade80", Sprout: "#22d3ee", Trailblazer: "#fbbf24",
           Luminary: "#e879f9", Pillar: "#f472b6",
         };
         const rc = rankColors[rk.name] || "#22d3ee";
-        ctx.fillStyle = "rgba(0,0,0,0.6)";
-        roundRect(ctx, p.x - 52, p.y - 52 + bob, 104, 20, 10);
+        ctx.font = "bold 10px system-ui";
+        const label = `🏅 ${rk.name}`;
+        const tw = ctx.measureText(label).width;
+        ctx.fillStyle = "rgba(0,0,0,0.55)";
+        roundRect(ctx, p.x - tw / 2 - 6, p.y - 46 + bob, tw + 12, 16, 8);
         ctx.fill();
-        ctx.strokeStyle = rc;
-        ctx.lineWidth = 1.5;
-        roundRect(ctx, p.x - 52, p.y - 52 + bob, 104, 20, 10);
-        ctx.stroke();
         ctx.fillStyle = rc;
-        ctx.font = "bold 11px system-ui";
         ctx.textAlign = "center";
-        ctx.fillText(`🏅 ${rk.name}`, p.x, p.y - 38 + bob);
+        ctx.fillText(label, p.x, p.y - 34 + bob);
       }
 
       for (const pt of S.particles) {
@@ -944,6 +1134,41 @@ export function PillarGame() {
         ctx.fillText("CLOSE!", vw / 2, vh * 0.3);
         ctx.shadowBlur = 0;
         ctx.globalAlpha = 1;
+      }
+
+      /* day/night tint */
+      {
+        const t = S.dayTime;
+        let tint: string | null = null;
+        if (t > 0.42 && t < 0.58) {
+          // Sunset — warm.
+          const k = Math.sin(((t - 0.42) / 0.16) * Math.PI);
+          tint = `rgba(251,146,60,${(k * 0.18).toFixed(3)})`;
+        } else if (t >= 0.58 && t < 0.92) {
+          // Night — cool dark + stars.
+          const k = Math.sin(((t - 0.58) / 0.34) * Math.PI);
+          tint = `rgba(30,27,75,${(k * 0.35).toFixed(3)})`;
+          if (k > 0.5) {
+            ctx.fillStyle = `rgba(255,255,255,${((k - 0.5) * 0.9).toFixed(3)})`;
+            for (let i = 0; i < 40; i++) {
+              const sx = ((i * 173.3) % vw);
+              const sy = ((i * 97.7) % (vh * 0.6));
+              const tw2 = 0.5 + 0.5 * Math.sin(S.time * 2 + i);
+              ctx.globalAlpha = ((k - 0.5) * tw2).toFixed(3) as unknown as number;
+              ctx.fillRect(sx, sy, 2, 2);
+            }
+            ctx.globalAlpha = 1;
+          }
+        } else if (t >= 0.92 || t < 0.08) {
+          // Dawn — soft pink.
+          const k = t >= 0.92 ? (t - 0.92) / 0.16 : (0.08 - t) / 0.16;
+          const kk = Math.sin(Math.min(1, k) * Math.PI);
+          tint = `rgba(244,114,182,${(kk * 0.12).toFixed(3)})`;
+        }
+        if (tint) {
+          ctx.fillStyle = tint;
+          ctx.fillRect(0, 0, vw, vh);
+        }
       }
 
       /* minimap */
@@ -1152,6 +1377,9 @@ export function PillarGame() {
           <ArrowLeft className="size-4" /> World
         </Button>
         <div className="flex items-center gap-3">
+          <Button variant="ghost" size="sm" onClick={toggleSound} className="gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
+            {soundOn ? "🔊" : "🔇"}
+          </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowCodex(true)} className="gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
             <BookOpen className="size-4" /> Codex
           </Button>
