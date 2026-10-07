@@ -1096,7 +1096,7 @@ export function PillarGame() {
 
   /* ------------------------------ full-screen plaza ------------------------------ */
   return (
-    <div className="fixed inset-0 z-40 bg-black">
+    <div className="fixed inset-0 z-[60] bg-black">
       <canvas ref={canvasRef} className="block touch-none" />
 
       {/* Top HUD */}
