@@ -250,7 +250,6 @@ export function PillarGame() {
     keys: {} as Record<string, boolean>,
     joy: { x: 0, y: 0, active: false },
     cam: { x: 0, y: 0 } as Vec,
-    camVel: { x: 0, y: 0 } as Vec,
     slowUntil: 0,
     particles: [] as Array<Vec & { vx: number; vy: number; life: number; color: string }>,
     time: 0,
@@ -832,23 +831,22 @@ export function PillarGame() {
         if (pt.life <= 0) S.particles.splice(i, 1);
       }
 
-      /* camera with velocity lookahead + slight zoom-out for openness */
+      /* camera — stable smooth follow, no oscillation */
       const ZOOM = 0.82;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const svw = canvas.width / dpr; // screen pixels
+      const svw = canvas.width / dpr;
       const svh = canvas.height / dpr;
-      const vw = svw / ZOOM; // world units visible
+      const vw = svw / ZOOM;
       const vh = svh / ZOOM;
-      const lookX = ix * 90;
-      const lookY = iy * 90;
+      const lookX = ix * 60;
+      const lookY = iy * 60;
       const tx = p.x - vw / 2 + lookX;
       const ty = p.y - vh / 2 + lookY;
-      S.camVel.x += (tx - S.cam.x - S.camVel.x * 0.12) * Math.min(1, dt * 6);
-      S.camVel.y += (ty - S.cam.y - S.camVel.y * 0.12) * Math.min(1, dt * 6);
-      S.cam.x += S.camVel.x * dt * 6;
-      S.cam.y += S.camVel.y * dt * 6;
-      S.cam.x = Math.max(-80, Math.min(WORLD_W - vw + 80, S.cam.x));
-      S.cam.y = Math.max(-80, Math.min(WORLD_H - vh + 80, S.cam.y));
+      const ck = Math.min(1, dt * 4);
+      S.cam.x += (tx - S.cam.x) * ck;
+      S.cam.y += (ty - S.cam.y) * ck;
+      S.cam.x = Math.max(-60, Math.min(WORLD_W - vw + 60, S.cam.x));
+      S.cam.y = Math.max(-60, Math.min(WORLD_H - vh + 60, S.cam.y));
 
       /* ------------------------------ render ------------------------------ */
       ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
