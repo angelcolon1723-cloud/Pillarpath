@@ -84,6 +84,7 @@ export function PillarGame() {
     time: 0,
     nearMissCd: 0,
     nearMissT: 0,
+    faceAngle: 0,
   });
   const questRef = useRef(quest);
   questRef.current = quest;
@@ -112,7 +113,7 @@ export function PillarGame() {
     /* Sprite loading */
     const sprites: Record<string, HTMLImageElement> = {};
     const spritePaths: Record<string, string> = {
-      player: "/designs/game/game-player.webp",
+      player: "/designs/game/game-kid.webp",
       doubtling: "/designs/game/game-doubtling.webp",
       orb: "/designs/game/game-orb.webp",
       keeper: "/designs/game/game-keeper.webp",
@@ -468,20 +469,21 @@ export function PillarGame() {
         }
       }
 
-      // Player — sprite traveler.
+      // Player — kid sprite, rotates to face movement direction.
       {
         const playerImg = sprites.player;
         const moving = il > 0.1;
-        const bob = moving ? Math.abs(Math.sin(S.time * 10)) * 4 : Math.sin(S.time * 2.5) * 2;
-        const ps = 52;
-        // Face movement direction.
-        const flip = il > 0.1 && ix < -0.1 ? -1 : 1;
+        const bob = moving ? Math.abs(Math.sin(S.time * 10)) * 2 : Math.sin(S.time * 2.5) * 1.5;
+        const ps = 56;
+        // Sprite faces down-right by default; rotate to face travel direction.
+        const faceAngle = il > 0.1 ? Math.atan2(iy, ix) - Math.PI / 4 : S.faceAngle || 0;
+        if (il > 0.1) S.faceAngle = faceAngle;
         if (playerImg.complete && playerImg.naturalWidth > 0) {
           ctx.save();
           ctx.translate(p.x, p.y - bob);
-          ctx.scale(flip, 1);
-          ctx.shadowColor = "#22d3ee";
-          ctx.shadowBlur = 18;
+          ctx.rotate(S.faceAngle || 0);
+          ctx.shadowColor = "rgba(34,211,238,0.6)";
+          ctx.shadowBlur = 14;
           ctx.drawImage(playerImg, -ps / 2, -ps / 2, ps, ps);
           ctx.restore();
         } else {
