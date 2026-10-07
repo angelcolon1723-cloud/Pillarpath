@@ -386,7 +386,7 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
                 section={parentSection}
                 familyTab={familyTab}
                 onFamilyTab={setFamilyTab}
-                onNavigate={setParentSection}
+                onNavigate={navigate}
                 onRefresh={refresh}
               />
             ) : role === "child" ? (
