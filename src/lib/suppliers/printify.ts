@@ -329,6 +329,14 @@ export class PrintifyClient {
           const first = detail[0] as Record<string, unknown> | undefined;
           const m = first?.message ?? first?.reason;
           if (typeof m === "string" && m) message = m;
+        } else if (detail && typeof detail === "object") {
+          // Printify validation errors: { field: ["message"] } — flatten them.
+          const parts: string[] = [];
+          for (const [k, v] of Object.entries(detail as Record<string, unknown>)) {
+            if (Array.isArray(v)) parts.push(`${k}: ${(v as unknown[]).join(", ")}`);
+            else if (typeof v === "string") parts.push(`${k}: ${v}`);
+          }
+          if (parts.length) message = parts.join("; ").slice(0, 500);
         }
       } catch {
         if (bodyText.trim()) message = bodyText.trim().slice(0, 300);
