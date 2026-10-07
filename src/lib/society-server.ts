@@ -422,7 +422,12 @@ export const createPrintifyDrafts = createServerFn({ method: "POST" })
         });
 
         // 4. Read back real fulfillment costs and mockup images, and backfill.
-        const full = await client.getProduct(shopId, product.id);
+        // Printify generates mockups asynchronously, so poll a few times.
+        let full = await client.getProduct(shopId, product.id);
+        for (let attempt = 0; attempt < 4 && !full.images.length; attempt++) {
+          await new Promise((r) => setTimeout(r, 8000));
+          full = await client.getProduct(shopId, product.id);
+        }
         const costs = full.variants
           .map((v) => v.cost)
           .filter((c): c is number => c != null && c > 0);
