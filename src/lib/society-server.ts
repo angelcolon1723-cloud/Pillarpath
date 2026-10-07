@@ -330,6 +330,12 @@ const PRODUCTION_URL = "https://pillarpath.vercel.app";
 
 function designForTitle(title: string): string {
   const t = title.toLowerCase();
+  // Rank shirts (check first — these are specific).
+  if (t.includes("seedling")) return "ranks/rank-seedling.png";
+  if (t.includes("sprout")) return "ranks/rank-sprout.png";
+  if (t.includes("trailblazer")) return "ranks/rank-trailblazer.png";
+  if (t.includes("luminary")) return "ranks/rank-luminary.png";
+  if (t.includes("pillar") && t.includes("rank")) return "ranks/rank-pillar.png";
   if (t.includes("puzzle")) return "cosmic-rocket.png";
   if (t.includes("tumbler") || t.includes("mug") || t.includes("bottle"))
     return "earn-save-grow.png";
@@ -342,6 +348,53 @@ function designForTitle(title: string): string {
     return "society-of-becoming.png";
   return "society-of-becoming.png";
 }
+
+const RANK_SHIRTS = [
+  { rank: "Seedling", design: "ranks/rank-seedling.png" },
+  { rank: "Sprout", design: "ranks/rank-sprout.png" },
+  { rank: "Trailblazer", design: "ranks/rank-trailblazer.png" },
+  { rank: "Luminary", design: "ranks/rank-luminary.png" },
+  { rank: "Pillar", design: "ranks/rank-pillar.png" },
+] as const;
+
+/** Create 5 rank shirt products from an existing approved shirt blueprint. */
+export const createRankShirts = createServerFn({ method: "POST" })
+  .middleware([roleMiddleware("admin")])
+  .handler(async () => {
+    const sql = await getSql();
+    // Find a t-shirt blueprint to base the rank shirts on.
+    const base = await sql<{
+      id: number;
+      title: string;
+      supplier_product_id: string;
+      supplier_sku: string | null;
+      images: unknown;
+      cost_cents: number | null;
+    }>`
+      select id, title, supplier_product_id, supplier_sku, images, cost_cents
+      from supplier_products
+      where supplier = 'printify'
+        and screening_status = 'approved'
+        and (lower(title) like '%tee%' or lower(title) like '%shirt%')
+      order by id limit 1`;
+    if (!base.length) throw new Error("No approved shirt blueprint found. Import a shirt first.");
+    const b = base[0];
+
+    let created = 0;
+    for (const { rank } of RANK_SHIRTS) {
+      const title = `PillarPath ${rank} Rank Tee`;
+      const exists = await sql`
+        select id from supplier_products where title = ${title} limit 1`;
+      if (exists.length) continue;
+      await sql`
+        insert into supplier_products
+          (supplier, supplier_product_id, supplier_sku, title, images, cost_cents, screening_status)
+        values
+          ('printify', ${b.supplier_product_id}, ${b.supplier_sku}, ${title}, ${JSON.stringify(b.images)}::jsonb, ${b.cost_cents}, 'approved')`;
+      created += 1;
+    }
+    return { created };
+  });
 
 export const createPrintifyDrafts = createServerFn({ method: "POST" })
   .middleware([roleMiddleware("admin")])

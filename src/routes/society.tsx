@@ -10,6 +10,7 @@ import {
   approveStockItem,
   claimSocietyAdmin,
   createPrintifyDrafts,
+  createRankShirts,
   getSocietyStatus,
   getStock,
   importPrintifySelection,
@@ -442,11 +443,27 @@ function ImportPanel({
     }
   }
 
+  async function createRankShirtProducts() {
+    setWorking(true);
+    try {
+      const res = await createRankShirts();
+      if (res.created) {
+        toast.success(`${res.created} rank shirts created. Now tap "Create Printify drafts" to put the designs on them.`);
+      } else {
+        toast("Rank shirts already exist.");
+      }
+      onImported();
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Failed to create rank shirts.");
+    } finally {
+      setWorking(false);
+    }
+  }
+
   async function createDrafts() {
     setWorking(true);
     try {
-      const res = await createPrintifyDrafts();
-      if (!res.created) {
+      const res = await createPrintifyDrafts();      if (!res.created) {
         toast("No approved products need drafts right now.");
       } else if (res.failed.length) {
         const firstErr = res.failed[0];
@@ -544,6 +561,14 @@ function ImportPanel({
               title="Create draft products in your Printify shop with PillarPath designs to reveal real fulfillment costs. Drafts are never published."
             >
               Create Printify drafts
+            </Button>
+            <Button
+              variant="outline"
+              onClick={() => void createRankShirtProducts()}
+              disabled={working || busy}
+              title="Create the 5 Society rank shirts (Seedling through Pillar) from an approved shirt blueprint."
+            >
+              Create rank shirts
             </Button>
           </div>
         </div>
