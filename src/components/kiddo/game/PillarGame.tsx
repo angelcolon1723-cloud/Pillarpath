@@ -561,7 +561,15 @@ export function PillarGame() {
       S.joy.x = 0;
       S.joy.y = 0;
     };
+    // Auto-start ambient sound on first touch (browsers require user gesture).
+    let audioStarted = false;
+    const autoAudio = () => {
+      if (audioStarted || audioRef.current) return;
+      audioStarted = true;
+      toggleSound();
+    };
     canvas.addEventListener("pointerdown", joyStart);
+    canvas.addEventListener("pointerdown", autoAudio, { once: true });
     canvas.addEventListener("pointermove", joyMove);
     canvas.addEventListener("pointerup", joyEnd);
     canvas.addEventListener("pointercancel", joyEnd);
@@ -824,10 +832,13 @@ export function PillarGame() {
         if (pt.life <= 0) S.particles.splice(i, 1);
       }
 
-      /* camera with velocity lookahead */
+      /* camera with velocity lookahead + slight zoom-out for openness */
+      const ZOOM = 0.82;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const vw = canvas.width / dpr;
-      const vh = canvas.height / dpr;
+      const svw = canvas.width / dpr; // screen pixels
+      const svh = canvas.height / dpr;
+      const vw = svw / ZOOM; // world units visible
+      const vh = svh / ZOOM;
       const lookX = ix * 90;
       const lookY = iy * 90;
       const tx = p.x - vw / 2 + lookX;
@@ -840,8 +851,9 @@ export function PillarGame() {
       S.cam.y = Math.max(-80, Math.min(WORLD_H - vh + 80, S.cam.y));
 
       /* ------------------------------ render ------------------------------ */
-      ctx.clearRect(0, 0, vw, vh);
+      ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
       ctx.save();
+      ctx.scale(ZOOM, ZOOM);
       ctx.translate(-S.cam.x, -S.cam.y);
 
       const plazaImg = sprites.plaza;
@@ -1092,6 +1104,35 @@ export function PillarGame() {
         ctx.fillText(label, p.x, p.y - 34 + bob);
       }
 
+      /* soft mist at world edges — hides the "box" */
+      {
+        const edge = 220;
+        // Left edge (x=0)
+        let g = ctx.createLinearGradient(0, 0, edge, 0);
+        g.addColorStop(0, "rgba(7,11,28,0.6)");
+        g.addColorStop(1, "rgba(7,11,28,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(-40, -40, edge + 40, WORLD_H + 80);
+        // Right edge (x=WORLD_W)
+        g = ctx.createLinearGradient(WORLD_W, 0, WORLD_W - edge, 0);
+        g.addColorStop(0, "rgba(7,11,28,0.6)");
+        g.addColorStop(1, "rgba(7,11,28,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(WORLD_W - edge, -40, edge + 40, WORLD_H + 80);
+        // Top edge (y=0)
+        g = ctx.createLinearGradient(0, 0, 0, edge);
+        g.addColorStop(0, "rgba(7,11,28,0.6)");
+        g.addColorStop(1, "rgba(7,11,28,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(-40, -40, WORLD_W + 80, edge + 40);
+        // Bottom edge (y=WORLD_H)
+        g = ctx.createLinearGradient(0, WORLD_H, 0, WORLD_H - edge);
+        g.addColorStop(0, "rgba(7,11,28,0.6)");
+        g.addColorStop(1, "rgba(7,11,28,0)");
+        ctx.fillStyle = g;
+        ctx.fillRect(-40, WORLD_H - edge, WORLD_W + 80, edge + 40);
+      }
+
       for (const pt of S.particles) {
         ctx.globalAlpha = Math.max(0, pt.life * 1.4);
         ctx.fillStyle = pt.color;
@@ -1104,17 +1145,17 @@ export function PillarGame() {
 
       if (inStormNow) {
         ctx.fillStyle = "rgba(60,70,95,0.22)";
-        ctx.fillRect(0, 0, vw, vh);
+        ctx.fillRect(0, 0, svw, svh);
       }
 
       if (questRef.current === "active" && nearestDist < 170) {
         const danger = 1 - nearestDist / 170;
         const pulse = 0.25 + Math.sin(S.time * 8) * 0.12;
-        const vg = ctx.createRadialGradient(vw / 2, vh / 2, Math.min(vw, vh) * 0.35, vw / 2, vh / 2, Math.max(vw, vh) * 0.75);
+        const vg = ctx.createRadialGradient(svw / 2, svh / 2, Math.min(svw, svh) * 0.35, svw / 2, svh / 2, Math.max(svw, svh) * 0.75);
         vg.addColorStop(0, "rgba(239,68,68,0)");
         vg.addColorStop(1, `rgba(239,68,68,${(danger * pulse).toFixed(3)})`);
         ctx.fillStyle = vg;
-        ctx.fillRect(0, 0, vw, vh);
+        ctx.fillRect(0, 0, svw, svh);
       }
 
       if (questRef.current === "active" && nearestDist < 55 && nearestDist >= 32) {
@@ -1131,7 +1172,7 @@ export function PillarGame() {
         ctx.textAlign = "center";
         ctx.shadowColor = "#fbbf24";
         ctx.shadowBlur = 16;
-        ctx.fillText("CLOSE!", vw / 2, vh * 0.3);
+        ctx.fillText("CLOSE!", svw / 2, svh * 0.3);
         ctx.shadowBlur = 0;
         ctx.globalAlpha = 1;
       }
@@ -1151,8 +1192,8 @@ export function PillarGame() {
           if (k > 0.5) {
             ctx.fillStyle = `rgba(255,255,255,${((k - 0.5) * 0.9).toFixed(3)})`;
             for (let i = 0; i < 40; i++) {
-              const sx = ((i * 173.3) % vw);
-              const sy = ((i * 97.7) % (vh * 0.6));
+              const sx = ((i * 173.3) % svw);
+              const sy = ((i * 97.7) % (svh * 0.6));
               const tw2 = 0.5 + 0.5 * Math.sin(S.time * 2 + i);
               ctx.globalAlpha = ((k - 0.5) * tw2).toFixed(3) as unknown as number;
               ctx.fillRect(sx, sy, 2, 2);
@@ -1167,14 +1208,14 @@ export function PillarGame() {
         }
         if (tint) {
           ctx.fillStyle = tint;
-          ctx.fillRect(0, 0, vw, vh);
+          ctx.fillRect(0, 0, svw, svh);
         }
       }
 
       /* minimap */
       const mmW = 110;
       const mmH = 82;
-      const mmX = vw - mmW - 12;
+      const mmX = svw - mmW - 12;
       const mmY = 12;
       ctx.fillStyle = "rgba(0,0,0,0.55)";
       roundRect(ctx, mmX, mmY, mmW, mmH, 10);
@@ -1208,7 +1249,7 @@ export function PillarGame() {
       // viewport rect
       ctx.strokeStyle = "rgba(255,255,255,0.3)";
       ctx.lineWidth = 1;
-      ctx.strokeRect(mmX + S.cam.x * sx, mmY + S.cam.y * sy, vw * sx, vh * sy);
+      ctx.strokeRect(mmX + S.cam.x * sx, mmY + S.cam.y * sy, svw * sx, svh * sy);
 
       /* joystick */
       if (S.joy.active) {
