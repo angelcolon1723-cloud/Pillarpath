@@ -2,6 +2,7 @@ import { useMemo } from "react";
 import {
   BookOpen,
   ChevronRight,
+  Gamepad2,
   GraduationCap,
   HeartHandshake,
   Images,
@@ -203,6 +204,16 @@ function useRealms(): Realm[] {
         icon: BookOpen,
         biome: "from-amber-500/25 via-amber-400/10 to-transparent",
         glow: "shadow-amber-400/20",
+        badge: () => null,
+      },
+      {
+        id: "game",
+        screen: "game",
+        name: "Pillar Plaza",
+        tagline: "Play the prototype!",
+        icon: Gamepad2,
+        biome: "from-cyan-500/25 via-cyan-400/10 to-transparent",
+        glow: "shadow-cyan-400/20",
         badge: () => null,
       },
     ];

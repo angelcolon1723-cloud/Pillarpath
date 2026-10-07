@@ -31,7 +31,8 @@ export type Screen =
   | "gallery"
   | "give"
   | "showcase"
-  | "wisdom";
+  | "wisdom"
+  | "game";
 
 export type HistoryKind =
   | "credit"
