@@ -20,6 +20,9 @@ interface Vec { x: number; y: number }
 interface Orb extends Vec { taken: boolean; ph: number }
 interface Doubtling extends Vec { ph: number; dir: number; speed: number; stun: number; emotionId: string }
 interface StormCloud extends Vec { r: number; vx: number; ph: number }
+interface Chest extends Vec { opened: boolean; ph: number }
+interface CourageOrb extends Vec { taken: boolean; ph: number; value: number }
+interface Wanderer extends Vec { dir: number; speed: number; ph: number; pauseT: number }
 interface Obstacle { x: number; y: number; w: number; h: number; label?: string; color: string }
 
 const OBSTACLES: Obstacle[] = [
@@ -108,13 +111,15 @@ export function PillarGame() {
   const [dilemma, setDilemma] = useState<null | { q: string; a: string; b: string; c: string }>(null);
   const [dilemmaKind, setDilemmaKind] = useState<null | "maya" | "peer" | "sam">(null);
   const [missionsDone, setMissionsDone] = useState<string[]>([]);
-  const [nearWhat, setNearWhat] = useState<null | "keeper" | "maya" | "peer" | "sam" | "chore" | "vault" | "market">(null);
+  const [nearWhat, setNearWhat] = useState<null | "keeper" | "maya" | "peer" | "sam" | "chore" | "vault" | "market" | "chest">(null);
   const [inStorm, setInStorm] = useState(false);
   const [showCodex, setShowCodex] = useState(false);
   const [encounters, setEncounters] = useState<Record<string, number>>({});
   const [ceremony, setCeremony] = useState<null | string>(null);
   const [mayaMemory, setMayaMemory] = useState<null | "good" | "bad">(null);
   const [marketChoice, setMarketChoice] = useState<null | string>(null);
+  const [courage, setCourage] = useState(0);
+  const [chestMsg, setChestMsg] = useState<null | string>(null);
   /* Trust — your character shapes the game world. Good decisions weaken Doubtlings. */
   const [trust, setTrust] = useState(50);
   const trustRef = useRef(50);
@@ -132,6 +137,21 @@ export function PillarGame() {
       { x: 1200, y: 500, r: 150, vx: -18, ph: 2 },
       { x: 800, y: 950, r: 110, vx: 26, ph: 4 },
     ] as StormCloud[],
+    chests: [
+      { x: 250, y: 350, opened: false, ph: 0 },
+      { x: 1350, y: 400, opened: false, ph: 2 },
+      { x: 800, y: 1080, opened: false, ph: 4 },
+    ] as Chest[],
+    courageOrbs: [] as CourageOrb[],
+    wanderers: [
+      { x: 600, y: 400, dir: 0, speed: 40, ph: 0, pauseT: 0 },
+      { x: 1000, y: 800, dir: 2, speed: 35, ph: 2, pauseT: 0 },
+      { x: 700, y: 1000, dir: 4, speed: 45, ph: 4, pauseT: 0 },
+      { x: 1200, y: 300, dir: 1, speed: 38, ph: 1, pauseT: 0 },
+    ] as Wanderer[],
+    courageTimer: 0,
+    courage: 0,
+    fireflies: null as null | Array<{ x: number; y: number; ph: number; sp: number }>,
     keys: {} as Record<string, boolean>,
     joy: { x: 0, y: 0, active: false },
     cam: { x: 0, y: 0 } as Vec,
@@ -180,7 +200,11 @@ export function PillarGame() {
       else if (d(p, CHORE_DOOR) < 110) setNearWhat("chore");
       else if (d(p, VAULT_DOOR) < 110) setNearWhat("vault");
       else if (d(p, MARKET_DOOR) < 110) setNearWhat("market");
-      else setNearWhat(null);
+      else {
+        // Near an unopened chest?
+        const chest = stateRef.current.chests.find((c) => !c.opened && d(p, c) < 80);
+        setNearWhat(chest ? "chest" : null);
+      }
       setInStorm(stateRef.current.inStorm);
     }, 250);
     return () => clearInterval(id);
@@ -201,6 +225,15 @@ export function PillarGame() {
       questRef.current = "done";
       setQuest("done");
       setWon(true);
+      // Clean-run bonus: zero Doubtling contact = flawless courage.
+      const hitCount = hits;
+      if (hitCount === 0) {
+        const nt = Math.min(100, trustRef.current + 15);
+        trustRef.current = nt;
+        setTrust(nt);
+        setCourage((c) => c + 20);
+        stateRef.current.courage += 20;
+      }
       const p = stateRef.current.player;
       const colors = ["#22d3ee", "#e879f9", "#fbbf24", "#4ade80", "#a78bfa"];
       for (let i = 0; i < 80; i++) {
@@ -346,6 +379,44 @@ export function PillarGame() {
         bad("Sam panic-buys everything! Bags of stuff he doesn't need. The sale ends, the regret begins. Flash sales are designed to bypass your brain.");
       }
     }
+  };
+
+  const openChest = () => {
+    const p = stateRef.current.player;
+    const chest = stateRef.current.chests.find((c) => !c.opened && Math.hypot(p.x - c.x, p.y - c.y) < 80);
+    if (!chest) return;
+    chest.opened = true;
+    // Random reward: Trust, Courage, or Wisdom.
+    const roll = Math.random();
+    if (roll < 0.4) {
+      const nt = Math.min(100, trustRef.current + 5);
+      trustRef.current = nt;
+      setTrust(nt);
+      setChestMsg("✨ Treasure! +5 Trust — the Doubtlings shrink a little.");
+    } else if (roll < 0.7) {
+      setCourage((c) => c + 10);
+      stateRef.current.courage += 10;
+      setChestMsg("💪 Treasure! +10 Courage — bravery compounds.");
+    } else {
+      const wisdoms = [
+        "💎 Treasure! \"Wealth is what you don't see.\" — The richest kids aren't the ones who spend most.",
+        "💎 Treasure! \"A penny saved is a penny earned — but a habit saved is a fortune built.\"",
+        "💎 Treasure! \"The best investment is the one you make in yourself.\"",
+      ];
+      setChestMsg(wisdoms[Math.floor(Math.random() * wisdoms.length)]);
+    }
+    // Burst effect.
+    const S = stateRef.current;
+    for (let i = 0; i < 20; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 60 + Math.random() * 120;
+      S.particles.push({
+        x: chest.x, y: chest.y,
+        vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+        life: 0.8 + Math.random() * 0.4, color: "#fbbf24",
+      });
+    }
+    setTimeout(() => setChestMsg(null), 4000);
   };
 
   const acceptJob = (id: string) => {
@@ -504,6 +575,16 @@ export function PillarGame() {
       ctx.globalAlpha = 1;
     };
 
+    const drawShadow = (x: number, y: number, rx: number, ry: number, alpha = 0.35) => {
+      ctx.save();
+      ctx.globalAlpha = alpha;
+      ctx.fillStyle = "#000";
+      ctx.beginPath();
+      ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    };
+
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
       const dt = Math.min((now - last) / 1000, 0.05);
@@ -558,7 +639,45 @@ export function PillarGame() {
         }
       }
 
-      /* doubtlings — Trust shapes them: high trust weakens, low trust emboldens */
+      /* courage orbs spawn near Doubtlings — risk/reward */
+      S.courageTimer += dt;
+      if (S.courageTimer > 8 && S.courageOrbs.filter((o) => !o.taken).length < 3) {
+        S.courageTimer = 0;
+        const d = S.doubtlings[Math.floor(Math.random() * S.doubtlings.length)];
+        const a = Math.random() * Math.PI * 2;
+        S.courageOrbs.push({
+          x: Math.max(60, Math.min(WORLD_W - 60, d.x + Math.cos(a) * 120)),
+          y: Math.max(60, Math.min(WORLD_H - 60, d.y + Math.sin(a) * 120)),
+          taken: false,
+          ph: Math.random() * 6,
+          value: 5,
+        });
+      }
+      for (const co of S.courageOrbs) {
+        if (!co.taken && Math.hypot(p.x - co.x, p.y - co.y) < 32) {
+          co.taken = true;
+          setCourage((c) => c + co.value);
+          S.courage += co.value;
+          spawnBurst(co.x, co.y, "#fbbf24", 10);
+        }
+      }
+
+      /* wanderers drift around */
+      for (const w of S.wanderers) {
+        if (w.pauseT > 0) { w.pauseT -= dt; continue; }
+        w.dir += dt * 0.4;
+        const wx = w.x + Math.cos(w.dir + w.ph) * w.speed * dt;
+        const wy = w.y + Math.sin(w.dir * 0.7 + w.ph) * w.speed * dt;
+        if (!OBSTACLES.some((o) => circleRect(wx, w.y, 14, o))) {
+          w.x = Math.max(30, Math.min(WORLD_W - 30, wx));
+        } else { w.dir += 1.5; }
+        if (!OBSTACLES.some((o) => circleRect(w.x, wy, 14, o))) {
+          w.y = Math.max(30, Math.min(WORLD_H - 30, wy));
+        } else { w.dir += 1.5; }
+        if (Math.random() < dt * 0.15) w.pauseT = 1 + Math.random() * 2;
+      }
+
+      /* doubtlings — Trust shapes them */
       const heldForSpeed = S.orbs.filter((o) => o.taken).length;
       const trustFactor = 1.3 - (trustRef.current / 100) * 0.6; // trust 100 → 0.7x, trust 0 → 1.3x
       let nearestDist = Infinity;
@@ -668,8 +787,100 @@ export function PillarGame() {
         }
       }
 
+      /* ambient fireflies */
+      if (!S.fireflies) {
+        S.fireflies = Array.from({ length: 24 }, () => ({
+          x: Math.random() * WORLD_W,
+          y: Math.random() * WORLD_H,
+          ph: Math.random() * 6,
+          sp: 10 + Math.random() * 20,
+        }));
+      }
+      for (const f of S.fireflies as Array<{ x: number; y: number; ph: number; sp: number }>) {
+        f.x += Math.cos(S.time * 0.5 + f.ph) * f.sp * dt;
+        f.y += Math.sin(S.time * 0.7 + f.ph) * f.sp * dt;
+        const glow = 0.3 + 0.5 * Math.abs(Math.sin(S.time * 2 + f.ph));
+        // Only draw if on screen.
+        if (f.x > S.cam.x - 20 && f.x < S.cam.x + vw + 20 && f.y > S.cam.y - 20 && f.y < S.cam.y + vh + 20) {
+          ctx.save();
+          ctx.globalAlpha = glow * 0.7;
+          ctx.fillStyle = "#fde68a";
+          ctx.shadowColor = "#fde68a";
+          ctx.shadowBlur = 8;
+          ctx.beginPath();
+          ctx.arc(f.x, f.y, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      }
+
       /* storm clouds (behind characters, above ground) */
       for (const c of S.clouds) drawCloud(c);
+
+      /* treasure chests */
+      const chestImg = sprites.chest;
+      for (const c of S.chests) {
+        const bob = c.opened ? 0 : Math.sin(S.time * 2 + c.ph) * 3;
+        const cs = 56;
+        if (!chestImg) {
+          // sprite loads async; skip until ready
+        } else if (chestImg.complete && chestImg.naturalWidth > 0) {
+          ctx.save();
+          ctx.translate(c.x, c.y + bob);
+          if (!c.opened) {
+            ctx.shadowColor = "#fbbf24";
+            ctx.shadowBlur = 16 + Math.sin(S.time * 3 + c.ph) * 6;
+          }
+          ctx.globalAlpha = c.opened ? 0.6 : 1;
+          ctx.drawImage(chestImg, -cs / 2, -cs / 2, cs, cs);
+          ctx.restore();
+          ctx.globalAlpha = 1;
+        }
+        if (!c.opened) {
+          // Sparkle to draw attention.
+          const tw = 0.5 + 0.5 * Math.sin(S.time * 4 + c.ph);
+          ctx.fillStyle = `rgba(251,191,36,${(0.4 + tw * 0.4).toFixed(2)})`;
+          ctx.font = "bold 16px system-ui";
+          ctx.textAlign = "center";
+          ctx.fillText("✦", c.x + 18, c.y - 22 + bob);
+        }
+      }
+
+      /* courage orbs — gold, near danger */
+      for (const co of S.courageOrbs) {
+        if (co.taken) continue;
+        const bob = Math.sin(S.time * 5 + co.ph) * 4;
+        const pulse = 1 + Math.sin(S.time * 6 + co.ph) * 0.15;
+        ctx.save();
+        ctx.translate(co.x, co.y + bob);
+        ctx.scale(pulse, pulse);
+        ctx.shadowColor = "#fbbf24";
+        ctx.shadowBlur = 16;
+        const cg = ctx.createRadialGradient(0, 0, 2, 0, 0, 12);
+        cg.addColorStop(0, "#fff");
+        cg.addColorStop(0.4, "#fde68a");
+        cg.addColorStop(1, "#b45309");
+        ctx.fillStyle = cg;
+        ctx.beginPath();
+        ctx.arc(0, 0, 11, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+
+      /* wanderers — ambient life */
+      const wanderImg = sprites.player;
+      for (const w of S.wanderers) {
+        const bob = Math.sin(S.time * 3 + w.ph) * 2;
+        if (wanderImg.complete && wanderImg.naturalWidth > 0) {
+          ctx.save();
+          ctx.translate(w.x, w.y + bob);
+          ctx.rotate(w.dir + w.ph - Math.PI / 4);
+          ctx.globalAlpha = 0.85;
+          ctx.drawImage(wanderImg, -22, -22, 44, 44);
+          ctx.restore();
+          ctx.globalAlpha = 1;
+        }
+      }
 
       /* orbs */
       const orbImg = sprites.orb;
@@ -765,6 +976,7 @@ export function PillarGame() {
         const wob = Math.sin(S.time * 6 + d.ph) * 4;
         const ds = 56;
         const flip = p.x - d.x < 0 ? -1 : 1;
+        drawShadow(d.x, d.y + 20, 18, 7, 0.4);
         if (doubtImg.complete && doubtImg.naturalWidth > 0) {
           ctx.save();
           ctx.translate(d.x, d.y + wob);
@@ -780,6 +992,7 @@ export function PillarGame() {
         const moving = il > 0.1;
         const bob = moving ? Math.abs(Math.sin(S.time * 10)) * 2 : Math.sin(S.time * 2.5) * 1.5;
         const ps = 56;
+        drawShadow(p.x, p.y + 20, 20, 8);
         if (playerImg.complete && playerImg.naturalWidth > 0) {
           ctx.save();
           ctx.translate(p.x, p.y - bob);
@@ -1099,6 +1312,10 @@ export function PillarGame() {
             <Heart className="size-4" style={{ color: trust >= 70 ? "#4ade80" : trust >= 40 ? "#fbbf24" : "#ef4444" }} />
             <span style={{ color: trust >= 70 ? "#4ade80" : trust >= 40 ? "#fbbf24" : "#ef4444" }}>{trust}</span>
           </div>
+          <div className="flex items-center gap-1 text-xs font-bold text-amber-300" title="Courage: earned by facing challenges">
+            <span>💪</span>
+            <span>{courage}</span>
+          </div>
           <div className="flex items-center gap-1 text-sm font-bold text-accent">
             <Sparkles className="size-4" /> {orbsHeld}/5
           </div>
@@ -1151,6 +1368,11 @@ export function PillarGame() {
 
         {!dialog && !dilemma && nearWhat && (
           <div className="absolute bottom-3 right-3 flex gap-2">
+            {nearWhat === "chest" && (
+              <Button size="sm" onClick={openChest} className="bg-amber-400 font-bold text-black hover:bg-amber-300">
+                🗝️ Open Treasure
+              </Button>
+            )}
             {nearWhat === "keeper" && (
               <Button size="sm" onClick={talkToKeeper} className="bg-amber-400 font-bold text-black hover:bg-amber-300">
                 Talk
@@ -1198,6 +1420,12 @@ export function PillarGame() {
                 </div>
               )
             )}
+          </div>
+        )}
+
+        {chestMsg && (
+          <div className="absolute inset-x-8 top-8 rounded-2xl border border-amber-300/40 bg-black/85 p-4 text-center backdrop-blur-sm">
+            <p className="text-sm leading-relaxed text-white">{chestMsg}</p>
           </div>
         )}
 
