@@ -51,6 +51,8 @@ import {
 } from "@/components/kiddo/child-views";
 import { ParentChores, ParentClassroom } from "@/components/kiddo/parent-views";
 import { StudioScreen } from "@/components/kiddo/studio";
+import { WisdomRoom3D } from "@/components/kiddo/world/WisdomRoom3D";
+import { societyScore } from "@/components/kiddo/world/WorldMap";
 import { FutureUnitsMarket } from "@/components/kiddo/future-market";
 import { UnitMarketView } from "@/components/kiddo/unit-market";
 import {
@@ -696,7 +698,20 @@ function ChildWorkspace() {
   if (screen === "give") return <ChildGive />;
   if (screen === "chores") return <ChildChores />;
   if (screen === "goals") return <ChildGoals />;
+  if (screen === "wisdom") return <WisdomRoomWithScore />;
   return <ChildHome />;
+}
+
+function WisdomRoomWithScore() {
+  const completedChoreIds = useLedger((s) => s.completedChoreIds);
+  const vault = useLedger((s) => s.vault);
+  const vaultTarget = useLedger((s) => s.vaultTarget);
+  const score = societyScore({
+    choresDone: completedChoreIds.length,
+    vaultPct: vaultTarget > 0 ? Math.min(1, vault / vaultTarget) : 0,
+    studioPct: 0,
+  });
+  return <WisdomRoom3D score={score} />;
 }
 
 function BasketPanel({

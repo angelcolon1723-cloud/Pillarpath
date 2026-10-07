@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import {
+  BookOpen,
   ChevronRight,
   GraduationCap,
   HeartHandshake,
@@ -30,7 +31,7 @@ export type SocietyRank = {
   tagline: string;
 };
 
-const RANKS: SocietyRank[] = [
+export const RANKS: SocietyRank[] = [
   { name: "Seedling", min: 0, tagline: "Every pillar starts as a seed." },
   { name: "Sprout", min: 50, tagline: "Growing stronger every day." },
   { name: "Trailblazer", min: 150, tagline: "Blazing your own money trail." },
@@ -192,6 +193,16 @@ function useRealms(): Realm[] {
         icon: School,
         biome: "from-indigo-500/25 via-indigo-400/10 to-transparent",
         glow: "shadow-indigo-400/20",
+        badge: () => null,
+      },
+      {
+        id: "wisdom",
+        screen: "wisdom",
+        name: "Hall of Becoming",
+        tagline: "The greats await",
+        icon: BookOpen,
+        biome: "from-amber-500/25 via-amber-400/10 to-transparent",
+        glow: "shadow-amber-400/20",
         badge: () => null,
       },
     ];

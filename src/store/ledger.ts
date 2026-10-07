@@ -30,7 +30,8 @@ export type Screen =
   | "goals"
   | "gallery"
   | "give"
-  | "showcase";
+  | "showcase"
+  | "wisdom";
 
 export type HistoryKind =
   | "credit"
