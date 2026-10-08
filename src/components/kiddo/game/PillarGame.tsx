@@ -105,6 +105,9 @@ export function PillarGame() {
   const [cityMood, setCityMood] = useState<"dawn" | "day" | "sunset" | "night">("day");
   const toastId = useRef(0);
   const audioRef = useRef<{ ctx: AudioContext } | null>(null);
+  const zoomRef = useRef<{ zoomIn: () => void; zoomOut: () => void; reset: () => void }>({
+    zoomIn: () => {}, zoomOut: () => {}, reset: () => {},
+  });
 
   const trustRef = useRef(50);
   const rankRef = useRef(rank);
@@ -301,10 +304,10 @@ export function PillarGame() {
       const img = new Image(); img.src = src; sprites[k] = img;
     }
 
-    // Fit whole city on screen.
-    let viewScale = 1;
-    let viewOX = 0;
-    let viewOY = 0;
+    // Camera: fill screen by default, pinch to zoom, drag to pan.
+    const cam = { cx: WORLD_W / 2, cy: WORLD_H / 2, zoom: 1 };
+    let minZoom = 0.2;
+    let maxZoom = 2.5;
     const resize = () => {
       const w = window.innerWidth;
       const h = window.innerHeight;
@@ -314,37 +317,56 @@ export function PillarGame() {
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      viewScale = Math.min(w / WORLD_W, h / WORLD_H);
-      viewOX = (w - WORLD_W * viewScale) / 2;
-      viewOY = (h - WORLD_H * viewScale) / 2;
+      minZoom = Math.min(w / WORLD_W, h / WORLD_H) * 0.9;
+      // Default: cover the screen (no black bars).
+      if (cam.zoom === 1) cam.zoom = Math.max(w / WORLD_W, h / WORLD_H);
+      cam.zoom = Math.max(minZoom, Math.min(maxZoom, cam.zoom));
+      clampCam(w, h);
+    };
+    const clampCam = (w: number, h: number) => {
+      const vw = w / cam.zoom;
+      const vh = h / cam.zoom;
+      const mx = Math.max(0, (WORLD_W - vw) / 2) + 120;
+      const my = Math.max(0, (WORLD_H - vh) / 2) + 120;
+      cam.cx = Math.max(WORLD_W / 2 - mx, Math.min(WORLD_W / 2 + mx, cam.cx));
+      cam.cy = Math.max(WORLD_H / 2 - my, Math.min(WORLD_H / 2 + my, cam.cy));
+    };
+    const screenToWorld = (sx: number, sy: number) => {
+      const w = window.innerWidth;
+      const h = window.innerHeight;
+      return {
+        x: cam.cx + (sx - w / 2) / cam.zoom,
+        y: cam.cy + (sy - h / 2) / cam.zoom,
+      };
     };
     resize();
     window.addEventListener("resize", resize);
 
-    // Tap detection.
-    const onTap = (e: PointerEvent) => {
-      const r = canvas.getBoundingClientRect();
-      const sx = e.clientX - r.left;
-      const sy = e.clientY - r.top;
-      const wx = (sx - viewOX) / viewScale;
-      const wy = (sy - viewOY) / viewScale;
-      // Check districts.
+    // Pointer handling: tap vs drag vs pinch.
+    const pointers = new Map<number, { x: number; y: number }>();
+    let pinchDist = 0;
+    let pinchZoom = 1;
+    let downTime = 0;
+    let downPos = { x: 0, y: 0 };
+    let moved = false;
+    let lastPan = { x: 0, y: 0 };
+
+    const handleTap = (sx: number, sy: number) => {
+      const { x: wx, y: wy } = screenToWorld(sx, sy);
       for (const d of S.districts) {
-        if (Math.hypot(wx - d.pos.x, wy - d.pos.y) < 110) {
+        if (Math.hypot(wx - d.pos.x, wy - d.pos.y) < 130) {
           setSelected(d.id);
           return;
         }
       }
-      // Check chests.
       for (const c of S.chests) {
-        if (!c.opened && Math.hypot(wx - c.x, wy - c.y) < 60) {
+        if (!c.opened && Math.hypot(wx - c.x, wy - c.y) < 70) {
           openChest(c);
           return;
         }
       }
-      // Check events.
       for (const ev of S.events) {
-        if (Math.hypot(wx - ev.x, wy - ev.y) < 70) {
+        if (Math.hypot(wx - ev.x, wy - ev.y) < 80) {
           if (ev.type === "dilemma" && ev.dilemmaKind) {
             triggerDilemma(ev.dilemmaKind);
           } else if (ev.type === "kindness") {
@@ -366,7 +388,81 @@ export function PillarGame() {
       }
       setSelected(null);
     };
-    canvas.addEventListener("pointerdown", onTap);
+
+    const onPointerDown = (e: PointerEvent) => {
+      canvas.setPointerCapture(e.pointerId);
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 1) {
+        downTime = performance.now();
+        downPos = { x: e.clientX, y: e.clientY };
+        lastPan = { x: e.clientX, y: e.clientY };
+        moved = false;
+      } else if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        pinchDist = Math.hypot(a.x - b.x, a.y - b.y);
+        pinchZoom = cam.zoom;
+        moved = true; // cancel tap
+      }
+    };
+    const onPointerMove = (e: PointerEvent) => {
+      if (!pointers.has(e.pointerId)) return;
+      pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      if (pointers.size === 2) {
+        const [a, b] = [...pointers.values()];
+        const d = Math.hypot(a.x - b.x, a.y - b.y);
+        if (pinchDist > 0) {
+          const w = window.innerWidth;
+          const h = window.innerHeight;
+          // Zoom toward pinch midpoint.
+          const mx = (a.x + b.x) / 2;
+          const my = (a.y + b.y) / 2;
+          const before = screenToWorld(mx, my);
+          cam.zoom = Math.max(minZoom, Math.min(maxZoom, pinchZoom * (d / pinchDist)));
+          const after = screenToWorld(mx, my);
+          cam.cx += before.x - after.x;
+          cam.cy += before.y - after.y;
+          clampCam(w, h);
+        }
+      } else if (pointers.size === 1) {
+        const dx = e.clientX - lastPan.x;
+        const dy = e.clientY - lastPan.y;
+        lastPan = { x: e.clientX, y: e.clientY };
+        if (Math.hypot(e.clientX - downPos.x, e.clientY - downPos.y) > 12) moved = true;
+        if (moved) {
+          cam.cx -= dx / cam.zoom;
+          cam.cy -= dy / cam.zoom;
+          clampCam(window.innerWidth, window.innerHeight);
+        }
+      }
+    };
+    const onPointerUp = (e: PointerEvent) => {
+      pointers.delete(e.pointerId);
+      if (pointers.size === 0 && !moved && performance.now() - downTime < 500) {
+        handleTap(e.clientX, e.clientY);
+      }
+      if (pointers.size < 2) pinchDist = 0;
+    };
+    canvas.addEventListener("pointerdown", onPointerDown);
+    canvas.addEventListener("pointermove", onPointerMove);
+    canvas.addEventListener("pointerup", onPointerUp);
+    canvas.addEventListener("pointercancel", onPointerUp);
+
+    // Expose zoom controls to React buttons.
+    zoomRef.current = {
+      zoomIn: () => {
+        cam.zoom = Math.min(maxZoom, cam.zoom * 1.4);
+        clampCam(window.innerWidth, window.innerHeight);
+      },
+      zoomOut: () => {
+        cam.zoom = Math.max(minZoom, cam.zoom / 1.4);
+        clampCam(window.innerWidth, window.innerHeight);
+      },
+      reset: () => {
+        cam.cx = WORLD_W / 2; cam.cy = WORLD_H / 2;
+        cam.zoom = Math.max(window.innerWidth / WORLD_W, window.innerHeight / WORLD_H);
+        clampCam(window.innerWidth, window.innerHeight);
+      },
+    };
 
     // Auto-sound on first tap.
     let audioStarted = false;
@@ -444,8 +540,10 @@ export function PillarGame() {
       const sh = canvas.height / dpr;
       ctx.clearRect(0, 0, sw, sh);
       ctx.save();
-      ctx.translate(viewOX, viewOY);
-      ctx.scale(viewScale, viewScale);
+      // Camera transform: center on cam, apply zoom.
+      ctx.translate(sw / 2, sh / 2);
+      ctx.scale(cam.zoom, cam.zoom);
+      ctx.translate(-cam.cx, -cam.cy);
 
       // Background.
       const plazaImg = sprites.plaza;
@@ -649,7 +747,10 @@ export function PillarGame() {
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
-      canvas.removeEventListener("pointerdown", onTap);
+      canvas.removeEventListener("pointerdown", onPointerDown);
+      canvas.removeEventListener("pointermove", onPointerMove);
+      canvas.removeEventListener("pointerup", onPointerUp);
+      canvas.removeEventListener("pointercancel", onPointerUp);
       canvas.removeEventListener("pointerdown", autoAudio);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -747,6 +848,13 @@ export function PillarGame() {
         {cityMood === "sunset" && "🌅 Sunset over the plaza"}
         {cityMood === "night" && "🌙 Night — the city glows"}
         {cityMood === "dawn" && "🌄 Dawn — a new day"}
+      </div>
+
+      {/* Zoom controls */}
+      <div className="absolute bottom-4 right-3 z-20 flex flex-col gap-2">
+        <Button size="sm" variant="ghost" className="h-10 w-10 rounded-full bg-black/60 p-0 text-xl text-white backdrop-blur-sm hover:bg-black/80 hover:text-white" onClick={() => zoomRef.current.zoomIn()}>＋</Button>
+        <Button size="sm" variant="ghost" className="h-10 w-10 rounded-full bg-black/60 p-0 text-xl text-white backdrop-blur-sm hover:bg-black/80 hover:text-white" onClick={() => zoomRef.current.zoomOut()}>－</Button>
+        <Button size="sm" variant="ghost" className="h-10 w-10 rounded-full bg-black/60 p-0 text-sm text-white backdrop-blur-sm hover:bg-black/80 hover:text-white" onClick={() => zoomRef.current.reset()}>⟡</Button>
       </div>
 
       {/* Toasts */}
@@ -886,7 +994,7 @@ export function PillarGame() {
       {/* Hint */}
       {!selected && !dilemma && (
         <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-4 py-1.5 text-[11px] font-medium text-white/70 backdrop-blur-sm">
-          👆 Tap a district to enter · Tap ✦ chests for treasure
+          👆 Tap districts · Pinch to zoom · Drag to explore
         </div>
       )}
     </div>
