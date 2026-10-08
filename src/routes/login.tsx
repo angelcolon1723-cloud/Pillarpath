@@ -389,7 +389,7 @@ function LoginForm() {
           <p className="mb-3 text-sm font-semibold uppercase tracking-[0.18em] text-accent">
             Family commerce + financial learning
           </p>
-          <h1 className="max-w-2xl font-display text-6xl font-semibold leading-[0.98] tracking-tight">
+          <h1 className="max-w-2xl font-display text-5xl font-semibold leading-[0.98] tracking-tight sm:text-6xl">
             One family account for earning, saving, shopping, and creating.
           </h1>
           <div className="mt-8 grid max-w-xl gap-3 sm:grid-cols-3">

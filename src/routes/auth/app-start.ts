@@ -77,7 +77,11 @@ export const Route = createFileRoute("/auth/app-start")({
             body: {
               provider: provider as "google",
               callbackURL: back,
-              errorCallbackURL: `${back}&error=1`,
+              // Better Auth appends its own ?error=<code> on failure;
+              // marking ours with a separate param keeps that real
+              // code readable downstream (an error=1 placeholder here
+              // masked it as "Code: 1" on the login page).
+              errorCallbackURL: `${back}&failed=1`,
             },
             headers: request.headers,
             asResponse: true,

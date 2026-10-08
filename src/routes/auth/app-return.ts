@@ -75,11 +75,15 @@ export const Route = createFileRoute("/auth/app-return")({
         const rawDest = url.searchParams.get("dest") ?? "/";
         const dest =
           rawDest.startsWith("/") && !rawDest.startsWith("//") ? rawDest : "/";
-        const failed = url.searchParams.has("error");
+        // Better Auth appends its real error code as an `error` param on
+        // the failure redirect; our own marker is `failed=1`. Surface the
+        // real code (last error param wins) — never a placeholder.
+        const errorCodes = url.searchParams.getAll("error").filter(Boolean);
+        const failed = url.searchParams.has("failed") || errorCodes.length > 0;
         const token = failed ? null : readCookie(request, SESSION_TOKEN_COOKIE);
         const deep = token
           ? `pillarpath://auth?token=${encodeURIComponent(token)}&dest=${encodeURIComponent(dest)}`
-          : `pillarpath://auth?error=${encodeURIComponent(url.searchParams.get("error") ?? "sign_in_failed")}&dest=${encodeURIComponent(dest)}`;
+          : `pillarpath://auth?error=${encodeURIComponent(errorCodes[errorCodes.length - 1] ?? "sign_in_failed")}&dest=${encodeURIComponent(dest)}`;
         return bridgePage(deep, Boolean(token));
       },
     },

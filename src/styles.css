@@ -76,6 +76,9 @@
     color: var(--color-ink);
     font-family: var(--font-sans);
     line-height: 1.5;
+    /* Small/older phones and large display-scaling settings must never
+       get sideways scrolling from decorative off-canvas elements. */
+    overflow-x: clip;
   }
 
   h1,
