@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SocietyRouteImport } from './routes/society'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as AuthAppReturnRouteImport } from './routes/auth/app-return'
 import { Route as CheckoutSuccessRouteImport } from './routes/checkout/success'
 import { Route as ApiAuthSplatRouteImport } from './routes/api/auth/$'
 import { Route as ApiCronSyncStockRouteImport } from './routes/api/cron/sync-stock'
@@ -43,6 +44,11 @@ const SocietyRoute = SocietyRouteImport.update({
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthAppReturnRoute = AuthAppReturnRouteImport.update({
+  id: '/auth/app-return',
+  path: '/auth/app-return',
   getParentRoute: () => rootRouteImport,
 } as any)
 const CheckoutSuccessRoute = CheckoutSuccessRouteImport.update({
@@ -77,6 +83,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/society': typeof SocietyRoute
   '/terms': typeof TermsRoute
+  '/auth/app-return': typeof AuthAppReturnRoute
   '/checkout/success': typeof CheckoutSuccessRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/sync-stock': typeof ApiCronSyncStockRoute
@@ -89,6 +96,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/society': typeof SocietyRoute
   '/terms': typeof TermsRoute
+  '/auth/app-return': typeof AuthAppReturnRoute
   '/checkout/success': typeof CheckoutSuccessRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/sync-stock': typeof ApiCronSyncStockRoute
@@ -102,6 +110,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/society': typeof SocietyRoute
   '/terms': typeof TermsRoute
+  '/auth/app-return': typeof AuthAppReturnRoute
   '/checkout/success': typeof CheckoutSuccessRoute
   '/api/auth/$': typeof ApiAuthSplatRoute
   '/api/cron/sync-stock': typeof ApiCronSyncStockRoute
@@ -116,6 +125,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/society'
     | '/terms'
+    | '/auth/app-return'
     | '/checkout/success'
     | '/api/auth/$'
     | '/api/cron/sync-stock'
@@ -128,6 +138,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/society'
     | '/terms'
+    | '/auth/app-return'
     | '/checkout/success'
     | '/api/auth/$'
     | '/api/cron/sync-stock'
@@ -140,6 +151,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/society'
     | '/terms'
+    | '/auth/app-return'
     | '/checkout/success'
     | '/api/auth/$'
     | '/api/cron/sync-stock'
@@ -153,6 +165,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   SocietyRoute: typeof SocietyRoute
   TermsRoute: typeof TermsRoute
+  AuthAppReturnRoute: typeof AuthAppReturnRoute
   CheckoutSuccessRoute: typeof CheckoutSuccessRoute
   ApiAuthSplatRoute: typeof ApiAuthSplatRoute
   ApiCronSyncStockRoute: typeof ApiCronSyncStockRoute
@@ -195,6 +208,13 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/app-return': {
+      id: '/auth/app-return'
+      path: '/auth/app-return'
+      fullPath: '/auth/app-return'
+      preLoaderRoute: typeof AuthAppReturnRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/checkout/success': {
@@ -241,6 +261,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   SocietyRoute: SocietyRoute,
   TermsRoute: TermsRoute,
+  AuthAppReturnRoute: AuthAppReturnRoute,
   CheckoutSuccessRoute: CheckoutSuccessRoute,
   ApiAuthSplatRoute: ApiAuthSplatRoute,
   ApiCronSyncStockRoute: ApiCronSyncStockRoute,

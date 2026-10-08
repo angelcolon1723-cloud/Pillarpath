@@ -3,6 +3,7 @@ import { useEffect } from "react";
 import { Capacitor } from "@capacitor/core";
 import { Toaster } from "sonner";
 import { AuthProvider } from "@/lib/auth/provider";
+import { completeAppAuthDeepLink, isNativeShell } from "@/lib/auth/client";
 import { PreviewHostBridge } from "@/components/preview-host-bridge";
 import appCss from "../styles.css?url";
 
@@ -24,6 +25,40 @@ function HideNativeSplash() {
       .catch(() => {});
     return () => {
       cancelled = true;
+    };
+  }, []);
+  return null;
+}
+
+/**
+ * Native shell only: listen for the `pillarpath://auth` deep link that
+ * returns a completed browser OAuth sign-in to the app (Google blocks
+ * OAuth inside the WebView itself). Handles both warm opens (appUrlOpen)
+ * and cold starts (getLaunchUrl).
+ */
+function NativeAuthDeepLinks() {
+  useEffect(() => {
+    if (!isNativeShell()) return;
+    let cancelled = false;
+    let remove: (() => void) | undefined;
+    (async () => {
+      const { App } = await import("@capacitor/app");
+      const handle = await App.addListener("appUrlOpen", (e) => {
+        void completeAppAuthDeepLink(e.url);
+      });
+      if (cancelled) {
+        void handle.remove();
+        return;
+      }
+      remove = () => {
+        void handle.remove();
+      };
+      const launch = await App.getLaunchUrl().catch(() => null);
+      if (launch?.url) void completeAppAuthDeepLink(launch.url);
+    })().catch(() => {});
+    return () => {
+      cancelled = true;
+      remove?.();
     };
   }, []);
   return null;
@@ -77,6 +112,7 @@ export const Route = createRootRoute({
       <body className="bg-bg text-ink">
         <PreviewHostBridge />
         <HideNativeSplash />
+        <NativeAuthDeepLinks />
         <AuthProvider>
           <Outlet />
         </AuthProvider>

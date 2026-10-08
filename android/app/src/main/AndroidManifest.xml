@@ -22,6 +22,16 @@
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
 
+            <!-- OAuth return: the system browser hands the completed
+                 sign-in back to the app via pillarpath://auth?... (see
+                 /auth/app-return + completeAppAuthDeepLink). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="pillarpath" />
+            </intent-filter>
+
         </activity>
 
         <provider

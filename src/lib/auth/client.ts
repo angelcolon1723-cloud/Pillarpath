@@ -1,3 +1,4 @@
+import { Capacitor } from "@capacitor/core";
 import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { runPreSignInSignOut, runSignOut } from "../../../scripts/sign-out-plan.mjs";
@@ -48,21 +49,46 @@ export { GROK_PROVIDERS };
 // preview after a popup sign-in, so the cookie path is untouched elsewhere.
 const BEARER_KEY = "grok-auth.bearer-token";
 
-/** The stored preview bearer token, or null. */
-export function getBearerToken(): string | null {
+/** True inside the native Android/iOS shell (Capacitor WebView). */
+export function isNativeShell(): boolean {
+  try {
+    return Capacitor.isNativePlatform();
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Where the bearer token lives. Preview iframe: sessionStorage (partitioned
+ * cookies make it necessary, and it should not outlive the tab). Native
+ * shell: localStorage — the session is created in the system browser during
+ * OAuth, so the token is the app's ONLY session credential and must survive
+ * app restarts, or testers would have to sign in on every cold start.
+ */
+function bearerStore(): Storage | null {
   if (typeof window === "undefined") return null;
   try {
-    return window.sessionStorage.getItem(BEARER_KEY);
+    return isNativeShell() ? window.localStorage : window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+/** The stored bearer token, or null. */
+export function getBearerToken(): string | null {
+  try {
+    return bearerStore()?.getItem(BEARER_KEY) ?? null;
   } catch {
     return null;
   }
 }
 
 function setBearerToken(token: string | null): void {
-  if (typeof window === "undefined") return;
   try {
-    if (token) window.sessionStorage.setItem(BEARER_KEY, token);
-    else window.sessionStorage.removeItem(BEARER_KEY);
+    const store = bearerStore();
+    if (!store) return;
+    if (token) store.setItem(BEARER_KEY, token);
+    else store.removeItem(BEARER_KEY);
   } catch {
     /* storage unavailable — ignore */
   }
@@ -163,6 +189,26 @@ export async function signInDirect(
   // `better-auth.state` cookie and the first flow dies with state_mismatch.
   claimOAuthInflight();
   const callbackURL = opts.callbackURL ?? "/";
+  if (isNativeShell()) {
+    // Native shell: Google blocks OAuth inside embedded WebViews (the
+    // redirect dies on a "network not available" error page), so run the
+    // flow in the system browser and bridge the finished session back
+    // through /auth/app-return → pillarpath://auth deep link.
+    await authClient.signOut().catch(() => {});
+    const back = `/auth/app-return?dest=${encodeURIComponent(callbackURL)}`;
+    const { data, error } = await authClient.signIn.social({
+      provider: provider.id,
+      callbackURL: back,
+      errorCallbackURL: `${back}&error=1`,
+      disableRedirect: true,
+    });
+    if (error) throw new Error(error.message ?? "Sign-in failed");
+    const url = (data as { url?: string } | undefined)?.url;
+    if (!url) throw new Error("Sign-in failed");
+    const { Browser } = await import("@capacitor/browser");
+    await Browser.open({ url });
+    return;
+  }
   await authClient.signOut().catch(() => {});
   const { error } = await authClient.signIn.social({
     provider: provider.id,
@@ -170,6 +216,48 @@ export async function signInDirect(
     errorCallbackURL: opts.errorCallbackURL ?? "/login",
   });
   if (error) throw new Error(error.message ?? "Sign-in failed");
+}
+
+let appLinkHandled = "";
+/**
+ * Complete a native sign-in from the `pillarpath://auth?...` deep link the
+ * /auth/app-return bridge sends back. Stores the session token as the
+ * app's bearer credential, refreshes the session, and navigates to the
+ * destination the user originally wanted. Returns false for URLs that
+ * aren't ours.
+ */
+export async function completeAppAuthDeepLink(rawUrl: string): Promise<boolean> {
+  let u: URL;
+  try {
+    u = new URL(rawUrl);
+  } catch {
+    return false;
+  }
+  if (u.protocol !== "pillarpath:" || u.host !== "auth") return false;
+  if (appLinkHandled === rawUrl) return true; // launch-url + event double-fire
+  appLinkHandled = rawUrl;
+  clearOAuthInflight();
+  const rawDest = u.searchParams.get("dest") ?? "/";
+  const dest = rawDest.startsWith("/") && !rawDest.startsWith("//") ? rawDest : "/";
+  const token = u.searchParams.get("token");
+  if (!token) {
+    window.location.href = `/login?error=${encodeURIComponent(u.searchParams.get("error") ?? "sign_in_failed")}`;
+    return true;
+  }
+  setBearerToken(token);
+  try {
+    await authClient.getSession();
+  } catch {
+    /* session store will recover on next fetch */
+  }
+  try {
+    const { Browser } = await import("@capacitor/browser");
+    await Browser.close();
+  } catch {
+    /* custom tab already closed */
+  }
+  window.location.href = dest;
+  return true;
 }
 
 /**
