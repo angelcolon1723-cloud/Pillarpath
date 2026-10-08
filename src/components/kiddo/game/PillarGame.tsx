@@ -199,6 +199,59 @@ export function PillarGame() {
   const [cityMood, setCityMood] = useState<"dawn" | "day" | "sunset" | "night">("day");
   const toastId = useRef(0);
   const audioRef = useRef<{ ctx: AudioContext } | null>(null);
+  const sfxRef = useRef<AudioContext | null>(null);
+
+  /* ------------------------------ sound effects ------------------------------ */
+  const ensureSfx = (): AudioContext | null => {
+    try {
+      if (sfxRef.current) return sfxRef.current;
+      const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
+      sfxRef.current = new AC();
+      return sfxRef.current;
+    } catch { return null; }
+  };
+  const playTone = (freq: number, dur: number, type: OscillatorType = "sine", vol = 0.15, when = 0) => {
+    const ctx = ensureSfx();
+    if (!ctx) return;
+    try {
+      const t = ctx.currentTime + when;
+      const osc = ctx.createOscillator();
+      const g = ctx.createGain();
+      osc.type = type;
+      osc.frequency.value = freq;
+      g.gain.setValueAtTime(0, t);
+      g.gain.linearRampToValueAtTime(vol, t + 0.02);
+      g.gain.exponentialRampToValueAtTime(0.001, t + dur);
+      osc.connect(g); g.connect(ctx.destination);
+      osc.start(t); osc.stop(t + dur + 0.05);
+    } catch { /* ignore */ }
+  };
+  const sfx = {
+    tap: () => playTone(660, 0.08, "sine", 0.08),
+    build: () => {
+      playTone(261.63, 0.15, "triangle", 0.14, 0);
+      playTone(329.63, 0.15, "triangle", 0.14, 0.1);
+      playTone(392.0, 0.2, "triangle", 0.14, 0.2);
+      playTone(523.25, 0.35, "triangle", 0.16, 0.3);
+      playTone(130.81, 0.4, "sine", 0.2, 0.3); // foundation thud
+    },
+    quest: () => {
+      playTone(523.25, 0.12, "square", 0.08, 0);
+      playTone(659.25, 0.12, "square", 0.08, 0.12);
+      playTone(783.99, 0.25, "square", 0.1, 0.24);
+    },
+    tierUp: () => {
+      const notes = [392.0, 523.25, 659.25, 783.99, 1046.5];
+      notes.forEach((f, i) => playTone(f, 0.3, "triangle", 0.14, i * 0.12));
+    },
+    chest: () => {
+      playTone(880, 0.1, "sine", 0.1, 0);
+      playTone(1174.66, 0.2, "sine", 0.1, 0.08);
+    },
+    error: () => playTone(220, 0.2, "sawtooth", 0.08),
+  };
+  const sfxRef2 = useRef(sfx);
+  sfxRef2.current = sfx;
   const zoomRef = useRef<{ zoomIn: () => void; zoomOut: () => void; reset: () => void }>({
     zoomIn: () => {}, zoomOut: () => {}, reset: () => {},
   });
@@ -210,6 +263,14 @@ export function PillarGame() {
   cityMoodRef.current = cityMood;
   const districtLevelsRef = useRef(districtLevels);
   districtLevelsRef.current = districtLevels;
+  // Build animation: when each structure was constructed (for rise effect).
+  const builtAtRef = useRef<Record<string, number>>({});
+  // Tier-up detection.
+  const [tierCeremony, setTierCeremony] = useState<null | string>(null);
+  const prevTierRef = useRef<string>("");
+  const [fireworks, setFireworks] = useState(false);
+  const fireworksRef = useRef(false);
+  fireworksRef.current = fireworks;
 
   const pushToast = (title: string, msg: string, color = "#fbbf24") => {
     const id = ++toastId.current;
@@ -303,6 +364,7 @@ export function PillarGame() {
   const openChest = (chest: Chest) => {
     if (chest.opened) return;
     chest.opened = true;
+    sfxRef2.current.chest();
     const roll = Math.random();
     if (roll < 0.4) {
       const nt = Math.min(100, trustRef.current + 5);
@@ -403,15 +465,32 @@ export function PillarGame() {
   const cityTier = [...CITY_TIERS].reverse().find((t) => prosperity >= t.at) ?? CITY_TIERS[0];
   const nextTier = CITY_TIERS[CITY_TIERS.indexOf(cityTier) + 1];
 
+  // Tier-up ceremony + fireworks at Metropolis.
+  useEffect(() => {
+    if (prevTierRef.current && prevTierRef.current !== cityTier.name) {
+      setTierCeremony(cityTier.name);
+      sfxRef2.current.tierUp();
+      if (cityTier.name === "Metropolis") {
+        setFireworks(true);
+        setTimeout(() => setFireworks(false), 8000);
+      }
+    }
+    prevTierRef.current = cityTier.name;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cityTier.name]);
+
   const buildStructure = (districtId: string, slot: number) => {
     const defs = BUILDINGS[districtId];
     const def = defs[slot];
     if (!def) return;
     const err = debitUnits(def.cost, `Built ${def.name} in ${districtId}`);
     if (err) {
+      sfxRef2.current.error();
       pushToast("Not enough Units", `You need ${def.cost} Units. Earn them through chores and good decisions!`, "#ef4444");
       return;
     }
+    sfxRef2.current.build();
+    builtAtRef.current[`${districtId}:${slot}`] = performance.now();
     const next: CitySave = {
       ...cityRef.current,
       structures: {
@@ -447,6 +526,7 @@ export function PillarGame() {
       if (q.check(s)) {
         const next = { ...s, questsDone: [...s.questsDone, q.id] };
         persistCity(next);
+        sfxRef2.current.quest();
         if (q.reward === "trust10") {
           const nt = Math.min(100, trustRef.current + 10);
           trustRef.current = nt; setTrust(nt);
@@ -533,6 +613,7 @@ export function PillarGame() {
       const { x: wx, y: wy } = screenToWorld(sx, sy);
       for (const d of S.districts) {
         if (Math.hypot(wx - d.pos.x, wy - d.pos.y) < 130) {
+          sfxRef2.current.tap();
           setSelected(d.id);
           return;
         }
@@ -710,6 +791,23 @@ export function PillarGame() {
         pt.x += pt.vx * dt; pt.y += pt.vy * dt;
         pt.vx *= 0.96; pt.vy *= 0.96;
         if (pt.life <= 0) S.particles.splice(i, 1);
+      }
+      // Fireworks at Metropolis!
+      if (fireworksRef.current && Math.random() < dt * 6) {
+        const fx = 200 + Math.random() * (WORLD_W - 400);
+        const fy = 150 + Math.random() * 350;
+        const cols = ["#f472b6", "#fbbf24", "#4ade80", "#38bdf8", "#e879f9", "#fde68a"];
+        const col = cols[Math.floor(Math.random() * cols.length)];
+        for (let i = 0; i < 26; i++) {
+          const a = Math.random() * Math.PI * 2;
+          const sp = 100 + Math.random() * 220;
+          S.particles.push({
+            x: fx, y: fy,
+            vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+            life: 0.8 + Math.random() * 0.7, color: col,
+          });
+        }
+        sfxRef2.current.quest();
       }
 
       /* ------------------------------ render ------------------------------ */
@@ -970,7 +1068,21 @@ export function PillarGame() {
           const oy = SLOT_OFFSETS[si].y;
           const bx = d.pos.x + ox;
           const by = d.pos.y + oy;
+          // Rise animation: scale from 0 with overshoot in first 0.9s.
+          const builtAt = builtAtRef.current[`${d.id}:${si}`] ?? 0;
+          const age = (performance.now() - builtAt) / 1000;
+          let bScale = 1;
+          if (age < 0.9) {
+            const t = age / 0.9;
+            bScale = t < 0.7
+              ? 1.15 * (t / 0.7) // grow past
+              : 1.15 - 0.15 * ((t - 0.7) / 0.3); // settle
+          }
           const bBounce = Math.abs(Math.sin(S.time * 2 + si * 2 + d.pos.x)) * 3;
+          ctx.save();
+          ctx.translate(bx, by);
+          ctx.scale(bScale, bScale);
+          ctx.translate(-bx, -by);
           // Glow.
           const bg = ctx.createRadialGradient(bx, by, 4, bx, by, 44);
           bg.addColorStop(0, `${d.color}55`);
@@ -990,6 +1102,7 @@ export function PillarGame() {
           ctx.font = "28px system-ui";
           ctx.textAlign = "center";
           ctx.fillText(def.icon, bx, by + 10 + bBounce * 0.3);
+          ctx.restore();
         });
       }
 
@@ -1485,6 +1598,29 @@ export function PillarGame() {
             <p className="mt-2 font-display text-3xl font-bold text-white">Welcome, {ceremony}!</p>
             <p className="mt-1 text-sm text-white/70">The monument rises. New districts shine.</p>
             <Button className="mt-4 bg-amber-400 font-bold text-black" onClick={() => setCeremony(null)}>Behold my city</Button>
+          </div>
+        </div>
+      )}
+
+      {/* Tier-up ceremony */}
+      {tierCeremony && (
+        <div className="absolute inset-0 z-20 grid place-items-center bg-black/70 p-6 backdrop-blur-sm">
+          <div className="mx-6 w-full max-w-sm rounded-3xl border border-emerald-300/50 bg-gradient-to-b from-emerald-950/90 to-black/90 p-8 text-center">
+            <p className="text-5xl">{tierCeremony === "Metropolis" ? "🌆" : "🎉"}</p>
+            <p className="mt-2 text-xs font-bold uppercase tracking-widest text-emerald-300">
+              {tierCeremony === "Metropolis" ? "The ultimate achievement" : "Your city grows!"}
+            </p>
+            <p className="mt-2 font-display text-3xl font-bold text-white">
+              {tierCeremony === "Metropolis" ? "METROPOLIS!" : `Welcome to ${tierCeremony}!`}
+            </p>
+            <p className="mt-1 text-sm text-white/70">
+              {tierCeremony === "Metropolis"
+                ? "You built a city from nothing. Better than yesterday, every single day."
+                : "New horizons. Keep building, King."}
+            </p>
+            <Button className="mt-4 bg-emerald-400 font-bold text-black hover:bg-emerald-300" onClick={() => setTierCeremony(null)}>
+              {tierCeremony === "Metropolis" ? "Behold my Metropolis" : "Continue building"}
+            </Button>
           </div>
         </div>
       )}
