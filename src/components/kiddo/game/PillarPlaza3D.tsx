@@ -2,6 +2,14 @@ import { useEffect, useRef, useState } from "react";
 import { useLedger } from "@/store/ledger";
 import { rankForScore, societyScore } from "@/components/kiddo/world/WorldMap";
 import { EMOTIONS, type Emotion } from "./emotions";
+import {
+  getPillarpathData,
+  getPlazaServerState,
+  plazaEarn,
+  plazaSpend,
+  plazaSaveGame,
+  logPlazaEvent,
+} from "@/lib/pillarpath-server";
 
 /**
  * PillarPlaza3D — the 3D Pillar Plaza built on the Three.js foundation
@@ -48,7 +56,7 @@ function loadThree(): Promise<any> {
 interface PlazaApi {
   getBalance: () => number;
   spend: (n: number, note: string) => boolean;
-  earn: (n: number, note: string) => void;
+  earn: (n: number, note: string, cap?: { key: string; limit: number }) => Promise<boolean>;
   getSaved: () => number;
   getChores: () => number;
   getRank: () => string;
@@ -403,6 +411,22 @@ const NPCS = [
 const R = 48;
 const GATE = 15;
 const SAVE_KEY = "pillar-plaza-3d";
+// Local fallback caps — used only when the server is unreachable (offline).
+// When online, caps are enforced atomically in Postgres (plaza_reward_caps),
+// so clearing storage cannot farm rewards.
+function localCapConsume(key: string, limit: number): boolean {
+  try {
+    const today = new Date().toISOString().slice(0, 10);
+    const k = `plaza-cap-${key}`;
+    const j = JSON.parse(localStorage.getItem(k) || "{}");
+    const n = j.day === today ? j.n || 0 : 0;
+    if (n >= limit) return false;
+    localStorage.setItem(k, JSON.stringify({ day: today, n: n + 1 }));
+    return true;
+  } catch {
+    return false;
+  }
+}
 const REWARD_KEY = "pillar-plaza-3d-rewards";
 const RANK_ORDER = ["Seedling", "Sprout", "Trailblazer", "Luminary", "Pillar"];
 const WISDOM = [
@@ -459,7 +483,11 @@ const PLAZA_CSS = `
 `;
 
 /* ---------------- The plaza itself (adapted from the contributed foundation) ---------------- */
-function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
+interface PlazaHooks {
+  queueCloudSave: () => void;
+  serverEvent: (icon: string, headline: string, detail: string) => void;
+}
+function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHooks): () => void {
   const sfx = makeSfx();
   const cleanups: (() => void)[] = [];
   const on = <K extends keyof WindowEventMap>(
@@ -492,13 +520,14 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     powerCleanse: boolean;
     powerAscend: boolean;
     muted: boolean;
+    savedAt: number;
     blight: number[];
     built: number[][];
   }
   let S: PlazaState = {
     trust: 0, courage: 0, family: 0, freeBuild: 0,
     famBase: { chores: 0, saved: 0 }, ach: {}, tutorial: 0,
-    news: [], newsSeen: 0, daily: null, lastRank: -1, npcMem: {}, cacheDay: "", cacheUnits: 0, doubts: {}, powerCleanse: false, powerAscend: false, muted: false,
+    news: [], newsSeen: 0, daily: null, lastRank: -1, npcMem: {}, cacheDay: "", cacheUnits: 0, doubts: {}, powerCleanse: false, powerAscend: false, muted: false, savedAt: 0,
     blight: [0, 0, 0, 0, 0, 0], built: [[], [], [], [], [], []],
   };
   try {
@@ -515,7 +544,9 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   }
   const save = () => {
     try {
+      S.savedAt = Date.now();
       localStorage.setItem(SAVE_KEY, JSON.stringify(S));
+      hooks.queueCloudSave();
     } catch {
       /* storage unavailable */
     }
@@ -547,6 +578,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       save();
       showAch("family10");
       pushNews("💜", "Pillar power unlocked!", "Family Bond reached 15 — 1 free build earned.");
+      hooks.serverEvent("💜", "Pillar power unlocked!", "Family Bond 15 — free build earned.");
       say("💜 Pillar power unlocked: 1 free build!");
       sfx.reward();
       sfx.buzz([40, 40, 40, 40, 120]);
@@ -557,6 +589,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       S.powerCleanse = true;
       save();
       pushNews("\u{1F6E1}\uFE0F", "Pillar power unlocked!", "Family Bond reached 30 — Blight Cleansing armed.");
+      hooks.serverEvent("\u{1F6E1}\uFE0F", "Pillar power unlocked!", "Family Bond 30 — Blight Cleansing armed.");
       say("\u{1F6E1}\uFE0F Pillar power unlocked: Blight Cleansing!");
       sfx.reward();
       sfx.buzz([40, 40, 40, 40, 120]);
@@ -565,6 +598,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       S.powerAscend = true;
       save();
       pushNews("\u{1F31F}", "Pillar power unlocked!", "Family Bond reached 50 — Pillar Ascendant armed.");
+      hooks.serverEvent("\u{1F31F}", "Pillar power unlocked!", "Family Bond 50 — Pillar Ascendant armed.");
       say("\u{1F31F} Pillar power unlocked: Pillar Ascendant!");
       sfx.reward();
       sfx.buzz([40, 40, 40, 40, 200]);
@@ -602,19 +636,25 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       save();
     }
   }
-  function dailyTick(key: string) {
+  async function dailyTick(key: string) {
     const d = S.daily;
     if (!d || d.done || d.key !== key) return;
     d.progress++;
     if (d.progress >= d.need) {
       d.done = true;
       S.courage++;
-      api.earn(15, "Pillar Plaza daily challenge");
-      floatText("Daily Done! +15 Units", "#ffaa00");
-      say("🎯 Daily challenge complete! +15 real Units.");
+      const ok = await api.earn(15, "Pillar Plaza daily challenge", { key: "daily", limit: 1 });
+      if (ok) {
+        floatText("Daily Done! +15 Units", "#ffaa00");
+        say("🎯 Daily challenge complete! +15 real Units.");
+        pushNews("🎯", "Daily challenge complete!", d.text + " — +15 Units earned.");
+        hooks.serverEvent("🎯", "Daily challenge complete!", `${d.text} — +15 Units earned.`);
+      } else {
+        say("🎯 Challenge done — today's reward was already claimed.");
+        pushNews("🎯", "Daily challenge complete!", d.text + ".");
+      }
       sfx.ach();
       sfx.buzz([40, 40, 40, 40, 150]);
-      pushNews("🎯", "Daily challenge complete!", d.text + " — +15 Units earned.");
     }
     save();
     drawHud();
@@ -639,6 +679,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     sfx.buzz([60, 60, 60, 60, 200]);
     floatText(`\u{1F451} ${rank}!`, "#ffd36e");
     pushNews("\u{1F451}", `Society rank up: ${rank}!`, "Your real-life effort raised your rank. The whole plaza celebrates you.");
+    hooks.serverEvent("\u{1F451}", `Society rank up: ${rank}!`, "Real chores, saving, and good choices raised this rank.");
     modal(
       `<h3>\u{1F451} Rank Up: ${rank}!</h3>` +
         `<p>All your real chores, saving, and good choices added up. The energy core burns brighter because of <b>you</b>.</p>` +
@@ -1234,6 +1275,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       const order = TIERS.map((x) => x[1]);
       if (order.indexOf(tier) > order.indexOf(lastTier)) {
         pushNews("🏙️", `${tier} reached!`, "Your plaza grows with you. Better than yesterday.");
+        hooks.serverEvent("🏙️", `${tier} reached!`, "The plaza grows with real effort.");
         say(`🏙️ ${tier}! The whole plaza celebrates.`);
         sfx.reward();
         sfx.buzz([40, 40, 40, 40, 120]);
@@ -1302,25 +1344,6 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     $("pp3d-modal").style.display = "none";
   };
 
-  function rewardCount(): number {
-    try {
-      const j = JSON.parse(localStorage.getItem(REWARD_KEY) || "{}");
-      const today = new Date().toISOString().slice(0, 10);
-      return j.day === today ? j.n || 0 : 0;
-    } catch {
-      return 0;
-    }
-  }
-  function bumpReward(): boolean {
-    try {
-      const today = new Date().toISOString().slice(0, 10);
-      const n = rewardCount();
-      localStorage.setItem(REWARD_KEY, JSON.stringify({ day: today, n: n + 1 }));
-      return n < 3;
-    } catch {
-      return false;
-    }
-  }
 
   window.__pp3d = {
     quest(i: number) {
@@ -1336,7 +1359,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
           `<button class="pp3d-btn alt" onclick="__pp3d.close()">Not now</button>`,
       );
     },
-    ans(i: number, g: number, npc?: number) {
+    async ans(i: number, g: number, npc?: number) {
       if (typeof npc === "number" && NPCS[npc]) { S.npcMem[NPCS[npc].name] = g ? "good" : "bad"; }
       const parallel = shiftActive && shiftDistrict === i;
       S.courage++;
@@ -1346,13 +1369,17 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
         sfx.good();
         sfx.buzz([25, 40, 25, 40, 80]);
         let extra = "";
-        if (bumpReward()) {
+        {
           const rw = parallel ? 8 : 5;
-          api.earn(rw, `Pillar Plaza good deed${parallel ? " (parallel)" : ""}`);
-          extra = `<p>✨ +${rw} real Units for a good deed (up to 3 a day).</p>`;
-          sfx.reward();
-          sfx.buzz([25, 40, 25, 40, 120]);
-          floatText(`+${rw} Units`, "#00ff9d");
+          const ok = await api.earn(rw, `Pillar Plaza good deed${parallel ? " (parallel)" : ""}`, { key: "good-deed", limit: 3 });
+          if (ok) {
+            extra = `<p>✨ +${rw} real Units for a good deed.</p>`;
+            sfx.reward();
+            sfx.buzz([25, 40, 25, 40, 120]);
+            floatText(`+${rw} Units`, "#00ff9d");
+          } else {
+            extra = `<p>🌙 Today's good-deed rewards are already claimed — come back tomorrow!</p>`;
+          }
         }
         modal(
           `<h3>Trust grows 🌱</h3><p>Good choice${parallel ? " — parallel bonus" : ""}. The district brightens.</p>${extra}` +
@@ -1438,22 +1465,23 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
           `<button class="pp3d-btn alt" onclick="__pp3d.close()">Bye!</button>`,
       );
     },
-    openCache(ci: number) {
+    async openCache(ci: number) {
       const c = caches[ci];
       if (!c || c.open) return;
       c.open = true; c.g.visible = false; c.timer = 120;
-      const today = new Date().toDateString();
-      if (S.cacheDay !== today) { S.cacheDay = today; S.cacheUnits = 0; }
       const roll = Math.random();
       sfx.reward();
       sfx.buzz([30, 50, 90]);
-      if (roll < 0.45 && S.cacheUnits < 3) {
+      if (roll < 0.45) {
         const rw = 2 + Math.floor(Math.random() * 3);
-        S.cacheUnits++;
-        api.earn(rw, "Pillar Plaza supply cache");
-        floatText(`+${rw} Units`, "#00ff9d");
-        say(`🎁 Cache opened! +${rw} real Units.`);
-        pushNews("🎁", "Supply cache found!", `+${rw} Units discovered in the plaza.`);
+        const ok = await api.earn(rw, "Pillar Plaza supply cache", { key: "cache", limit: 3 });
+        if (ok) {
+          floatText(`+${rw} Units`, "#00ff9d");
+          say(`🎁 Cache opened! +${rw} real Units.`);
+          pushNews("🎁", "Supply cache found!", `+${rw} Units discovered in the plaza.`);
+        } else {
+          say("🎁 The cache is empty — today's cache rewards are already claimed.");
+        }
       } else if (roll < 0.75) {
         S.courage++;
         floatText("+1 Courage", "#ffaa00");
@@ -2003,11 +2031,60 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
   useEffect(() => {
     let cleanup: (() => void) | null = null;
     let cancelled = false;
+    // --- Plaza server link: the game and the app work as one. ---
+    // When the parent session is available, Unit movements are gated by
+    // Postgres (tamper-proof daily caps, full audit trail) and progress is
+    // cloud-saved. Offline or unauthenticated, the plaza falls back to the
+    // local ledger with local caps — play never breaks.
+    let serverChildId: number | null = null;
+    const serverEvent = (icon: string, headline: string, detail: string) => {
+      if (serverChildId == null) return;
+      logPlazaEvent({ data: { childId: serverChildId, icon, headline, detail } }).catch(() => {});
+    };
+    const queueCloudSave = (() => {
+      let t: ReturnType<typeof setTimeout> | null = null;
+      return () => {
+        if (serverChildId == null) return;
+        if (t) clearTimeout(t);
+        t = setTimeout(() => {
+          try {
+            const raw = localStorage.getItem(SAVE_KEY);
+            if (raw && serverChildId != null)
+              plazaSaveGame({ data: { childId: serverChildId, saveJson: raw } }).catch(() => {});
+          } catch {
+            /* noop */
+          }
+        }, 3000);
+      };
+    })();
     const api: PlazaApi = {
       getBalance: () => useLedger.getState().balance,
-      spend: (n, note) => !useLedger.getState().debitUnits(n, note),
-      earn: (n, note) => {
-        useLedger.getState().creditUnits(n, note);
+      spend: (n, note) => {
+        const ok = !useLedger.getState().debitUnits(n, note);
+        if (ok && serverChildId != null) {
+          plazaSpend({ data: { childId: serverChildId, amount: Math.max(1, Math.floor(n)), note } }).catch(() => {});
+        }
+        return ok;
+      },
+      earn: async (n, note, cap) => {
+        const amt = Math.max(1, Math.floor(n));
+        if (serverChildId != null) {
+          try {
+            const r = await plazaEarn({
+              data: { childId: serverChildId, amount: amt, note, capKey: cap?.key, capLimit: cap?.limit },
+            });
+            if (r.ok) {
+              useLedger.getState().creditUnits(amt, note);
+              return true;
+            }
+            return false; // server-enforced cap hit
+          } catch {
+            /* fall through to local */
+          }
+        }
+        if (cap && !localCapConsume(cap.key, cap.limit)) return false;
+        useLedger.getState().creditUnits(amt, note);
+        return true;
       },
       getSaved: () => useLedger.getState().vault,
       getChores: () => useLedger.getState().completedChoreIds.length,
@@ -2023,18 +2100,49 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
         useLedger.getState().setScreen(screen as any);
       },
     };
-    loadThree()
-      .then((THREE) => {
+    (async () => {
+      // Server sync BEFORE the plaza reads its save: the newer of
+      // cloud/local wins, so progress follows the kid across devices.
+      try {
+        const d = await getPillarpathData();
+        const child = d.children[0];
+        if (child) {
+          serverChildId = child.id;
+          const st = await getPlazaServerState({ data: { childId: child.id } });
+          const localRaw = localStorage.getItem(SAVE_KEY);
+          let localTs = 0;
+          try {
+            localTs = JSON.parse(localRaw || "{}").savedAt || 0;
+          } catch {
+            /* noop */
+          }
+          const serverTs = st.saveUpdatedAt ? new Date(st.saveUpdatedAt).getTime() : 0;
+          if (st.saveJson) {
+            if (!localRaw || serverTs > localTs) {
+              localStorage.setItem(SAVE_KEY, st.saveJson);
+            } else if (localTs > serverTs) {
+              plazaSaveGame({ data: { childId: child.id, saveJson: localRaw as string } }).catch(() => {});
+            }
+          } else if (localRaw) {
+            plazaSaveGame({ data: { childId: child.id, saveJson: localRaw } }).catch(() => {});
+          }
+        }
+      } catch {
+        /* local-only mode: play never breaks */
+      }
+      if (cancelled) return;
+      try {
+        const THREE = await loadThree();
         if (cancelled || !rootRef.current) return;
-        cleanup = startPlaza(rootRef.current, THREE, api);
+        cleanup = startPlaza(rootRef.current, THREE, api, { queueCloudSave, serverEvent });
         setStatus("ready");
-      })
-      .catch((e) => {
+      } catch (e) {
         if (!cancelled) {
           setErrMsg(e instanceof Error ? e.message : String(e));
           setStatus("error");
         }
-      });
+      }
+    })();
     return () => {
       cancelled = true;
       if (cleanup) cleanup();

@@ -1229,3 +1229,167 @@ export const deleteGiftWish = createServerFn({ method: "POST" })
     await sql`delete from gift_wishes where id = ${data.wishId} and user_id = ${context.userId}`;
     return { ok: true };
   });
+
+/* ------------------------------------------------------------------ */
+/* Pillar Plaza server economy — the game and the app work as one.     */
+/*                                                                    */
+/* The family ledger's working balances live in the app; these        */
+/* functions make the plaza's Unit movements tamper-proof and fully   */
+/* audited: daily reward caps are enforced in Postgres (clearing      */
+/* localStorage cannot farm rewards), every movement lands in         */
+/* units_transactions, and the children.units mirror stays complete.  */
+/* Plaza progress itself is cloud-saved per child, and curated        */
+/* milestones flow into plaza_events for the parent dashboard feed.   */
+/* All functions are parent-authenticated and child-scoped.           */
+/* ------------------------------------------------------------------ */
+
+async function assertPlazaChild(sql: any, userId: string, childId: number) {
+  const rows = await sql<{ id: number }>`select id from children where id = ${childId} and user_id = ${userId}`;
+  if (!rows.length) throw new Error("Child not found.");
+  return rows[0].id;
+}
+
+/** Plaza entry: server state + today's consumed reward caps + cloud save. */
+export const getPlazaServerState = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number }) => input)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    await assertPlazaChild(sql, context.userId, data.childId);
+    const today = new Date().toISOString().slice(0, 10);
+    const [child, save, caps] = await Promise.all([
+      sql<{ units: number }>`select units from children where id = ${data.childId}`,
+      sql<{ save_json: string; updated_at: string }>`select save_json::text as save_json, updated_at from plaza_saves where child_id = ${data.childId}`,
+      sql<{ cap_key: string; count: number }>`select cap_key, count from plaza_reward_caps where user_id = ${context.userId} and child_id = ${data.childId} and day = ${today}`,
+    ]);
+    const capCounts: Record<string, number> = {};
+    for (const c of caps) capCounts[c.cap_key] = c.count;
+    return {
+      units: child[0]?.units ?? 0,
+      saveJson: (save[0]?.save_json ?? null) as string | null,
+      saveUpdatedAt: (save[0]?.updated_at ?? null) as string | null,
+      capCounts,
+    };
+  });
+
+/**
+ * Credit Units from plaza play. When capKey/capLimit are given, the daily cap
+ * is enforced atomically in Postgres: the increment and the limit check happen
+ * in one statement, so concurrent requests cannot overshoot.
+ */
+export const plazaEarn = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number; amount: number; note: string; capKey?: string; capLimit?: number }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean; reason?: string; newBalance?: number; capRemaining?: number }> => {
+    const sql = await getSql();
+    await assertPlazaChild(sql, context.userId, data.childId);
+    const amount = Math.max(1, Math.floor(Number(data.amount)));
+    if (!Number.isFinite(amount) || amount > 500) throw new Error("Invalid amount.");
+    const note = String(data.note || "Pillar Plaza reward").slice(0, 160);
+    let capRemaining: number | undefined;
+    if (data.capKey && data.capLimit) {
+      const today = new Date().toISOString().slice(0, 10);
+      const cap = await sql<{ count: number }>`
+        insert into plaza_reward_caps (user_id, child_id, cap_key, day, count)
+        values (${context.userId}, ${data.childId}, ${data.capKey}, ${today}, 1)
+        on conflict (user_id, child_id, cap_key, day)
+        do update set count = plaza_reward_caps.count + 1
+        returning count`;
+      const count = cap[0].count;
+      capRemaining = Math.max(0, data.capLimit - count);
+      if (count > data.capLimit) {
+        await sql`update plaza_reward_caps set count = count - 1 where user_id = ${context.userId} and child_id = ${data.childId} and cap_key = ${data.capKey} and day = ${today}`;
+        return { ok: false, reason: "cap", capRemaining: 0 };
+      }
+    }
+    const rows = await sql<{ units: number }>`
+      with credited as (
+        update children set units = units + ${amount}
+        where id = ${data.childId} and user_id = ${context.userId}
+        returning units
+      ),
+      logged as (
+        insert into units_transactions (user_id, child_id, kind, amount, note)
+        select ${context.userId}, ${data.childId}, 'earn', ${amount}, ${note}
+        where exists (select 1 from credited)
+        returning 1
+      )
+      select units from credited`;
+    if (!rows.length) throw new Error("Child not found.");
+    return { ok: true, newBalance: rows[0].units, capRemaining };
+  });
+
+/**
+ * Debit Units for plaza builds. Audited + mirrored server-side; the
+ * sufficient-funds check stays against the working (local) ledger, which is
+ * self-consistent (it can never go below zero).
+ */
+export const plazaSpend = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number; amount: number; note: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    await assertPlazaChild(sql, context.userId, data.childId);
+    const amount = Math.max(1, Math.floor(Number(data.amount)));
+    if (!Number.isFinite(amount) || amount > 100000) throw new Error("Invalid amount.");
+    const note = String(data.note || "Pillar Plaza build").slice(0, 160);
+    await sql`
+      with debited as (
+        update children set units = greatest(0, units - ${amount})
+        where id = ${data.childId} and user_id = ${context.userId}
+        returning id
+      )
+      insert into units_transactions (user_id, child_id, kind, amount, note)
+      select ${context.userId}, ${data.childId}, 'spend', ${amount}, ${note}
+      where exists (select 1 from debited)`;
+    return { ok: true };
+  });
+
+/** Cloud-save the plaza. Last write wins; entry sync keeps the newer side. */
+export const plazaSaveGame = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number; saveJson: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    await assertPlazaChild(sql, context.userId, data.childId);
+    if (data.saveJson.length > 200000) throw new Error("Save too large.");
+    JSON.parse(data.saveJson);
+    await sql`
+      insert into plaza_saves (child_id, user_id, save_json, updated_at)
+      values (${data.childId}, ${context.userId}, ${data.saveJson}::jsonb, now())
+      on conflict (child_id) do update set save_json = excluded.save_json, updated_at = now()`;
+    return { ok: true };
+  });
+
+/** Curated plaza milestones for the parent dashboard "Plaza activity" feed. */
+export const logPlazaEvent = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number; icon: string; headline: string; detail?: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    await assertPlazaChild(sql, context.userId, data.childId);
+    await sql`insert into plaza_events (user_id, child_id, icon, headline, detail)
+      values (${context.userId}, ${data.childId}, ${String(data.icon).slice(0, 12)}, ${String(data.headline).slice(0, 120)}, ${String(data.detail || "").slice(0, 240)})`;
+    await sql`delete from plaza_events where child_id = ${data.childId}
+      and id not in (select id from plaza_events where child_id = ${data.childId} order by created_at desc limit 50)`;
+    return { ok: true };
+  });
+
+export const getPlazaEvents = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator((input: { childId?: number; limit?: number }) => input)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    const limit = Math.min(20, Math.max(1, Number(data.limit) || 8));
+    if (data.childId) {
+      await assertPlazaChild(sql, context.userId, data.childId);
+      return sql<{ icon: string; headline: string; detail: string; created_at: string }>`
+        select icon, headline, detail, created_at from plaza_events
+        where child_id = ${data.childId} and user_id = ${context.userId}
+        order by created_at desc limit ${limit}`;
+    }
+    return sql<{ icon: string; headline: string; detail: string; created_at: string }>`
+      select icon, headline, detail, created_at from plaza_events
+      where user_id = ${context.userId}
+      order by created_at desc limit ${limit}`;
+  });

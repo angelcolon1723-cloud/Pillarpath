@@ -39,6 +39,7 @@ import {
   type FamilyInvite,
   createPromoCode,
   saveProfile,
+  getPlazaEvents,
 } from "@/lib/pillarpath-server";
 import { Button } from "@/components/ui/button";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
@@ -178,6 +179,60 @@ export function ProductArt({
     >
       <ProductIcon name={productIcon(productId)} className="size-12" />
     </div>
+  );
+}
+
+function timeAgo(iso: string): string {
+  const s = Math.max(1, Math.floor((Date.now() - new Date(iso).getTime()) / 1000));
+  if (s < 60) return "just now";
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ago`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h ago`;
+  const d = Math.floor(h / 24);
+  return d === 1 ? "yesterday" : `${d}d ago`;
+}
+
+/** The game, alive in the app: curated plaza milestones for parents. */
+function PlazaActivityCard({ childId }: { childId: number }) {
+  const [events, setEvents] = useState<
+    Array<{ icon: string; headline: string; detail: string; created_at: string }> | null
+  >(null);
+  useEffect(() => {
+    let live = true;
+    getPlazaEvents({ data: { childId, limit: 6 } })
+      .then((rows) => {
+        if (live) setEvents(rows);
+      })
+      .catch(() => {
+        if (live) setEvents([]);
+      });
+    return () => {
+      live = false;
+    };
+  }, [childId]);
+  if (!events || events.length === 0) return null;
+  return (
+    <Card className="p-5">
+      <div className="flex items-center justify-between">
+        <div>
+          <CardTitle className="text-base">🏙️ Plaza activity</CardTitle>
+          <CardHint className="mt-0.5">The game, alive in your app</CardHint>
+        </div>
+      </div>
+      <div className="mt-3 divide-y divide-border">
+        {events.map((e, i) => (
+          <div key={i} className="flex items-start gap-3 py-2.5 first:pt-1 last:pb-0">
+            <span className="text-xl leading-none">{e.icon}</span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-semibold leading-snug">{e.headline}</p>
+              {e.detail ? <p className="mt-0.5 text-xs leading-snug text-muted">{e.detail}</p> : null}
+            </div>
+            <span className="shrink-0 text-[11px] text-muted">{timeAgo(e.created_at)}</span>
+          </div>
+        ))}
+      </div>
+    </Card>
   );
 }
 
@@ -527,6 +582,9 @@ export function Dashboard({
           </div>
         </Card>
       ) : null}
+
+      {/* Plaza activity — the game alive in the app */}
+      {data.children[0] != null ? <PlazaActivityCard childId={data.children[0].id} /> : null}
 
       {/* Discover more */}
       <div>
