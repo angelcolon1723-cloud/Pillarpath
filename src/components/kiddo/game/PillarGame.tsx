@@ -112,6 +112,10 @@ export function PillarGame() {
   const trustRef = useRef(50);
   const rankRef = useRef(rank);
   rankRef.current = rank;
+  const cityMoodRef = useRef(cityMood);
+  cityMoodRef.current = cityMood;
+  const districtLevelsRef = useRef(districtLevels);
+  districtLevelsRef.current = districtLevels;
 
   const pushToast = (title: string, msg: string, color = "#fbbf24") => {
     const id = ++toastId.current;
@@ -134,9 +138,18 @@ export function PillarGame() {
     eventId: 0,
     particles: [] as Array<Vec & { vx: number; vy: number; life: number; color: string }>,
     fireflies: null as null | Array<{ x: number; y: number; ph: number; sp: number }>,
+    // Living city: citizens, smoke, birds, clouds.
+    citizens: null as null | Array<{
+      x: number; y: number; tx: number; ty: number;
+      speed: number; ph: number; color: string; pause: number;
+    }>,
+    smoke: [] as Array<Vec & { vy: number; life: number; size: number }>,
+    birds: null as null | Array<{ x: number; y: number; vx: number; ph: number }>,
+    clouds: null as null | Array<{ x: number; y: number; vx: number; s: number; a: number }>,
+    prevLevels: {} as Record<string, number>,
     time: 0,
     dayTime: 0.3,
-    blight: 0, // 0-1, grows when trust is low
+    blight: 0,
   });
 
   // Rank-up ceremony.
@@ -573,6 +586,108 @@ export function PillarGame() {
         ctx.restore();
       }
 
+      /* ---------- living city: citizens, smoke, birds, clouds ---------- */
+      const dPos = S.districts.map((d) => d.pos);
+      if (!S.citizens) {
+        const cols = ["#fbbf24", "#4ade80", "#38bdf8", "#e879f9", "#fb7185", "#fde68a", "#a78bfa", "#34d399"];
+        S.citizens = Array.from({ length: 10 }, (_, i) => {
+          const a = dPos[Math.floor(Math.random() * dPos.length)];
+          const b = dPos[Math.floor(Math.random() * dPos.length)];
+          return {
+            x: a.x + (Math.random() - 0.5) * 60, y: a.y + (Math.random() - 0.5) * 60,
+            tx: b.x + (Math.random() - 0.5) * 80, ty: b.y + (Math.random() - 0.5) * 80,
+            speed: 28 + Math.random() * 30, ph: Math.random() * 6,
+            color: cols[i % cols.length], pause: 0,
+          };
+        });
+      }
+      if (!S.birds) {
+        S.birds = Array.from({ length: 4 }, () => ({
+          x: Math.random() * WORLD_W, y: 80 + Math.random() * 220,
+          vx: (Math.random() < 0.5 ? -1 : 1) * (40 + Math.random() * 40),
+          ph: Math.random() * 6,
+        }));
+      }
+      if (!S.clouds) {
+        S.clouds = Array.from({ length: 5 }, () => ({
+          x: Math.random() * WORLD_W, y: 60 + Math.random() * 260,
+          vx: 8 + Math.random() * 14, s: 60 + Math.random() * 70, a: 0.1 + Math.random() * 0.12,
+        }));
+      }
+      // Citizens walk.
+      for (const c of S.citizens) {
+        if (c.pause > 0) { c.pause -= dt; continue; }
+        const dx = c.tx - c.x;
+        const dy = c.ty - c.y;
+        const dist = Math.hypot(dx, dy);
+        if (dist < 12) {
+          c.pause = 1 + Math.random() * 3;
+          const b = dPos[Math.floor(Math.random() * dPos.length)];
+          c.tx = b.x + (Math.random() - 0.5) * 90;
+          c.ty = b.y + (Math.random() - 0.5) * 90;
+        } else {
+          c.x += (dx / dist) * c.speed * dt;
+          c.y += (dy / dist) * c.speed * dt;
+        }
+      }
+      // Birds fly.
+      for (const b of S.birds) {
+        b.x += b.vx * dt;
+        if (b.x < -60) b.x = WORLD_W + 60;
+        if (b.x > WORLD_W + 60) b.x = -60;
+      }
+      // Clouds drift.
+      for (const cl of S.clouds) {
+        cl.x += cl.vx * dt;
+        if (cl.x - cl.s > WORLD_W) cl.x = -cl.s;
+      }
+      // Chimney smoke from districts.
+      for (const d of S.districts) {
+        if (Math.random() < dt * 3) {
+          S.smoke.push({
+            x: d.pos.x + (Math.random() - 0.5) * 20,
+            y: d.pos.y - 40,
+            vy: -(18 + Math.random() * 14),
+            life: 2 + Math.random() * 1.5,
+            size: 6 + Math.random() * 8,
+          });
+        }
+      }
+      for (let i = S.smoke.length - 1; i >= 0; i--) {
+        const sm = S.smoke[i];
+        sm.life -= dt;
+        sm.y += sm.vy * dt;
+        sm.x += Math.sin(S.time * 2 + sm.y * 0.05) * 12 * dt;
+        sm.size += dt * 6;
+        if (sm.life <= 0) S.smoke.splice(i, 1);
+      }
+      if (S.smoke.length > 120) S.smoke.splice(0, S.smoke.length - 120);
+
+      // Render clouds (behind everything).
+      for (const cl of S.clouds) {
+        ctx.save();
+        ctx.globalAlpha = cl.a;
+        ctx.fillStyle = "#ffffff";
+        ctx.beginPath();
+        ctx.ellipse(cl.x, cl.y, cl.s, cl.s * 0.42, 0, 0, Math.PI * 2);
+        ctx.ellipse(cl.x - cl.s * 0.5, cl.y + 8, cl.s * 0.55, cl.s * 0.3, 0, 0, Math.PI * 2);
+        ctx.ellipse(cl.x + cl.s * 0.5, cl.y + 6, cl.s * 0.6, cl.s * 0.32, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      // Render birds.
+      ctx.strokeStyle = "rgba(15,23,42,0.7)";
+      ctx.lineWidth = 2.5;
+      ctx.lineCap = "round";
+      for (const b of S.birds) {
+        const flap = Math.sin(S.time * 10 + b.ph) * 6;
+        ctx.beginPath();
+        ctx.moveTo(b.x - 10, b.y);
+        ctx.quadraticCurveTo(b.x - 4, b.y - 6 - flap, b.x, b.y);
+        ctx.quadraticCurveTo(b.x + 4, b.y - 6 - flap, b.x + 10, b.y);
+        ctx.stroke();
+      }
+
       // Central monument — grows with rank.
       const rk = rankRef.current;
       const rankIdx = ["Seedling", "Sprout", "Trailblazer", "Luminary", "Pillar"].indexOf(rk.name);
@@ -677,6 +792,68 @@ export function PillarGame() {
         }
       }
 
+      // Citizens walking.
+      for (const c of S.citizens!) {
+        const bob = c.pause > 0 ? 0 : Math.abs(Math.sin(S.time * 8 + c.ph)) * 3;
+        // Shadow.
+        ctx.fillStyle = "rgba(0,0,0,0.3)";
+        ctx.beginPath(); ctx.ellipse(c.x, c.y + 8, 7, 3, 0, 0, Math.PI * 2); ctx.fill();
+        // Body.
+        ctx.fillStyle = c.color;
+        ctx.beginPath(); ctx.arc(c.x, c.y - 6 - bob, 7, 0, Math.PI * 2); ctx.fill();
+        // Head.
+        ctx.fillStyle = "#fde68a";
+        ctx.beginPath(); ctx.arc(c.x, c.y - 16 - bob, 5, 0, Math.PI * 2); ctx.fill();
+      }
+      // Chimney smoke.
+      for (const sm of S.smoke) {
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(0.35, sm.life * 0.18));
+        ctx.fillStyle = "#e2e8f0";
+        ctx.beginPath(); ctx.arc(sm.x, sm.y, sm.size, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+
+      // Night windows glow on districts.
+      if (cityMoodRef.current === "night") {
+        const dl = districtLevelsRef.current;
+        for (const d of S.districts) {
+          const lvl = dl[d.id] ?? 1;
+          const size = 64 + lvl * 14;
+          for (let wi = 0; wi < 3 + lvl; wi++) {
+            const wx = d.pos.x - size * 0.3 + (wi % 3) * size * 0.3;
+            const wy = d.pos.y - size * 0.25 + Math.floor(wi / 3) * size * 0.28;
+            const tw = 0.5 + 0.5 * Math.sin(S.time * 3 + wi * 2 + d.pos.x);
+            ctx.save();
+            ctx.globalAlpha = 0.35 + tw * 0.45;
+            ctx.fillStyle = "#fde68a";
+            ctx.shadowColor = "#fde68a"; ctx.shadowBlur = 8;
+            ctx.fillRect(wx - 3, wy - 3, 6, 6);
+            ctx.restore();
+          }
+        }
+      }
+
+      // Level-up celebration: district grew since last frame.
+      const dl2 = districtLevelsRef.current;
+      for (const d of S.districts) {
+        const lvl = dl2[d.id] ?? 1;
+        const prev = S.prevLevels[d.id] ?? lvl;
+        if (lvl > prev) {
+          for (let i = 0; i < 30; i++) {
+            const a = Math.random() * Math.PI * 2;
+            const sp = 80 + Math.random() * 160;
+            S.particles.push({
+              x: d.pos.x, y: d.pos.y,
+              vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 40,
+              life: 1 + Math.random() * 0.6, color: d.color,
+            });
+          }
+          toastRef.current(`${d.name} leveled up!`, `Level ${lvl} — your real-life effort built this.`, d.color);
+        }
+        S.prevLevels[d.id] = lvl;
+      }
+
       // Chests.
       const chestImg = sprites.chest;
       for (const c of S.chests) {
@@ -742,7 +919,7 @@ export function PillarGame() {
         tint = `rgba(244,114,182,${(0.1).toFixed(3)})`;
       }
       if (tint) { ctx.fillStyle = tint; ctx.fillRect(0, 0, sw, sh); }
-      if (mood !== cityMood) setCityMood(mood);
+      if (mood !== cityMoodRef.current) setCityMood(mood);
     };
     raf = requestAnimationFrame(loop);
 
