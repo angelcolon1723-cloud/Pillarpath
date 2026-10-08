@@ -370,8 +370,12 @@ export const createRankShirts = createServerFn({ method: "POST" })
       supplier_sku: string | null;
       images: unknown;
       cost_cents: number | null;
+      description: string | null;
+      category_name: string | null;
+      variants: unknown;
     }>`
-      select id, title, supplier_product_id, supplier_sku, images, cost_cents
+      select id, title, supplier_product_id, supplier_sku, images, cost_cents,
+             description, category_name, variants
       from supplier_products
       where supplier = 'printify'
         and screening_status = 'approved'
@@ -386,11 +390,20 @@ export const createRankShirts = createServerFn({ method: "POST" })
       const exists = await sql`
         select id from supplier_products where title = ${title} limit 1`;
       if (exists.length) continue;
+      // Each rank shirt needs its OWN supplier_product_id: the catalog has
+      // a unique (supplier, supplier_product_id) constraint, so copying the
+      // blueprint's id verbatim made every insert fail and no rank shirt
+      // was ever created. The ":rank:<name>" suffix stays parseable by the
+      // drafts flow, whose blueprint/provider regex match is unanchored.
+      const rankProductId = `${b.supplier_product_id}:rank:${rank.toLowerCase()}`;
       await sql`
         insert into supplier_products
-          (supplier, supplier_product_id, supplier_sku, title, images, cost_cents, screening_status)
+          (supplier, supplier_product_id, supplier_sku, title, description,
+           category_name, variants, images, cost_cents, screening_status)
         values
-          ('printify', ${b.supplier_product_id}, ${b.supplier_sku}, ${title}, ${JSON.stringify(b.images)}::jsonb, ${b.cost_cents}, 'approved')`;
+          ('printify', ${rankProductId}, ${b.supplier_sku}, ${title}, ${b.description},
+           ${b.category_name}, ${JSON.stringify(b.variants ?? [])}::jsonb,
+           ${JSON.stringify(b.images)}::jsonb, ${b.cost_cents}, 'approved')`;
       created += 1;
     }
     return { created };
