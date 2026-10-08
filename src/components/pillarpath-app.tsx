@@ -52,7 +52,7 @@ import {
 import { ParentChores, ParentClassroom } from "@/components/kiddo/parent-views";
 import { StudioScreen } from "@/components/kiddo/studio";
 import { WisdomRoom3D } from "@/components/kiddo/world/WisdomRoom3D";
-import { PillarGame } from "@/components/kiddo/game/PillarGame";
+import { PillarPlaza3D } from "@/components/kiddo/game/PillarPlaza3D";
 import { societyScore } from "@/components/kiddo/world/WorldMap";
 import { FutureUnitsMarket } from "@/components/kiddo/future-market";
 import { UnitMarketView } from "@/components/kiddo/unit-market";
@@ -689,6 +689,7 @@ function ParentWorkspace({
 
 function ChildWorkspace() {
   const screen = useLedger((s) => s.screen);
+  const setScreen = useLedger((s) => s.setScreen);
   if (screen === "market") return <ChildMarket />;
   if (screen === "confirm") return <ChildConfirm />;
   if (screen === "vault") return <ChildVault />;
@@ -700,7 +701,7 @@ function ChildWorkspace() {
   if (screen === "chores") return <ChildChores />;
   if (screen === "goals") return <ChildGoals />;
   if (screen === "wisdom") return <WisdomRoomWithScore />;
-  if (screen === "game") return <PillarGame />;
+  if (screen === "game") return <PillarPlaza3D onExit={() => setScreen("home")} />;
   return <ChildHome />;
 }
 

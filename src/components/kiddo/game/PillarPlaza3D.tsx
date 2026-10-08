@@ -392,6 +392,27 @@ const GATE = 15;
 const SAVE_KEY = "pillar-plaza-3d";
 const REWARD_KEY = "pillar-plaza-3d-rewards";
 const RANK_ORDER = ["Seedling", "Sprout", "Trailblazer", "Luminary", "Pillar"];
+const WISDOM = [
+  "Wealth is what you don't see.",
+  "A small leak sinks a great ship.",
+  "Do not save what is left after spending — spend what is left after saving.",
+  "The best time to start was yesterday. The next best time is now.",
+  "A penny saved is a penny earned.",
+];
+const NPC_MEMORY: Record<string, { good: string; bad: string }> = {
+  Maya: {
+    good: "Last time you told me to stand up for my friend. I did — thank you \u{1F49B}",
+    bad: "Last time you told me to stay quiet... I've been thinking about it.",
+  },
+  Jay: {
+    good: "Your idea worked — the game was fair AND fun!",
+    bad: "I tried what you said... it didn't go great.",
+  },
+  Sam: {
+    good: "I shared my snack like you said. We both smiled!",
+    bad: "I kept it all to myself... felt weird after.",
+  },
+};
 
 /* ---------------- Plaza CSS (cosmic PillarPath theme) ---------------- */
 const PLAZA_CSS = `
@@ -451,13 +472,17 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     news: NewsItem[];
     newsSeen: number;
     daily: Daily | null;
+    lastRank: number;
+    npcMem: Record<string, "good" | "bad">;
+    cacheDay: string;
+    cacheUnits: number;
     blight: number[];
     built: number[][];
   }
   let S: PlazaState = {
     trust: 0, courage: 0, family: 0, freeBuild: 0,
     famBase: { chores: 0, saved: 0 }, ach: {}, tutorial: 0,
-    news: [], newsSeen: 0, daily: null,
+    news: [], newsSeen: 0, daily: null, lastRank: -1, npcMem: {}, cacheDay: "", cacheUnits: 0,
     blight: [0, 0, 0, 0, 0, 0], built: [[], [], [], [], [], []],
   };
   try {
@@ -572,6 +597,20 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       el.style.opacity = "0";
       el.style.transform = "translate(-50%,-120%)";
     }, 900);
+  }
+  let rankCeremonyPending = false;
+  function showRankCeremony() {
+    const rank = RANK_ORDER[rankIdx()];
+    sfx.ach();
+    sfx.buzz([60, 60, 60, 60, 200]);
+    floatText(`\u{1F451} ${rank}!`, "#ffd36e");
+    pushNews("\u{1F451}", `Society rank up: ${rank}!`, "Your real-life effort raised your rank. The whole plaza celebrates you.");
+    modal(
+      `<h3>\u{1F451} Rank Up: ${rank}!</h3>` +
+        `<p>All your real chores, saving, and good choices added up. The energy core burns brighter because of <b>you</b>.</p>` +
+        `<p style="opacity:.8">This is what becoming looks like. Better than yesterday.</p>` +
+        `<button class="pp3d-btn" onclick="__pp3d.close()">Celebrate! \u{1F389}</button>`,
+    );
   }
   function showAch(key: string) {
     if (S.ach[key]) return;
@@ -1031,6 +1070,34 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   scene.add(targetRing);
   // autopilot
   let autoPilot = false, autoTarget = -1, autoPause = 0;
+  // supply caches (salvaged from the 2D city's treasure chests)
+  interface Cache { x: number; z: number; g: any; open: boolean; timer: number }
+  const caches: Cache[] = [];
+  function placeCache(c: Cache) {
+    for (let tries = 0; tries < 24; tries++) {
+      const a = Math.random() * Math.PI * 2;
+      const r = 22 + Math.random() * 20;
+      const x = Math.sin(a) * r, z = -Math.cos(a) * r;
+      if (zones.some((q) => Math.hypot(q.x - x, q.z - z) < 18)) continue;
+      c.x = x; c.z = z;
+      c.g.position.set(x, 0, z);
+      return;
+    }
+    c.g.position.set(20, 0, 20);
+    c.x = 20; c.z = 20;
+  }
+  function spawnCaches() {
+    for (let i = 0; i < 3; i++) {
+      const g = new THREE.Group();
+      add(new THREE.BoxGeometry(1.2, 0.9, 1.2), std(0x152030, { metalness: 0.6, roughness: 0.35 }), 0, 0.45, 0, g);
+      add(new THREE.BoxGeometry(1.3, 0.18, 1.3), glow(0xff8ad4, 0.7), 0, 0.95, 0, g);
+      add(new THREE.BoxGeometry(0.5, 0.7, 0.08), glow(0xffd36e, 0.6), 0, 0.45, 0.62, g);
+      scene.add(g);
+      const c: Cache = { x: 0, z: 0, g, open: false, timer: 0 };
+      placeCache(c);
+      caches.push(c);
+    }
+  }
   on(cv, "pointerdown", (e: PointerEvent) => {
     sfx.unlock();
     oid = e.pointerId;
@@ -1146,6 +1213,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   }
   let near = -1;
   let nearNpc = -1;
+  let nearCache = -1;
   let lastTier = "";
   let msgT = 0;
   function say(t: string) {
@@ -1166,6 +1234,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     }
     if (nearNpc >= 0)
       b.push(`<button class="pp3d-btn" onclick="__pp3d.talkNpc(${nearNpc})">💬 Talk to ${NPCS[nearNpc].name}</button>`);
+    if (nearCache >= 0) b.push(`<button class="pp3d-btn" onclick="__pp3d.openCache(${nearCache})">🎁 Open supply cache</button>`);
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.toggleAuto()">${autoPilot ? "🟢 Auto ON" : "⚪ Autopilot"}</button>`);
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.realLife()">🌟 Real-life progress</button>`);
     if (tiltHas) b.push(`<button class="pp3d-btn alt" onclick="__pp3d.tilt()">📱 Tilt: ${tiltOn ? "on" : "off"}</button>`);
@@ -1231,7 +1300,8 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
           `<button class="pp3d-btn alt" onclick="__pp3d.close()">Not now</button>`,
       );
     },
-    ans(i: number, g: number) {
+    ans(i: number, g: number, npc?: number) {
+      if (typeof npc === "number" && NPCS[npc]) { S.npcMem[NPCS[npc].name] = g ? "good" : "bad"; }
       const parallel = shiftActive && shiftDistrict === i;
       S.courage++;
       if (g) {
@@ -1320,13 +1390,46 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       dailyTick("talks");
       floatText(`${npc.icon} ${npc.name}!`, "#7b2fff");
       const q = npc.qs[Math.floor(Math.random() * npc.qs.length)];
+      const mem = S.npcMem[npc.name];
+      const memLine = mem && NPC_MEMORY[npc.name]
+        ? `<p style="opacity:.8"><i>${NPC_MEMORY[npc.name][mem]}</i></p>`
+        : "";
       const o: [string, number][] = [[q.g, 1], [q.b, 0]];
       if (Math.random() < 0.5) o.reverse();
       modal(
-        `<h3>${npc.icon} ${npc.name}</h3><p>${q.t}</p>` +
-          o.map(([t, g]) => `<button class="pp3d-btn" onclick="__pp3d.ans(${npc.district},${g})">${t}</button>`).join("") +
+        `<h3>${npc.icon} ${npc.name}</h3>` + memLine + `<p>${q.t}</p>` +
+          o.map(([t, g]) => `<button class="pp3d-btn" onclick="__pp3d.ans(${npc.district},${g},${k})">${t}</button>`).join("") +
           `<button class="pp3d-btn alt" onclick="__pp3d.close()">Bye!</button>`,
       );
+    },
+    openCache(ci: number) {
+      const c = caches[ci];
+      if (!c || c.open) return;
+      c.open = true; c.g.visible = false; c.timer = 120;
+      const today = new Date().toDateString();
+      if (S.cacheDay !== today) { S.cacheDay = today; S.cacheUnits = 0; }
+      const roll = Math.random();
+      sfx.reward();
+      sfx.buzz([30, 50, 90]);
+      if (roll < 0.45 && S.cacheUnits < 3) {
+        const rw = 2 + Math.floor(Math.random() * 3);
+        S.cacheUnits++;
+        api.earn(rw, "Pillar Plaza supply cache");
+        floatText(`+${rw} Units`, "#00ff9d");
+        say(`🎁 Cache opened! +${rw} real Units.`);
+        pushNews("🎁", "Supply cache found!", `+${rw} Units discovered in the plaza.`);
+      } else if (roll < 0.75) {
+        S.courage++;
+        floatText("+1 Courage", "#ffaa00");
+        say("🎁 Cache opened! +1 Courage.");
+      } else {
+        const q = WISDOM[Math.floor(Math.random() * WISDOM.length)];
+        floatText("💎 Wisdom", "#e879f9");
+        modal(`<h3>🎁 Ancient wisdom</h3><p><i>"${q}"</i></p><button class="pp3d-btn alt" onclick="__pp3d.close()">Pocket it</button>`);
+      }
+      save();
+      drawHud();
+      drawPanel();
     },
     post() {
       sfx.click();
@@ -1462,6 +1565,10 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     flyMat.opacity = night * (0.55 + 0.35 * Math.sin(t * 3));
     slots.forEach((s) => s.windows.forEach((w: any) => (w.opacity = night * 0.95)));
     (ringMat as any).emissiveIntensity = 0.65 + 0.25 * Math.sin(t * 2);
+    if (rankCeremonyPending && ($("pp3d-modal") as HTMLElement | null)?.style.display !== "flex") {
+      rankCeremonyPending = false;
+      showRankCeremony();
+    }
     targetRingMat.opacity = Math.max(0, targetRingMat.opacity - dt * 1.1);
     const trs = 1 + Math.sin(t * 6) * 0.08;
     targetRing.scale.set(trs, trs, 1);
@@ -1560,9 +1667,27 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     npcGroups.forEach((gr, gi) => {
       gr.position.y = Math.sin(t * 2 + gi * 2.1) * 0.08;
     });
+    caches.forEach((c) => {
+      if (c.open) {
+        c.timer -= dt;
+        if (c.timer <= 0) { placeCache(c); c.open = false; c.g.visible = true; }
+      } else {
+        c.g.position.y = Math.sin(t * 2.4 + c.x) * 0.15;
+        c.g.rotation.y += dt * 0.6;
+      }
+    });
 
     // district proximity + locked gates push the player out
     let n = -1;
+    let nc = -1;
+    caches.forEach((c, ci) => {
+      if (!c.open && Math.hypot(P.position.x - c.x, P.position.z - c.z) < 4 && nc < 0) nc = ci;
+    });
+    if (nc !== nearCache) {
+      nearCache = nc;
+      drawPanel();
+      if (nc >= 0) { sfx.click(); say("🎁 A supply cache! Tap to open it."); }
+    }
     zones.forEach((z, i) => {
       const dx = P.position.x - z.x;
       const dz = P.position.z - z.z;
@@ -1662,6 +1787,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   }
 
   ensureDaily();
+  spawnCaches();
   rebuild();
   drawHud();
   drawPanel();
@@ -1763,7 +1889,7 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
           className="absolute right-3 z-20 rounded-full border border-violet-400/40 bg-[#0f0a28]/80 px-4 py-2 text-sm font-extrabold text-violet-100 shadow-lg backdrop-blur-sm"
           style={{ top: "calc(env(safe-area-inset-top,0px) + 52px)" }}
         >
-          ‹ 2D City
+          ‹ Home
         </button>
       )}
     </div>
