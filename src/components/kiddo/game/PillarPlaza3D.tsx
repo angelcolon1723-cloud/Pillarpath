@@ -368,6 +368,7 @@ const STRUCTURES: Record<string, StructureDef[]> = {
 };
 
 interface NewsItem { icon: string; headline: string; detail: string; time: number; }
+interface Daily { date: string; key: string; text: string; need: number; progress: number; done: boolean; }
 
 const NPCS = [
   { name: "Maya", icon: "🌟", district: 0, color: 0xe879f9, x: 6.5, z: 5,
@@ -421,6 +422,7 @@ const PLAZA_CSS = `
 .pp3d-ach.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .pp3d-tutdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#ffffff30;margin:0 3px}
 .pp3d-tutdot.on{background:#d4a017}
+.pp3d-float{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font-size:22px;font-weight:800;pointer-events:none;opacity:0;transition:opacity .3s,transform .6s;z-index:12;text-shadow:0 0 14px currentColor;white-space:nowrap}
 `;
 
 /* ---------------- The plaza itself (adapted from the contributed foundation) ---------------- */
@@ -448,13 +450,14 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     tutorial: number;
     news: NewsItem[];
     newsSeen: number;
+    daily: Daily | null;
     blight: number[];
     built: number[][];
   }
   let S: PlazaState = {
     trust: 0, courage: 0, family: 0, freeBuild: 0,
     famBase: { chores: 0, saved: 0 }, ach: {}, tutorial: 0,
-    news: [], newsSeen: 0,
+    news: [], newsSeen: 0, daily: null,
     blight: [0, 0, 0, 0, 0, 0], built: [[], [], [], [], [], []],
   };
   try {
@@ -526,6 +529,50 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     }
   }
 
+  function ensureDaily() {
+    const today = new Date().toDateString();
+    if (!S.daily || S.daily.date !== today) {
+      const goals = [
+        { key: "quests", text: "Complete 2 quests with good choices", need: 2 },
+        { key: "builds", text: "Build 1 structure", need: 1 },
+        { key: "shifts", text: "Use Dimensional Shift once", need: 1 },
+        { key: "talks", text: "Talk to 2 friends", need: 2 },
+      ];
+      const g = goals[Math.floor(Math.random() * goals.length)];
+      S.daily = { date: today, key: g.key, text: g.text, need: g.need, progress: 0, done: false };
+      save();
+    }
+  }
+  function dailyTick(key: string) {
+    const d = S.daily;
+    if (!d || d.done || d.key !== key) return;
+    d.progress++;
+    if (d.progress >= d.need) {
+      d.done = true;
+      S.courage++;
+      api.earn(15, "Pillar Plaza daily challenge");
+      floatText("Daily Done! +15 Units", "#ffaa00");
+      say("🎯 Daily challenge complete! +15 real Units.");
+      sfx.ach();
+      sfx.buzz([40, 40, 40, 40, 150]);
+      pushNews("🎯", "Daily challenge complete!", d.text + " — +15 Units earned.");
+    }
+    save();
+    drawHud();
+  }
+  function floatText(t: string, color?: string) {
+    const el = $("pp3d-float");
+    if (!el) return;
+    el.textContent = t;
+    el.style.color = color || "#00e5ff";
+    el.style.opacity = "1";
+    el.style.transform = "translate(-50%,-80%)";
+    window.clearTimeout((el as any)._t);
+    (el as any)._t = window.setTimeout(() => {
+      el.style.opacity = "0";
+      el.style.transform = "translate(-50%,-120%)";
+    }, 900);
+  }
   function showAch(key: string) {
     if (S.ach[key]) return;
     const a = ACH[key];
@@ -550,6 +597,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     <div class="pp3d-hud" id="pp3d-hud"></div>
     <div class="pp3d-msg" id="pp3d-msg"></div>
     <div class="pp3d-ach" id="pp3d-ach"></div>
+    <div class="pp3d-float" id="pp3d-float"></div>
     <div class="pp3d-dimfx" id="pp3d-dimfx"></div>
     <div class="pp3d-joy" id="pp3d-joy"><div class="pp3d-knob" id="pp3d-knob"></div></div>
     <div class="pp3d-panel" id="pp3d-panel"></div>
@@ -582,6 +630,12 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   sc.right = sc.top = 80;
   sc.far = 300;
   scene.add(hemi, sun, sun.target);
+  const neonViolet = new THREE.PointLight(0x7b2fff, 0.7, 48, 2);
+  neonViolet.position.set(30, 9, -20);
+  scene.add(neonViolet);
+  const neonGreen = new THREE.PointLight(0x00ff9d, 0.5, 42, 2);
+  neonGreen.position.set(-25, 7, 25);
+  scene.add(neonGreen);
   const bgColor = new THREE.Color(0x9fd8f7);
   scene.background = bgColor;
   scene.fog = new THREE.Fog(0x9fd8f7, 70, 200);
@@ -589,6 +643,8 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   const M = (c: number, o?: any) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, o || {}));
   const std = (c: number, o?: any) =>
     new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.75, metalness: 0.05 }, o || {}));
+  const glow = (c: number, i = 0.6) =>
+    new THREE.MeshStandardMaterial({ color: c, emissive: c, emissiveIntensity: i, roughness: 0.2, metalness: 0.7 });
   const add = (g: any, m: any, x: number, y: number, z: number, p?: any): any => {
     const o = new THREE.Mesh(g, m);
     o.position.set(x, y, z);
@@ -634,39 +690,45 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   }
 
   // Ground + central plaza
-  add(new THREE.CircleGeometry(170, 48), std(0x7cc46a, { roughness: 0.92 }), 0, 0, 0).rotation.x = -Math.PI / 2;
-  add(new THREE.CylinderGeometry(15, 15, 0.3, 40), std(0xf0e4cc, { roughness: 0.65 }), 0, 0.15, 0);
+  add(new THREE.CircleGeometry(170, 48), std(0x0a1220, { roughness: 0.6, metalness: 0.3 }), 0, 0, 0).rotation.x = -Math.PI / 2;
+  add(new THREE.CylinderGeometry(15, 15, 0.3, 40), std(0x101828, { roughness: 0.25, metalness: 0.7 }), 0, 0.15, 0);
 
-  // Central Pillar monument — grows with the kid's real Society rank
+  // Central Pillar — a neon energy core that grows with the kid's real Society rank
   const mon = new THREE.Group();
   scene.add(mon);
-  add(new THREE.CylinderGeometry(4, 4.4, 0.9, 24), M(0xcfd8dc), 0, 0.6, 0, mon);
-  add(new THREE.CylinderGeometry(3.4, 3.4, 0.5, 24), M(0x7ec8e3), 0, 1, 0, mon);
-  const pillarCol = add(new THREE.CylinderGeometry(0.7, 0.9, 7, 16), M(0xfaf3e3), 0, 4, 0, mon);
-  const pillarOrb = add(
-    new THREE.SphereGeometry(0.9, 16, 12),
-    std(0xffd36e, { roughness: 0.25, metalness: 0.35, emissive: 0xaa5500, emissiveIntensity: 0.55 }),
-    0, 7.9, 0, mon,
-  );
+  add(new THREE.CylinderGeometry(3.8, 4.2, 0.9, 24), std(0x1a2a40, { metalness: 0.8, roughness: 0.35 }), 0, 0.55, 0, mon);
+  add(new THREE.CylinderGeometry(3.2, 3.2, 0.4, 24), glow(0x00e5ff, 0.5), 0, 1.0, 0, mon);
+  const pillarCol = add(new THREE.CylinderGeometry(0.55, 0.7, 7.5, 16), std(0x203040, { metalness: 0.6, roughness: 0.3 }), 0, 4.3, 0, mon);
+  const pillarOrb = add(new THREE.SphereGeometry(1.05, 24, 18), glow(0x00e5ff, 1.0), 0, 8.4, 0, mon);
+  const orbCore = add(new THREE.SphereGeometry(0.55, 16, 12), glow(0xffffff, 1.5), 0, 8.4, 0, mon);
   const orbMat = pillarOrb.material as any;
-  const orbLight = new THREE.PointLight(0xffaa44, 0.9, 25, 2);
+  const orbLight = new THREE.PointLight(0x00e5ff, 1.4, 32, 2);
   orbLight.position.set(0, 8.5, 0);
   mon.add(orbLight);
-  const orbColors = [0xffd36e, 0x7cf29c, 0x6ec6ff, 0xc58cff, 0xff8ad4];
+  // rotating holographic rings around the core
+  const holoRings: any[] = [];
+  for (let r = 0; r < 3; r++) {
+    const hr = add(new THREE.TorusGeometry(2.2 + r * 0.9, 0.06, 8, 40), glow([0x00e5ff, 0x7b2fff, 0x00ff9d][r], 0.7), 0, 3 + r * 1.8, 0, mon);
+    hr.rotation.x = Math.PI / 2 + r * 0.15;
+    holoRings.push(hr);
+  }
+  const orbColors = [0x00e5ff, 0x00e5ff, 0x7b2fff, 0x00ff9d, 0xff8ad4];
   function sizeMonument() {
-    const h = 7 + rankIdx() * 1.6;
-    pillarCol.scale.y = h / 7;
-    pillarCol.position.y = h / 2 + 0.5;
-    pillarOrb.position.y = h + 1.4;
-    (pillarOrb.material as any).color.setHex(orbColors[rankIdx()]);
+    const h = 7.5 + rankIdx() * 1.6;
+    pillarCol.scale.y = h / 7.5;
+    pillarCol.position.y = h / 2 + 0.6;
+    pillarOrb.position.y = h + 1.5;
+    orbCore.position.y = h + 1.5;
+    orbMat.color.setHex(orbColors[rankIdx()]);
+    orbMat.emissive.setHex(orbColors[rankIdx()]);
   }
   sizeMonument();
-  // Monument glow ring
-  const ringMat = new THREE.MeshBasicMaterial({ color: 0x8b5cf6, transparent: true, opacity: 0.35 });
-  const ring = new THREE.Mesh(new THREE.TorusGeometry(6.5, 0.25, 8, 40), ringMat);
+  // holographic plaza ring
+  const ringMat = glow(0x00e5ff, 0.8);
+  const ring = new THREE.Mesh(new THREE.TorusGeometry(15.5, 0.15, 8, 64), ringMat);
   ring.rotation.x = Math.PI / 2;
-  ring.position.y = 0.4;
-  mon.add(ring);
+  ring.position.y = 0.35;
+  scene.add(ring);
 
   /* ----- districts ----- */
   const zones: { x: number; z: number; a: number }[] = [];
@@ -680,8 +742,11 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     const g = new THREE.Group();
     g.position.set(cx, 0, cz);
     scene.add(g);
-    const gm = std(d.c, { roughness: 0.85 });
+    const gm = std(d.c, { roughness: 0.5, metalness: 0.4 });
+    gm.color.multiplyScalar(0.62);
     groundMats.push(gm);
+    const dring = add(new THREE.TorusGeometry(14.5, 0.08, 6, 48), glow(0x00e5ff, 0.4), 0, 0.24, 0, g);
+    dring.rotation.x = Math.PI / 2;
     add(new THREE.CylinderGeometry(15, 15, 0.2, 32), gm, 0, 0.1, 0, g);
     const wall = M(0xfff4e0), roof = M(0xc0563a);
     if (i === 0) {
@@ -739,7 +804,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     slots.push({ g, sl, meshes: [], windows: [] });
     zones.push({ x: cx, z: cz, a });
     // path from plaza
-    const path = add(new THREE.BoxGeometry(5, 0.12, R - 30), M(0xe8d9b5), (Math.sin(a) * R) / 2, 0.09, (-Math.cos(a) * R) / 2, scene);
+    const path = add(new THREE.BoxGeometry(5, 0.1, R - 30), glow(0x00e5ff, 0.16), (Math.sin(a) * R) / 2, 0.08, (-Math.cos(a) * R) / 2, scene);
     path.rotation.y = -a;
   });
 
@@ -799,7 +864,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
         s.meshes.push(h);
       }
       const dark = Math.min(S.blight[i] / 4, 1);
-      groundMats[i].color.setHex(d.c).lerp(new THREE.Color(0x555555), dark * 0.7);
+      groundMats[i].color.setHex(d.c).multiplyScalar(0.62).lerp(new THREE.Color(0x111122), dark * 0.8);
     });
   }
 
@@ -812,8 +877,13 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     const x = Math.sin(a) * r;
     const z = -Math.cos(a) * r;
     if (zones.some((q) => Math.hypot(q.x - x, q.z - z) < 19)) continue;
-    add(new THREE.CylinderGeometry(0.3, 0.4, 2, 6), M(0x7a5230), x, 1, z);
-    add(new THREE.SphereGeometry(1.6 + rnd(), 10, 8), M(0x4f9d4b), x, 3.2, z);
+    const th = 2 + rnd() * 4;
+    add(new THREE.CylinderGeometry(0.12, 0.18, th, 6), std(0x1a2030, { metalness: 0.6, roughness: 0.4 }), x, th / 2, z);
+    if (rnd() > 0.45) {
+      add(new THREE.SphereGeometry(0.25 + rnd() * 0.2, 8, 6), glow([0x00e5ff, 0x7b2fff, 0x00ff9d][Math.floor(rnd() * 3)], 0.6), x, th + 0.3, z);
+    } else {
+      add(new THREE.SphereGeometry(1.3 + rnd(), 8, 6), std(0x0e2a1e, { roughness: 0.9 }), x, th + 0.8, z);
+    }
   }
   // stars (fade in at night)
   const starGeo = new THREE.BufferGeometry();
@@ -896,6 +966,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   blob.rotation.x = -Math.PI / 2;
   blob.position.y = 0.02;
   P.add(blob);
+  add(new THREE.SphereGeometry(0.12, 8, 6), glow(0x00e5ff, 0.9), 0, 1.4, 0.42, P);
   let yaw = 0, pitch = 0.45, dist = 13, face = 0, vel = 0, bob = 0;
 
   /* ----- input: keys + joystick + orbit/zoom ----- */
@@ -946,10 +1017,25 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   const cv = rd.domElement;
   let oid: number | null = null;
   let last: [number, number] | null = null;
+  // tap-to-move
+  const raycaster = new THREE.Raycaster();
+  const ndc = new THREE.Vector2();
+  const groundPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const hitP = new THREE.Vector3();
+  let walkTarget: { x: number; z: number } | null = null;
+  let downPos: [number, number] | null = null;
+  const targetRingMat = new THREE.MeshBasicMaterial({ color: 0x00e5ff, transparent: true, opacity: 0, side: THREE.DoubleSide, depthWrite: false });
+  const targetRing = new THREE.Mesh(new THREE.RingGeometry(0.8, 1.1, 24), targetRingMat);
+  targetRing.rotation.x = -Math.PI / 2;
+  targetRing.position.y = 0.12;
+  scene.add(targetRing);
+  // autopilot
+  let autoPilot = false, autoTarget = -1, autoPause = 0;
   on(cv, "pointerdown", (e: PointerEvent) => {
     sfx.unlock();
     oid = e.pointerId;
     last = [e.clientX, e.clientY];
+    downPos = [e.clientX, e.clientY];
   });
   on(cv, "pointermove", (e: PointerEvent) => {
     if (e.pointerId === oid && last) {
@@ -960,8 +1046,24 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   });
   const oend = (e: PointerEvent) => {
     if (e.pointerId === oid) {
+      if (downPos && Math.hypot(e.clientX - downPos[0], e.clientY - downPos[1]) < 10 && !autoPilot) {
+        // a short tap (not a drag): walk to the tapped ground point
+        const rect = cv.getBoundingClientRect();
+        (ndc as any).x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
+        (ndc as any).y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
+        raycaster.setFromCamera(ndc as any, cam);
+        if (raycaster.ray.intersectPlane(groundPlane, hitP)) {
+          const r = Math.hypot(hitP.x, hitP.z);
+          const cl = r > 145 ? 145 / r : 1;
+          walkTarget = { x: hitP.x * cl, z: hitP.z * cl };
+          targetRing.position.set(walkTarget.x, 0.12, walkTarget.z);
+          targetRingMat.opacity = 0.9;
+          sfx.click();
+        }
+      }
       oid = null;
       last = null;
+      downPos = null;
     }
   };
   on(cv, "pointerup", oend);
@@ -1026,7 +1128,10 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       (shiftActive
         ? `<span class="pp3d-chip" style="border-color:#9b4dff;background:rgba(106,27,154,.8)">🌀 ${Math.ceil(shiftTimer)}s</span>`
         : "") +
-      `<button class="pp3d-chip" style="pointer-events:auto;cursor:pointer;border-color:#d4a017" onclick="__pp3d.post()">📰${S.news.length - S.newsSeen > 0 ? ` <b style="color:#ff5252">●${S.news.length - S.newsSeen}</b>` : ""}</button>`;
+      `<button class="pp3d-chip" style="pointer-events:auto;cursor:pointer;border-color:#d4a017" onclick="__pp3d.post()">📰${S.news.length - S.newsSeen > 0 ? ` <b style="color:#ff5252">●${S.news.length - S.newsSeen}</b>` : ""}</button>` +
+      (S.daily && !S.daily.done ? `<span class="pp3d-chip" style="border-color:#ffaa00">🎯 ${S.daily.progress}/${S.daily.need}</span>` : "") +
+      (S.daily && S.daily.done ? `<span class="pp3d-chip" style="border-color:#00ff9d">✅ Daily done</span>` : "") +
+      (autoPilot ? `<span class="pp3d-chip" style="border-color:#00ff9d;background:rgba(0,170,102,.5)">🟢 AUTO</span>` : "");
     if (lastTier && lastTier !== tier) {
       const order = TIERS.map((x) => x[1]);
       if (order.indexOf(tier) > order.indexOf(lastTier)) {
@@ -1061,6 +1166,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     }
     if (nearNpc >= 0)
       b.push(`<button class="pp3d-btn" onclick="__pp3d.talkNpc(${nearNpc})">💬 Talk to ${NPCS[nearNpc].name}</button>`);
+    b.push(`<button class="pp3d-btn alt" onclick="__pp3d.toggleAuto()">${autoPilot ? "🟢 Auto ON" : "⚪ Autopilot"}</button>`);
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.realLife()">🌟 Real-life progress</button>`);
     if (tiltHas) b.push(`<button class="pp3d-btn alt" onclick="__pp3d.tilt()">📱 Tilt: ${tiltOn ? "on" : "off"}</button>`);
     panel.innerHTML = b.join("");
@@ -1073,7 +1179,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   function runTutorial() {
     if (S.tutorial >= 4) return;
     const steps = [
-      { t: "Welcome to Pillar Plaza", d: "A living world that grows when you get better at real life. Move with the joystick or WASD keys." },
+      { t: "Welcome to Pillar Plaza", d: "A living world that grows when you get better at real life. Tap the ground to walk, or use the joystick / WASD keys." },
       { t: "Six districts, six values", d: "Walk to a district and take a quest. Good choices grow Trust and heal blight. Say hi to Maya, Jay and Sam!" },
       { t: "Real life powers the plaza", d: "Real chores and saving open Vault Mountain and Market Harbor — and grow Family Bond 💜, which unlocks Pillar powers like free builds." },
       { t: "Tilt, sound and Shift 🌀", d: "Tilt your phone to look around, and listen — water and birds come from their direction. With Courage, Shift into a parallel district for bigger rewards and bigger risk." },
@@ -1140,12 +1246,14 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
           extra = `<p>✨ +${rw} real Units for a good deed (up to 3 a day).</p>`;
           sfx.reward();
           sfx.buzz([25, 40, 25, 40, 120]);
+          floatText(`+${rw} Units`, "#00ff9d");
         }
         modal(
           `<h3>Trust grows 🌱</h3><p>Good choice${parallel ? " — parallel bonus" : ""}. The district brightens.</p>${extra}` +
             `<button class="pp3d-btn" onclick="__pp3d.close()">Continue</button>`,
         );
         showAch("firstQuest");
+        dailyTick("quests");
         if (S.trust >= 5) showAch("trust5");
         if (S.blight[i] === 0) showAch("blightFree");
       } else {
@@ -1198,8 +1306,10 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       drawHud();
       drawPanel();
       say(cost === 0 ? "💜 Pillar power used: free build! ✨" : `${def.icon} ${def.name} rises! Prosperity grows ✨`);
+      floatText(cost === 0 ? "FREE Build!" : "Built!", "#00e5ff");
       pushNews(def.icon, `${def.name} rises in ${DIST[i].n}`, `Prosperity +${def.prosperity}.`);
       showAch("firstBuild");
+      dailyTick("builds");
       if (S.built[i].length >= 8) showAch("fullDistrict");
     },
     talkNpc(k: number) {
@@ -1207,6 +1317,8 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       if (!npc) return;
       sfx.click();
       sfx.buzz(15);
+      dailyTick("talks");
+      floatText(`${npc.icon} ${npc.name}!`, "#7b2fff");
       const q = npc.qs[Math.floor(Math.random() * npc.qs.length)];
       const o: [string, number][] = [[q.g, 1], [q.b, 0]];
       if (Math.random() < 0.5) o.reverse();
@@ -1240,6 +1352,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       sfx.shift();
       sfx.buzz([50, 50, 50, 50, 100]);
       showAch("shift1");
+      dailyTick("shifts");
       pushNews("🌀", "Dimensional Shift!", `Entered the parallel ${DIST[i].n} for ${SHIFT_DUR} seconds.`);
       say(`🌀 Entered parallel ${DIST[i].n}! Higher rewards, higher risk.`);
       save();
@@ -1251,6 +1364,26 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       save();
       closeM();
       if (S.tutorial < 4) setTimeout(runTutorial, 380);
+    },
+    toggleAuto() {
+      autoPilot = !autoPilot;
+      sfx.click();
+      if (autoPilot) {
+        walkTarget = null;
+        let best = -1, bestD = 1e9;
+        zones.forEach((z, i) => {
+          if (!isOpen(i)) return;
+          const d = Math.hypot(P.position.x - z.x, P.position.z - z.z);
+          if (d < bestD) { bestD = d; best = i; }
+        });
+        autoTarget = best >= 0 ? best : 0;
+        autoPause = 0;
+        say("🟢 Autopilot on — walking to " + DIST[autoTarget].n);
+      } else {
+        say("Autopilot off.");
+      }
+      drawPanel();
+      drawHud();
     },
     realLife() {
       sfx.click();
@@ -1291,9 +1424,9 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   on(window, "resize", resize);
   resize();
 
-  const skyDay = new THREE.Color(0x9fd8f7);
-  const skyDusk = new THREE.Color(0xf6a45e);
-  const skyNight = new THREE.Color(0x141a3a);
+  const skyDay = new THREE.Color(0x16245e);
+  const skyDusk = new THREE.Color(0x6a3aa0);
+  const skyNight = new THREE.Color(0x05051a);
   const tmpC = new THREE.Color();
   let T = 0.25;
   const clock = new THREE.Clock();
@@ -1328,7 +1461,11 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     moonMat.opacity = night * 0.95;
     flyMat.opacity = night * (0.55 + 0.35 * Math.sin(t * 3));
     slots.forEach((s) => s.windows.forEach((w: any) => (w.opacity = night * 0.95)));
-    ringMat.opacity = 0.25 + 0.15 * Math.sin(t * 2);
+    (ringMat as any).emissiveIntensity = 0.65 + 0.25 * Math.sin(t * 2);
+    targetRingMat.opacity = Math.max(0, targetRingMat.opacity - dt * 1.1);
+    const trs = 1 + Math.sin(t * 6) * 0.08;
+    targetRing.scale.set(trs, trs, 1);
+    holoRings.forEach((hr, ri) => { hr.rotation.z += dt * (0.2 + ri * 0.12); });
     waterMats.forEach((m: any, i: number) => {
       m.opacity = 0.82 + 0.1 * Math.sin(t * 2 + i * 2);
     });
@@ -1349,7 +1486,54 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       nx /= l;
       nz /= l;
     }
-    if (l > 0.08) {
+    if (autoPilot) {
+      // guided tour: walks between open districts, pausing at each
+      if (autoPause > 0) {
+        autoPause -= dt;
+        vel = 0;
+      } else {
+        const z = zones[autoTarget];
+        const dx = z.x - P.position.x, dz = z.z - P.position.z;
+        const dd = Math.hypot(dx, dz);
+        if (dd < GATE + 1) {
+          autoPause = 2.5;
+          let next = (autoTarget + 1) % 6;
+          for (let k = 0; k < 6; k++) { if (isOpen(next)) break; next = (next + 1) % 6; }
+          autoTarget = next;
+          say("Arrived. Next: " + DIST[autoTarget].e + " " + DIST[autoTarget].n);
+        } else {
+          const sp = 8;
+          P.position.x += (dx / dd) * sp * dt;
+          P.position.z += (dz / dd) * sp * dt;
+          const tf = Math.atan2(dx, dz);
+          let df = tf - face;
+          df = Math.atan2(Math.sin(df), Math.cos(df));
+          face += df * Math.min(1, dt * 10);
+          bob += dt * sp * 1.2;
+          vel = 1;
+        }
+      }
+    } else if (walkTarget && l <= 0.08) {
+      // tap-to-move
+      const dx = walkTarget.x - P.position.x, dz = walkTarget.z - P.position.z;
+      const dd = Math.hypot(dx, dz);
+      if (dd < 0.8) {
+        walkTarget = null;
+        vel = 0;
+      } else {
+        const sp = 9;
+        P.position.x += (dx / dd) * sp * dt;
+        P.position.z += (dz / dd) * sp * dt;
+        const tf = Math.atan2(dx, dz);
+        let df = tf - face;
+        df = Math.atan2(Math.sin(df), Math.cos(df));
+        face += df * Math.min(1, dt * 11);
+        bob += dt * sp * 1.3;
+        vel = 1;
+      }
+    } else if (l > 0.08) {
+      if (autoPilot) { autoPilot = false; drawPanel(); drawHud(); }
+      walkTarget = null;
       const sp = 9 * Math.min(1, l);
       const c = Math.cos(yaw), s = Math.sin(yaw);
       const mx = nx * c + nz * s;
@@ -1447,9 +1631,11 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       }
     }
 
-    // orb pulse
-    orbMat.emissiveIntensity = 0.45 + Math.sin(t * 2.8) * 0.2;
-    orbLight.intensity = 0.7 + Math.max(0, -h) * 0.6;
+    // orb pulse — brighter with Family Bond
+    const famBoost = Math.min(S.family / 50, 1);
+    orbMat.emissiveIntensity = 0.7 + famBoost * 0.6 + Math.sin(t * 2.8) * (0.25 + famBoost * 0.25);
+    (orbCore.material as any).emissiveIntensity = 1.2 + famBoost * 0.8 + Math.sin(t * 4) * 0.4;
+    orbLight.intensity = 1.0 + famBoost * 0.7 + Math.max(0, -h) * 0.5;
 
     // positional ambience + daytime birds (throttled)
     if ((frame++ & 7) === 0) sfx.updateAmbience(P.position.x, P.position.z, yaw, h > 0 ? 1 : 0.15);
@@ -1475,6 +1661,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     rd.render(scene, cam);
   }
 
+  ensureDaily();
   rebuild();
   drawHud();
   drawPanel();
