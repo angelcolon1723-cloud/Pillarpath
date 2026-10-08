@@ -2,6 +2,7 @@ import { createServerFn } from "@tanstack/react-start";
 import { authMiddleware, roleMiddleware } from "@/lib/auth/middleware";
 import { getSql } from "@/lib/db";
 import { createCachedCjClient } from "@/lib/suppliers/cj-token-store";
+import { createPrintifyClientFromEnv } from "@/lib/suppliers/printify";
 
 /* ------------------------------------------------------------------ */
 /* Physical fulfillment: Units approval -> doorstep delivery             */
@@ -9,10 +10,11 @@ import { createCachedCjClient } from "@/lib/suppliers/cj-token-store";
 /*
  * Kids pay in Units (already real money — the parent loaded them).
  * Parent approval is the checkout moment. This module bridges that
- * approval to physical fulfillment via CJ Dropshipping:
+ * approval to physical fulfillment via the product's own supplier
+ * (CJ Dropshipping, or Printify for brand merch):
  *
  *   parent approves -> order created (paid in Units)
- *                   -> CJ fulfillment submitted
+ *                   -> supplier fulfillment submitted
  *                   -> tracking surfaced to the parent
  *
  * Shipping addresses are captured once and reused.
@@ -162,13 +164,17 @@ export const fulfillUnitPurchase = createServerFn({ method: "POST" })
     await sql`
       insert into fulfillments (order_id, supplier_name, status)
       values (${orderId}, ${product.supplier_name}, 'queued')`;
+    // Route fulfillment to the product's actual supplier — Printify brand
+    // merch goes to Printify, everything else to CJ.
+    const supplierKey = product.supplier_name === "Printify" ? "printify" : "cjdropshipping";
     await sql`
       insert into supplier_orders (order_id, supplier, status, payload)
-      values (${orderId}, 'cjdropshipping', 'pending', ${JSON.stringify({ productId: product.id, quantity })}::jsonb)`;
+      values (${orderId}, ${supplierKey}, 'pending', ${JSON.stringify({ productId: product.id, quantity })}::jsonb)`;
 
-    // Fire CJ fulfillment in the background — never block the parent.
-    void submitCjFulfillment(orderId).catch((e) => {
-      console.error(`[fulfillment] CJ submit failed for order ${orderId}:`, e);
+    // Fire supplier fulfillment in the background — never block the parent.
+    const submit = supplierKey === "printify" ? submitPrintifyFulfillment : submitCjFulfillment;
+    void submit(orderId).catch((e) => {
+      console.error(`[fulfillment] ${supplierKey} submit failed for order ${orderId}:`, e);
     });
 
     return { orderId };
@@ -236,7 +242,9 @@ async function submitCjFulfillment(orderId: number): Promise<void> {
   const o = orderRows[0];
   const addr = o.shipping_address as Record<string, string>;
   const items = await sql<{ supplier_sku: string; quantity: number; product_name: string }>`
-    select supplier_sku, quantity, product_name from order_items where order_id = ${orderId}`;
+    select supplier_sku, quantity, product_name from order_items
+    where order_id = ${orderId} and supplier_name <> 'Printify'`;
+  if (!items.length) return; // nothing for CJ in this order
 
   // Resolve CJ variant IDs from the screened catalog.
   const cjItems: { vid: string; quantity: number }[] = [];
@@ -285,28 +293,162 @@ async function submitCjFulfillment(orderId: number): Promise<void> {
 }
 
 /* ------------------------------------------------------------------ */
+/* Printify submission (background)                                    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * Submit an order to Printify. Each item orders the designed draft
+ * product stored on its supplier_products row (compliance →
+ * printify_draft_product_id) in the first enabled variant — the same
+ * "default variant" convention the CJ path uses. Created order ids are
+ * recorded in the supplier_orders payload BEFORE submitting to
+ * production, so a retry re-submits the same Printify orders instead
+ * of creating duplicates.
+ */
+async function submitPrintifyFulfillment(orderId: number): Promise<void> {
+  const sql = await getSql();
+  const fail = async (error: string) => {
+    await sql`update supplier_orders set status = 'failed', payload = payload || ${JSON.stringify({ error })}::jsonb, updated_at = now() where order_id = ${orderId}`;
+    await sql`update fulfillments set status = 'failed' where order_id = ${orderId}`;
+  };
+  const client = createPrintifyClientFromEnv();
+  if (!client) {
+    await sql`update supplier_orders set status = 'failed', payload = payload || '{"error":"PRINTIFY_API_KEY not configured"}'::jsonb, updated_at = now() where order_id = ${orderId}`;
+    return;
+  }
+  const soRows = await sql<{ payload: Record<string, unknown> }>`
+    select payload from supplier_orders where order_id = ${orderId} and supplier = 'printify'`;
+  const priorIds = ((soRows[0]?.payload as { printifyOrderIds?: string[] })?.printifyOrderIds ?? []).filter(
+    (x) => typeof x === "string" && x,
+  );
+
+  const shops = await client.listShops();
+  if (!shops.length) return fail("No Printify shop found.");
+  const shopId = shops[0].id;
+
+  if (!priorIds.length) {
+    const orderRows = await sql<{
+      shipping_name: string; shipping_email: string; shipping_address: Record<string, string>;
+    }>`select shipping_name, shipping_email, shipping_address from orders where id = ${orderId}`;
+    if (!orderRows.length) return;
+    const o = orderRows[0];
+    const addr = o.shipping_address as Record<string, string>;
+    const nameParts = (o.shipping_name || "").trim().split(/\s+/).filter(Boolean);
+    const firstName = nameParts[0] ?? "PillarPath";
+    const lastName = nameParts.slice(1).join(" ") || firstName;
+    const items = await sql<{ supplier_sku: string; quantity: number; product_name: string }>`
+      select supplier_sku, quantity, product_name from order_items
+      where order_id = ${orderId} and supplier_name = 'Printify'`;
+    if (!items.length) return; // nothing for Printify in this order
+
+    const createdIds: string[] = [];
+    for (const [idx, item] of items.entries()) {
+      const sup = await sql<{ compliance: Record<string, unknown> | null }>`
+        select compliance from supplier_products
+        where supplier = 'printify'
+          and (supplier_sku = ${item.supplier_sku} or supplier_product_id = ${item.supplier_sku})
+        order by id desc limit 1`;
+      const draftId = (sup[0]?.compliance as { printify_draft_product_id?: string } | null)
+        ?.printify_draft_product_id;
+      if (!draftId) {
+        return fail(`No Printify design on file for ${item.product_name} — create its draft in the Society stockroom first.`);
+      }
+      const draft = await client.getProduct(shopId, draftId);
+      const variant = draft.variants.find((v) => v.isEnabled) ?? draft.variants[0];
+      if (!variant) return fail(`Printify design for ${item.product_name} has no variants.`);
+      const created = await client.createOrder(shopId, {
+        externalId: `PP-${orderId}-${idx + 1}`,
+        label: `PillarPath order ${orderId}`,
+        shopProductId: draftId,
+        variantId: variant.id,
+        quantity: item.quantity,
+        address: {
+          firstName,
+          lastName,
+          email: o.shipping_email,
+          phone: addr.phone ?? "",
+          country: "US",
+          region: addr.state ?? "",
+          address1: addr.line1 ?? "",
+          city: addr.city ?? "",
+          zip: addr.postalCode ?? "",
+        },
+      });
+      createdIds.push(created.id);
+      // Record progress immediately — a later failure must not duplicate.
+      await sql`update supplier_orders
+        set payload = payload || ${JSON.stringify({ printifyOrderIds: createdIds })}::jsonb, updated_at = now()
+        where order_id = ${orderId}`;
+    }
+    priorIds.push(...createdIds);
+  }
+
+  for (const pid of priorIds) {
+    await client.submitOrder(shopId, pid);
+  }
+  await sql`
+    update supplier_orders
+    set status = 'submitted', supplier_order_id = ${priorIds[0] ?? null},
+        payload = payload || ${JSON.stringify({ printifyOrderIds: priorIds })}::jsonb,
+        updated_at = now()
+    where order_id = ${orderId}`;
+  await sql`update fulfillments set status = 'submitted', supplier_order_reference = ${priorIds[0] ?? null} where order_id = ${orderId}`;
+}
+
+/**
+ * Stripe-paid orders (parent dollar store): route the order to its real
+ * supplier(s) once the webhook confirms payment. Ensures the
+ * supplier_orders tracking row exists, then runs the CJ and/or Printify
+ * submissions for whichever items the order contains.
+ */
+export async function submitPaidOrderFulfillment(orderId: number): Promise<void> {
+  const sql = await getSql();
+  const items = await sql<{ supplier_name: string }>`
+    select supplier_name from order_items where order_id = ${orderId}`;
+  if (!items.length) return;
+  const hasPrintify = items.some((i) => i.supplier_name === "Printify");
+  const hasCj = items.some((i) => i.supplier_name !== "Printify");
+  const supplierKey = hasPrintify && hasCj ? "mixed" : hasPrintify ? "printify" : "cjdropshipping";
+  const existing = await sql<{ id: number }>`select id from supplier_orders where order_id = ${orderId}`;
+  if (!existing.length) {
+    await sql`
+      insert into supplier_orders (order_id, supplier, status, payload)
+      values (${orderId}, ${supplierKey}, 'pending', ${JSON.stringify({ source: "stripe" })}::jsonb)`;
+  }
+  if (hasCj) await submitCjFulfillment(orderId);
+  if (hasPrintify) await submitPrintifyFulfillment(orderId);
+}
+
+/* ------------------------------------------------------------------ */
 /* Retry (called from the corporate admin side)                         */
 /* ------------------------------------------------------------------ */
 
-/** Retry a failed CJ submission for an order. Exported for the admin API. */
+/** Retry a failed supplier submission for an order. Exported for the admin API. */
 export async function retryFulfillmentSubmission(orderId: number): Promise<{ ok: boolean; message: string }> {
   const sql = await getSql();
-  const existing = await sql<{ status: string }>`
-    select status from supplier_orders where order_id = ${orderId}`;
+  const existing = await sql<{ status: string; supplier: string }>`
+    select status, supplier from supplier_orders where order_id = ${orderId}`;
   if (!existing.length) throw new Error("Order not found.");
+  const supplierName = existing[0].supplier === "printify" ? "Printify" : "CJ";
   if (existing[0].status === "submitted" || existing[0].status === "paid") {
-    return { ok: true, message: "Already submitted to CJ." };
+    return { ok: true, message: `Already submitted to ${supplierName}.` };
   }
   await sql`
     update supplier_orders
     set status = 'pending', payload = payload || '{"retried":true}'::jsonb, updated_at = now()
     where order_id = ${orderId}`;
   try {
-    await submitCjFulfillment(orderId);
+    if (existing[0].supplier === "printify") {
+      await submitPrintifyFulfillment(orderId);
+    } else if (existing[0].supplier === "mixed") {
+      await submitPaidOrderFulfillment(orderId);
+    } else {
+      await submitCjFulfillment(orderId);
+    }
     const after = await sql<{ status: string }>`
       select status from supplier_orders where order_id = ${orderId}`;
     if (after[0]?.status === "submitted") {
-      return { ok: true, message: "Submitted to CJ successfully." };
+      return { ok: true, message: `Submitted to ${supplierName} successfully.` };
     }
     const errRow = await sql<{ payload: Record<string, unknown> }>`
       select payload from supplier_orders where order_id = ${orderId}`;

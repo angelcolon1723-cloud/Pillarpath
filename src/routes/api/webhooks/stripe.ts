@@ -1,7 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { createHmac, timingSafeEqual } from "node:crypto";
 import { getSql } from "@/lib/db";
-import { submitPaidOrderToSupplier } from "@/lib/dropship";
 
 function verifyStripeSignature(payload: string, signature: string, secret: string) {
   const timestamp = signature.split(",").find((part) => part.startsWith("t="))?.slice(2);
@@ -30,7 +29,10 @@ export const Route = createFileRoute("/api/webhooks/stripe")({
           const sql = await getSql();
           await sql`update orders set status = 'paid' where id = ${Number(orderId)}`;
           await sql`update fulfillments set status = 'queued', updated_at = now() where order_id = ${Number(orderId)}`;
-          try { await submitPaidOrderToSupplier(Number(orderId)); } catch { await sql`update fulfillments set status = 'error', updated_at = now() where order_id = ${Number(orderId)}`; }
+          try {
+            const { submitPaidOrderFulfillment } = await import("@/lib/fulfillment-server");
+            await submitPaidOrderFulfillment(Number(orderId));
+          } catch { await sql`update fulfillments set status = 'error', updated_at = now() where order_id = ${Number(orderId)}`; }
         }
         return new Response("ok");
       },

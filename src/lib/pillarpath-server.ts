@@ -1417,7 +1417,8 @@ function crewWeekKey(): string {
   return d.toISOString().slice(0, 10);
 }
 
-async function crewState(sql: any, userId: string) {
+/** Exported for the plaza device-pass endpoints (plaza-pass-server.ts). */
+export async function crewState(sql: any, userId: string) {
   const week = crewWeekKey();
   const kids = await sql<{ id: number; name: string; avatar: string; units: number }>`
     select id, name, avatar, units from children where user_id = ${userId} order by id`;
@@ -1530,7 +1531,8 @@ export const plazaCrewClaim = createServerFn({ method: "POST" })
 
 const PLAZA_ACTIONS = ["wave", "great", "follow", "help"];
 
-async function plazaLiveEnabled(sql: any, userId: string, childId: number): Promise<boolean> {
+/** Exported for the plaza device-pass endpoints (plaza-pass-server.ts). */
+export async function plazaLiveEnabled(sql: any, userId: string, childId: number): Promise<boolean> {
   const rows = await sql<{ live_enabled: boolean }>`
     select live_enabled from plaza_live_settings where child_id = ${childId} and user_id = ${userId}`;
   return rows.length ? rows[0].live_enabled : true;

@@ -572,6 +572,19 @@ export class PrintifyClient {
     return mapOrder(raw);
   }
 
+  /**
+   * Send a created order to production. Orders created via the API wait
+   * in a pending state until submitted; submitting is what actually
+   * charges the Printify account and starts printing.
+   */
+  async submitOrder(shopId: number, orderId: string): Promise<void> {
+    await this.request<Record<string, unknown>>(
+      "POST",
+      `/shops/${shopId}/orders/${orderId}/submit.json`,
+      { body: {} },
+    );
+  }
+
   async getOrder(shopId: number, orderId: string): Promise<PrintifyOrder> {
     const raw = await this.request<Record<string, unknown>>(
       "GET",

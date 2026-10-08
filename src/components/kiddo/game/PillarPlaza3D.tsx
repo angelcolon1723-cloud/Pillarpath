@@ -15,6 +15,17 @@ import {
   getPlazaSocial,
   plazaLiveSync,
 } from "@/lib/pillarpath-server";
+import {
+  plazaPassState,
+  plazaPassEarn,
+  plazaPassSpend,
+  plazaPassSaveGame,
+  plazaPassEvent,
+  plazaPassCrewState,
+  plazaPassCrewHelp,
+  plazaPassCrewClaim,
+  plazaPassLiveSync,
+} from "@/lib/plaza-pass-server";
 
 /**
  * PillarPlaza3D — the 3D Pillar Plaza built on the Three.js foundation
@@ -416,6 +427,8 @@ const NPCS = [
 const R = 48;
 const GATE = 15;
 const SAVE_KEY = "pillar-plaza-3d";
+/** Kid-device pass token (issued by a parent from the dashboard). */
+const PASS_KEY = "pillar-plaza-pass-v1";
 // Local fallback caps — used only when the server is unreachable (offline).
 // When online, caps are enforced atomically in Postgres (plaza_reward_caps),
 // so clearing storage cannot farm rewards.
@@ -2092,6 +2105,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
           `<div class="pp3d-stat">💬 <b>People:</b> Maya, Jay and Sam patrol the paths under glowing beacons — walk up to talk. Neighbors stroll the plaza too.</div>` +
           `<div class="pp3d-stat">👥 <b>Crew:</b> other students on your family account join your plaza (gold rings) and share a weekly Crew Quest — every good deed and faced Doubtling is a help for the whole crew. Finish together, everyone earns +20 Units.</div>` +
           `<div class="pp3d-stat">🟢 <b>Live:</b> tap 🔴 Go Live to be in the plaza together, in real time. Only family, parent-approved friends, and approved classmates can ever see you — nobody else. Talk with 👋 waves and preset phrases; helping side by side counts double.</div>` +
+          `<div class="pp3d-stat">🔑 <b>Kid pass:</b> playing on your own tablet? Tap 🔑 Kid pass and enter the pass a grown-up makes for you on their dashboard (Plaza friends &amp; Live) — your crew, cloud saves and Live friends connect on this device too.</div>` +
           `<button class="pp3d-btn" onclick="__pp3d.replayTut()">▶️ Replay tutorial</button>` +
           `<button class="pp3d-btn alt" onclick="__pp3d.close()">Close</button>`,
       );
@@ -2558,6 +2572,14 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
   const rootRef = useRef<HTMLDivElement>(null);
   const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [errMsg, setErrMsg] = useState("");
+  // Connection mode: a signed-in family session, a kid-device pass, or
+  // local-only. The pass form lets a kid connect their own device.
+  const [mode, setMode] = useState<"session" | "pass" | "local">("local");
+  const [passTick, setPassTick] = useState(0);
+  const [showPassForm, setShowPassForm] = useState(false);
+  const [passInput, setPassInput] = useState("");
+  const [passMsg, setPassMsg] = useState("");
+  const [passBusy, setPassBusy] = useState(false);
 
   useEffect(() => {
     let cleanup: (() => void) | null = null;
@@ -2568,6 +2590,8 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
     // cloud-saved. Offline or unauthenticated, the plaza falls back to the
     // local ledger with local caps — play never breaks.
     let serverChildId: number | null = null;
+    // Kid-device pass token (set when this device has no family session).
+    let passToken: string | null = null;
     let crewRosterCache: PlazaCrewMember[] = [];
     let liveEnabledCache: boolean | null = null;
     const crewHooks = {
@@ -2575,6 +2599,7 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
       crewState: async (): Promise<PlazaCrewState | null> => {
         if (serverChildId == null) return null;
         try {
+          if (passToken) return (await plazaPassCrewState({ data: { token: passToken } })) as PlazaCrewState;
           return (await getPlazaCrew({ data: { childId: serverChildId } })) as PlazaCrewState;
         } catch {
           return null;
@@ -2582,12 +2607,18 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
       },
       crewHelp: () => {
         if (serverChildId == null) return;
-        plazaCrewHelp({ data: { childId: serverChildId } }).catch(() => {});
+        if (passToken) {
+          plazaPassCrewHelp({ data: { token: passToken } }).catch(() => {});
+        } else {
+          plazaCrewHelp({ data: { childId: serverChildId } }).catch(() => {});
+        }
       },
       crewClaim: async (): Promise<{ ok: boolean; amount?: number; reason?: string }> => {
         if (serverChildId == null) return { ok: false, reason: "offline" };
         try {
-          const r = await plazaCrewClaim({ data: { childId: serverChildId } });
+          const r = passToken
+            ? await plazaPassCrewClaim({ data: { token: passToken } })
+            : await plazaCrewClaim({ data: { childId: serverChildId } });
           if (r.ok && r.amount) useLedger.getState().creditUnits(r.amount, "Pillar Plaza Crew Quest reward");
           return r;
         } catch {
@@ -2598,7 +2629,9 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
       liveSync: async (p: { x: number; z: number; face: number; action: string; live: boolean }) => {
         if (serverChildId == null) return null;
         try {
-          const r = await plazaLiveSync({ data: { childId: serverChildId, ...p } });
+          const r = passToken
+            ? await plazaPassLiveSync({ data: { token: passToken, ...p } })
+            : await plazaLiveSync({ data: { childId: serverChildId, ...p } });
           liveEnabledCache = r.liveEnabled;
           return r as { liveEnabled: boolean; peers: PlazaLivePeer[] };
         } catch {
@@ -2608,7 +2641,11 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
     };
     const serverEvent = (icon: string, headline: string, detail: string) => {
       if (serverChildId == null) return;
-      logPlazaEvent({ data: { childId: serverChildId, icon, headline, detail } }).catch(() => {});
+      if (passToken) {
+        plazaPassEvent({ data: { token: passToken, icon, headline, detail } }).catch(() => {});
+      } else {
+        logPlazaEvent({ data: { childId: serverChildId, icon, headline, detail } }).catch(() => {});
+      }
     };
     const queueCloudSave = (() => {
       let t: ReturnType<typeof setTimeout> | null = null;
@@ -2618,8 +2655,13 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
         t = setTimeout(() => {
           try {
             const raw = localStorage.getItem(SAVE_KEY);
-            if (raw && serverChildId != null)
-              plazaSaveGame({ data: { childId: serverChildId, saveJson: raw } }).catch(() => {});
+            if (raw && serverChildId != null) {
+              if (passToken) {
+                plazaPassSaveGame({ data: { token: passToken, saveJson: raw } }).catch(() => {});
+              } else {
+                plazaSaveGame({ data: { childId: serverChildId, saveJson: raw } }).catch(() => {});
+              }
+            }
           } catch {
             /* noop */
           }
@@ -2631,7 +2673,12 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
       spend: (n, note) => {
         const ok = !useLedger.getState().debitUnits(n, note);
         if (ok && serverChildId != null) {
-          plazaSpend({ data: { childId: serverChildId, amount: Math.max(1, Math.floor(n)), note } }).catch(() => {});
+          const amount = Math.max(1, Math.floor(n));
+          if (passToken) {
+            plazaPassSpend({ data: { token: passToken, amount, note } }).catch(() => {});
+          } else {
+            plazaSpend({ data: { childId: serverChildId, amount, note } }).catch(() => {});
+          }
         }
         return ok;
       },
@@ -2639,9 +2686,13 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
         const amt = Math.max(1, Math.floor(n));
         if (serverChildId != null) {
           try {
-            const r = await plazaEarn({
-              data: { childId: serverChildId, amount: amt, note, capKey: cap?.key, capLimit: cap?.limit },
-            });
+            const r = passToken
+              ? await plazaPassEarn({
+                  data: { token: passToken, amount: amt, note, capKey: cap?.key, capLimit: cap?.limit },
+                })
+              : await plazaEarn({
+                  data: { childId: serverChildId, amount: amt, note, capKey: cap?.key, capLimit: cap?.limit },
+                });
             if (r.ok) {
               useLedger.getState().creditUnits(amt, note);
               return true;
@@ -2677,6 +2728,7 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
         const child = d.children[0];
         if (child) {
           serverChildId = child.id;
+          if (!cancelled) setMode("session");
           const st = await getPlazaServerState({ data: { childId: child.id } });
           const localRaw = localStorage.getItem(SAVE_KEY);
           let localTs = 0;
@@ -2711,7 +2763,54 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
           }
         }
       } catch {
-        /* local-only mode: play never breaks */
+        /* no session on this device — try the kid-device pass below */
+      }
+      // Kid-device pass: this device has no family session, but a parent
+      // issued a pass for this kid. Connects the same plaza surface —
+      // server economy, cloud save, crew, Live — scoped to one child.
+      if (serverChildId == null) {
+        try {
+          const stored = localStorage.getItem(PASS_KEY);
+          if (stored) {
+            const res = await plazaPassState({ data: { token: stored } });
+            passToken = stored;
+            serverChildId = res.child.id;
+            if (!cancelled) setMode("pass");
+            const localRaw = localStorage.getItem(SAVE_KEY);
+            let localTs = 0;
+            try {
+              localTs = JSON.parse(localRaw || "{}").savedAt || 0;
+            } catch {
+              /* noop */
+            }
+            const serverTs = res.saveUpdatedAt ? new Date(res.saveUpdatedAt).getTime() : 0;
+            if (res.saveJson) {
+              if (!localRaw || serverTs > localTs) {
+                localStorage.setItem(SAVE_KEY, res.saveJson);
+              } else if (localTs > serverTs && localRaw) {
+                plazaPassSaveGame({ data: { token: stored, saveJson: localRaw } }).catch(() => {});
+              }
+            } else if (localRaw) {
+              plazaPassSaveGame({ data: { token: stored, saveJson: localRaw } }).catch(() => {});
+            }
+            liveEnabledCache = res.liveEnabled;
+            try {
+              const crew = await plazaPassCrewState({ data: { token: stored } });
+              crewRosterCache = (crew.members as PlazaCrewMember[]).filter((m) => m.id !== res.child.id);
+            } catch {
+              /* crew unavailable — solo play still works */
+            }
+          }
+        } catch {
+          // Stored pass was revoked or expired — forget it, stay local.
+          try {
+            localStorage.removeItem(PASS_KEY);
+          } catch {
+            /* noop */
+          }
+          passToken = null;
+          serverChildId = null;
+        }
       }
       if (cancelled) return;
       try {
@@ -2730,7 +2829,28 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
       cancelled = true;
       if (cleanup) cleanup();
     };
-  }, []);
+  }, [passTick]);
+
+  /** Validate + store a kid-device pass, then reconnect the plaza with it. */
+  const connectPass = async () => {
+    const token = passInput.toLowerCase().replace(/[^0-9a-f]/g, "");
+    if (token.length !== 48) {
+      setPassMsg("That pass doesn't look complete — a grown-up can make you a new one.");
+      return;
+    }
+    setPassBusy(true);
+    try {
+      await plazaPassState({ data: { token } });
+      localStorage.setItem(PASS_KEY, token);
+      setPassMsg("");
+      setPassInput("");
+      setShowPassForm(false);
+      setPassTick((t) => t + 1);
+    } catch {
+      setPassMsg("That pass isn't valid anymore — ask a grown-up for a new one.");
+    }
+    setPassBusy(false);
+  };
 
   return (
     <div className="absolute inset-0 z-40 overflow-hidden bg-[#0b0620]">
@@ -2765,6 +2885,49 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
         >
           ‹ Home
         </button>
+      )}
+      {status === "ready" && mode === "local" && (
+        <button
+          onClick={() => setShowPassForm((v) => !v)}
+          className="absolute right-3 z-20 rounded-full border border-cyan-400/40 bg-[#0f0a28]/80 px-4 py-2 text-sm font-extrabold text-cyan-100 shadow-lg backdrop-blur-sm"
+          style={{ top: "calc(env(safe-area-inset-top,0px) + 104px)" }}
+        >
+          🔑 Kid pass
+        </button>
+      )}
+      {status === "ready" && mode === "local" && showPassForm && (
+        <div className="absolute inset-x-3 bottom-24 z-30 mx-auto max-w-sm rounded-3xl border border-cyan-400/30 bg-[#0f0a28]/95 p-4 shadow-2xl backdrop-blur">
+          <p className="text-sm font-extrabold text-white">🔑 Connect with your Kid Pass</p>
+          <p className="mt-1 text-xs leading-snug text-white/60">
+            A grown-up makes your pass on their dashboard (Plaza friends &amp; Live). Enter it once here and your
+            crew, cloud saves and Live friends work on this device too.
+          </p>
+          <input
+            value={passInput}
+            onChange={(e) => setPassInput(e.target.value)}
+            placeholder="Paste your pass here"
+            autoCapitalize="none"
+            autoCorrect="off"
+            spellCheck={false}
+            className="mt-3 w-full rounded-xl border border-white/15 bg-white/5 px-3 py-2.5 font-mono text-xs text-white placeholder:text-white/35 focus:border-cyan-400/60 focus:outline-none"
+          />
+          {passMsg ? <p className="mt-2 text-xs font-bold text-amber-300">{passMsg}</p> : null}
+          <div className="mt-3 flex gap-2">
+            <button
+              onClick={connectPass}
+              disabled={passBusy || !passInput.trim()}
+              className="flex-1 rounded-xl bg-gradient-to-r from-cyan-500 via-violet-500 to-fuchsia-500 px-4 py-2.5 text-sm font-extrabold text-white disabled:opacity-50"
+            >
+              {passBusy ? "Connecting…" : "Connect"}
+            </button>
+            <button
+              onClick={() => setShowPassForm(false)}
+              className="rounded-xl border border-white/15 px-4 py-2.5 text-sm font-extrabold text-white/70"
+            >
+              Later
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );

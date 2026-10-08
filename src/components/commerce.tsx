@@ -47,6 +47,11 @@ import {
   removePlazaFriend,
   setPlazaLiveEnabled,
 } from "@/lib/pillarpath-server";
+import {
+  createPlazaDevicePass,
+  listPlazaDevicePasses,
+  revokePlazaDevicePass,
+} from "@/lib/plaza-pass-server";
 import { Button } from "@/components/ui/button";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
 import { Input, FieldLabel, NativeSelect } from "@/components/ui/input";
@@ -255,6 +260,13 @@ interface PlazaSocialState {
   incoming: PlazaFriendEntry[];
   outgoing: PlazaFriendEntry[];
 }
+interface DevicePassEntry {
+  id: number;
+  label: string;
+  createdAt: string;
+  lastUsedAt: string | null;
+  active: boolean;
+}
 
 /**
  * Plaza friends & Live — the parent-approved contacts list for the game.
@@ -275,6 +287,26 @@ function PlazaFriendsCard({ childId, childName }: { childId: number; childName: 
       .catch(() => setSocial(null));
   }, [childId]);
   useEffect(load, [load]);
+
+  const [passes, setPasses] = useState<DevicePassEntry[] | null>(null);
+  const [newPassToken, setNewPassToken] = useState<string | null>(null);
+  const loadPasses = useCallback(() => {
+    listPlazaDevicePasses({ data: { childId } })
+      .then((rows) => setPasses(rows as DevicePassEntry[]))
+      .catch(() => setPasses([]));
+  }, [childId]);
+  useEffect(loadPasses, [loadPasses]);
+  const makePass = async () => {
+    setBusy(true);
+    try {
+      const r = await createPlazaDevicePass({ data: { childId, label: `${childName}'s device` } });
+      setNewPassToken(r.token);
+      loadPasses();
+    } catch {
+      setMsg("Couldn't create a pass — try again.");
+    }
+    setBusy(false);
+  };
 
   if (!social) return null;
 
@@ -407,6 +439,57 @@ function PlazaFriendsCard({ childId, childName }: { childId: number; childName: 
           </div>
           <p className="mt-1.5 text-xs text-muted">Connecting sends a request — the other parent confirms before the kids are friends.</p>
         </div>
+      </div>
+
+      <div className="mt-3 rounded-xl bg-surface-2/70 p-3">
+        <p className="text-xs font-extrabold uppercase tracking-wide text-muted">📱 {childName}&apos;s device pass</p>
+        <p className="mt-1.5 text-xs text-muted">
+          Give {childName}&apos;s own tablet or phone full plaza powers — crew, cloud saves, friends and Live —
+          without signing your account in on it. The pass only works inside the plaza, and you can revoke it anytime.
+        </p>
+        {newPassToken ? (
+          <div className="mt-2">
+            <p className="break-all rounded-lg bg-black/30 px-3 py-2 font-mono text-sm font-bold tracking-wider">
+              {newPassToken.replace(/(.{4})/g, "$1 ").trim()}
+            </p>
+            <p className="mt-1.5 text-xs font-semibold text-amber-300">
+              Shown once — enter it on {childName}&apos;s device in the plaza (🔑 Kid pass). Old passes keep working until you revoke them.
+            </p>
+          </div>
+        ) : (
+          <Button size="sm" className="mt-2" disabled={busy} onClick={makePass}>
+            Create device pass
+          </Button>
+        )}
+        {passes && passes.length > 0 ? (
+          <div className="mt-2 space-y-1.5">
+            {passes.map((p) => (
+              <div key={p.id} className="flex items-center gap-2 text-xs">
+                <span>{p.active ? "🟢" : "⚪"}</span>
+                <span className="min-w-0 flex-1">
+                  {p.label} · made {timeAgo(p.createdAt)}
+                  {p.lastUsedAt ? ` · last used ${timeAgo(p.lastUsedAt)}` : " · never used"}
+                  {p.active ? "" : " · revoked"}
+                </span>
+                {p.active ? (
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() =>
+                      act(async () => {
+                        await revokePlazaDevicePass({ data: { passId: p.id } });
+                        loadPasses();
+                      })
+                    }
+                  >
+                    Revoke
+                  </Button>
+                ) : null}
+              </div>
+            ))}
+          </div>
+        ) : null}
       </div>
       {msg ? <p className="mt-3 text-sm font-semibold">{msg}</p> : null}
     </Card>
