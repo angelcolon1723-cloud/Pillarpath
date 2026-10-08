@@ -9,6 +9,9 @@ import {
   plazaSpend,
   plazaSaveGame,
   logPlazaEvent,
+  getPlazaCrew,
+  plazaCrewHelp,
+  plazaCrewClaim,
 } from "@/lib/pillarpath-server";
 
 /**
@@ -483,9 +486,31 @@ const PLAZA_CSS = `
 `;
 
 /* ---------------- The plaza itself (adapted from the contributed foundation) ---------------- */
+/* Plaza Crew — other students on the family account who share your plaza. */
+interface PlazaCrewMember {
+  id: number;
+  name: string;
+  avatar: string;
+  helps: number;
+  claimed: boolean;
+  hasPlaza: boolean;
+  latest: { icon: string; headline: string } | null;
+}
+interface PlazaCrewState {
+  week: string;
+  goal: number;
+  totalHelps: number;
+  you: number;
+  members: PlazaCrewMember[];
+}
 interface PlazaHooks {
   queueCloudSave: () => void;
   serverEvent: (icon: string, headline: string, detail: string) => void;
+  /** Crew members other than the current child (empty in local-only mode). */
+  crewRoster: () => PlazaCrewMember[];
+  crewState: () => Promise<PlazaCrewState | null>;
+  crewHelp: () => void;
+  crewClaim: () => Promise<{ ok: boolean; amount?: number; reason?: string }>;
 }
 function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHooks): () => void {
   const sfx = makeSfx();
@@ -519,6 +544,9 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
     doubts: Record<string, number>;
     powerCleanse: boolean;
     powerAscend: boolean;
+    crewWeek: string;
+    crewHelps: number;
+    crewClaimed: boolean;
     muted: boolean;
     savedAt: number;
     blight: number[];
@@ -527,7 +555,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
   let S: PlazaState = {
     trust: 0, courage: 0, family: 0, freeBuild: 0,
     famBase: { chores: 0, saved: 0 }, ach: {}, tutorial: 0,
-    news: [], newsSeen: 0, daily: null, lastRank: -1, npcMem: {}, cacheDay: "", cacheUnits: 0, doubts: {}, powerCleanse: false, powerAscend: false, muted: false, savedAt: 0,
+    news: [], newsSeen: 0, daily: null, lastRank: -1, npcMem: {}, cacheDay: "", cacheUnits: 0, doubts: {}, powerCleanse: false, powerAscend: false, crewWeek: "", crewHelps: 0, crewClaimed: false, muted: false, savedAt: 0,
     blight: [0, 0, 0, 0, 0, 0], built: [[], [], [], [], [], []],
   };
   try {
@@ -635,6 +663,23 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
       S.daily = { date: today, key: g.key, text: g.text, need: g.need, progress: 0, done: false };
       save();
     }
+  }
+  /* Crew Quest: every helping action counts for the whole crew. The local
+   * mirror powers local-only mode; online, the server pools helps across
+   * every student on the family account. */
+  function crewWeekKeyClient(): string {
+    const now = new Date();
+    const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    const dow = (d.getUTCDay() + 6) % 7;
+    d.setUTCDate(d.getUTCDate() - dow);
+    return d.toISOString().slice(0, 10);
+  }
+  function crewHelpTick() {
+    const wk = crewWeekKeyClient();
+    if (S.crewWeek !== wk) { S.crewWeek = wk; S.crewHelps = 0; S.crewClaimed = false; }
+    S.crewHelps++;
+    save();
+    try { hooks.crewHelp(); } catch { /* offline: local mirror only */ }
   }
   async function dailyTick(key: string) {
     const d = S.daily;
@@ -804,6 +849,25 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
     return sp;
   }
 
+  // A little person: body, head, legs, glowing chest light, soft shadow.
+  function makePerson(bodyColor: number, skin = 0xf2c9a0, s = 1): any {
+    const grp = new THREE.Group();
+    add(new THREE.CylinderGeometry(0.42, 0.48, 1.15, 10), M(bodyColor), 0, 0.98, 0, grp);
+    add(new THREE.SphereGeometry(0.37, 14, 10), M(skin), 0, 1.92, 0, grp);
+    add(new THREE.CylinderGeometry(0.15, 0.15, 0.62, 6), M(0x2b3550), -0.18, 0.31, 0, grp);
+    add(new THREE.CylinderGeometry(0.15, 0.15, 0.62, 6), M(0x2b3550), 0.18, 0.31, 0, grp);
+    add(new THREE.SphereGeometry(0.11, 8, 6), glow(0xffffff, 0.7), 0, 1.25, 0.44, grp);
+    const blob = new THREE.Mesh(
+      new THREE.CircleGeometry(0.75, 16),
+      new THREE.MeshBasicMaterial({ color: 0x000000, transparent: true, opacity: 0.25, depthWrite: false }),
+    );
+    blob.rotation.x = -Math.PI / 2;
+    blob.position.y = 0.03;
+    grp.add(blob);
+    grp.scale.set(s, s, s);
+    return grp;
+  }
+
   // Ground + central plaza
   add(new THREE.CircleGeometry(170, 48), std(0x0a1220, { roughness: 0.6, metalness: 0.3 }), 0, 0, 0).rotation.x = -Math.PI / 2;
   add(new THREE.CylinderGeometry(15, 15, 0.3, 40), std(0x101828, { roughness: 0.25, metalness: 0.7 }), 0, 0.15, 0);
@@ -930,20 +994,153 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
     { x: zones[4].x, z: zones[4].z, kind: "water" },
   ]);
 
-  // NPCs: Maya, Jay, Sam — walk up and talk
-  const npcGroups: any[] = [];
+  /* ----- People: the plaza is alive, not empty -----
+   * Maya, Jay and Sam used to stand hidden inside their districts, tiny and
+   * unlabeled 45+ units from spawn — kids never found them. Now they patrol
+   * the paths between the central plaza and their home districts under
+   * glowing beacons with name labels. Neighbors stroll the plaza so it feels
+   * populated, and real crew members (other students on the family account)
+   * wander here too, wearing gold rings — walk up and say hi. */
+  interface Walker {
+    g: any; tx: number; tz: number; speed: number; pauseT: number; bobP: number;
+    mode: "patrol" | "roam"; wps: { x: number; z: number }[]; wpI: number;
+    area: [number, number]; ring: any; ringMat: any; hiT: number;
+  }
+  const walkers: Walker[] = [];
+  function addWalker(g: any, x: number, z: number, speed: number, mode: "patrol" | "roam",
+    opts?: { wps?: { x: number; z: number }[]; area?: [number, number]; ringColor?: number }): Walker {
+    g.position.set(x, 0, z);
+    scene.add(g);
+    let ring: any = null, ringMat: any = null;
+    if (opts?.ringColor !== undefined) {
+      ringMat = new THREE.MeshBasicMaterial({ color: opts.ringColor, transparent: true, opacity: 0.55, side: THREE.DoubleSide, depthWrite: false });
+      ring = new THREE.Mesh(new THREE.RingGeometry(0.85, 1.12, 24), ringMat);
+      ring.rotation.x = -Math.PI / 2;
+      ring.position.y = 0.07;
+      g.add(ring);
+    }
+    const w: Walker = {
+      g, tx: x, tz: z, speed, pauseT: Math.random() * 2, bobP: Math.random() * 6.28,
+      mode, wps: opts?.wps || [], wpI: 0, area: opts?.area || [7, 26], ring, ringMat, hiT: 0,
+    };
+    if (w.wps.length) { w.tx = w.wps[0].x; w.tz = w.wps[0].z; }
+    walkers.push(w);
+    return w;
+  }
+  function stepWalkers(dt: number, t: number) {
+    walkers.forEach((w) => {
+      if (w.ring) {
+        const p = 1 + Math.sin(t * 3 + w.bobP) * 0.13;
+        w.ring.scale.set(p, p, 1);
+        if (w.ringMat) w.ringMat.opacity = 0.42 + Math.sin(t * 3 + w.bobP) * 0.16;
+      }
+      if (w.hiT > 0) {
+        w.hiT = Math.max(0, w.hiT - dt);
+        const p = 1 - w.hiT / 1.2;
+        w.g.position.y = Math.sin(p * Math.PI) * 0.7;
+        w.g.rotation.y += dt * 9;
+        return;
+      }
+      const dx = w.tx - w.g.position.x, dz = w.tz - w.g.position.z;
+      const d = Math.hypot(dx, dz);
+      if (w.pauseT > 0) {
+        w.pauseT -= dt;
+        w.g.position.y = Math.sin(t * 2 + w.bobP) * 0.03;
+        return;
+      }
+      if (d < 0.7) {
+        if (w.mode === "patrol" && w.wps.length) {
+          w.wpI = (w.wpI + 1) % w.wps.length;
+          w.tx = w.wps[w.wpI].x; w.tz = w.wps[w.wpI].z;
+          w.pauseT = 3.5;
+        } else {
+          const a = Math.random() * Math.PI * 2;
+          const r = w.area[0] + Math.random() * (w.area[1] - w.area[0]);
+          w.tx = Math.sin(a) * r; w.tz = -Math.cos(a) * r;
+          w.pauseT = 1 + Math.random() * 2.5;
+        }
+        return;
+      }
+      const vx = (dx / d) * w.speed, vz = (dz / d) * w.speed;
+      w.g.position.x += vx * dt;
+      w.g.position.z += vz * dt;
+      const tf = Math.atan2(vx, vz);
+      let df = tf - w.g.rotation.y;
+      df = Math.atan2(Math.sin(df), Math.cos(df));
+      w.g.rotation.y += df * Math.min(1, dt * 8);
+      w.g.position.y = Math.abs(Math.sin(t * 8 + w.bobP)) * 0.06;
+    });
+  }
+
+  // Maya, Jay, Sam — beacons + name labels, patrolling plaza <-> home district
+  const npcWalkers: Walker[] = [];
   NPCS.forEach((n) => {
-    const g = slots[n.district].g;
-    const grp = new THREE.Group();
-    grp.position.set(n.x, 0, n.z);
-    add(new THREE.CylinderGeometry(0.4, 0.45, 1.1, 10), M(n.color), 0, 1.0, 0, grp);
-    add(new THREE.SphereGeometry(0.36, 14, 10), M(0xf2c9a0), 0, 1.95, 0, grp);
-    const tag = textSprite(n.icon);
-    tag.position.set(0, 3.0, 0);
+    const grp = makePerson(n.color, 0xf2c9a0, 1.3);
+    const tag = textSprite(n.icon, 64, 2.3);
+    tag.position.set(0, 3.4, 0);
     grp.add(tag);
-    g.add(grp);
-    npcGroups.push(grp);
+    const label = labelSprite(`${n.icon} ${n.name}`);
+    label.scale.set(8.5, 2.1, 1);
+    label.position.set(0, 4.5, 0);
+    grp.add(label);
+    const beam = new THREE.Mesh(
+      new THREE.CylinderGeometry(0.55, 0.9, 9, 12, 1, true),
+      new THREE.MeshBasicMaterial({ color: n.color, transparent: true, opacity: 0.13, blending: THREE.AdditiveBlending, depthWrite: false, side: THREE.DoubleSide }),
+    );
+    beam.position.y = 4.5;
+    grp.add(beam);
+    const z = zones[n.district];
+    const ux = z.x / R, uz = z.z / R;
+    const plazaA = { x: ux * 18, z: uz * 18 };
+    const gateA = { x: ux * 33, z: uz * 33 };
+    const w = addWalker(grp, plazaA.x, plazaA.z, 2.0, "patrol", { wps: [gateA, plazaA], ringColor: n.color });
+    npcWalkers.push(w);
   });
+
+  // Neighbors — the plaza crowd, so the world feels lived-in
+  const citizenWalkers: Walker[] = [];
+  const CITIZEN_COLORS = [0xf97316, 0x22c55e, 0xeab308, 0xec4899, 0x06b6d4, 0xa78bfa, 0xf43f5e, 0x84cc16];
+  const CITIZEN_SKINS = [0xf2c9a0, 0xc68863, 0x8d5524, 0xffdbac];
+  const CITIZEN_FACES = ["😀", "🙂", "😄", "🧒", "👧", "👦", "😊", "🤗"];
+  for (let ci = 0; ci < 8; ci++) {
+    const grp = makePerson(CITIZEN_COLORS[ci], CITIZEN_SKINS[ci % CITIZEN_SKINS.length], 1.02 + (ci % 3) * 0.07);
+    const faceTag = textSprite(CITIZEN_FACES[ci], 64, 1.5);
+    faceTag.position.set(0, 2.85, 0);
+    grp.add(faceTag);
+    const a = (ci / 8) * Math.PI * 2;
+    const w = addWalker(grp, Math.sin(a) * 14, -Math.cos(a) * 14, 1.1 + (ci % 4) * 0.2, "roam", { area: [7, 26] });
+    citizenWalkers.push(w);
+  }
+  const CITIZEN_LINES = [
+    "Neighbor: “Better than yesterday!”",
+    "Neighbor: “I saved 10 Units this week!”",
+    "Neighbor: “Have you faced a Doubtling today?”",
+    "Neighbor: “Crew quests are better together!”",
+    "Neighbor: “This plaza grows when we do.”",
+  ];
+  let citizenChatCd = 6;
+
+  // Crew members — real other students on this family account, in your plaza
+  interface CrewWalker { w: Walker; m: PlazaCrewMember }
+  const crewWalkers: CrewWalker[] = [];
+  let nearCrew = -1;
+  try {
+    (hooks.crewRoster() || []).slice(0, 5).forEach((m, ci) => {
+      const grp = makePerson([0xffd36e, 0x7dd3fc, 0xf0abfc, 0x86efac, 0xfdba74][ci % 5], CITIZEN_SKINS[ci % CITIZEN_SKINS.length], 1.15);
+      const tag = textSprite(m.avatar || "🧒", 64, 2.0);
+      tag.position.set(0, 3.2, 0);
+      grp.add(tag);
+      const label = labelSprite(`${m.name}`);
+      label.scale.set(8.5, 2.1, 1);
+      label.position.set(0, 4.3, 0);
+      grp.add(label);
+      const a = ((ci + 1) / 6) * Math.PI * 2;
+      const w = addWalker(grp, Math.sin(a) * 12, -Math.cos(a) * 12, 1.4, "roam", { area: [8, 24], ringColor: 0xffd36e });
+      crewWalkers.push({ w, m });
+    });
+  } catch {
+    /* local-only mode: no crew in-world */
+  }
 
   function rebuild() {
     DIST.forEach((d, i) => {
@@ -1307,9 +1504,12 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
     }
     if (nearNpc >= 0)
       b.push(`<button class="pp3d-btn" onclick="__pp3d.talkNpc(${nearNpc})">💬 Talk to ${NPCS[nearNpc].name}</button>`);
+    if (nearCrew >= 0 && crewWalkers[nearCrew])
+      b.push(`<button class="pp3d-btn" onclick="__pp3d.hiCrew(${nearCrew})">👋 Say hi to ${crewWalkers[nearCrew].m.name}</button>`);
     if (nearCache >= 0) b.push(`<button class="pp3d-btn" onclick="__pp3d.openCache(${nearCache})">🎁 Open supply cache</button>`);
     if (nearWisp >= 0) b.push(`<button class="pp3d-btn" onclick="__pp3d.faceWisp(${nearWisp})">\u{1F32B}\uFE0F Face the Doubtling</button>`);
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.codex()">📖 Codex</button>`);
+    b.push(`<button class="pp3d-btn alt" onclick="__pp3d.crew()">👥 Crew</button>`);
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.toggleAuto()">${autoPilot ? "🟢 Auto ON" : "⚪ Autopilot"}</button>`);
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.realLife()">🌟 Real-life progress</button>`);
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.mute()">${S.muted ? "🔇 Muted" : "🔊 Sound"}</button>`);
@@ -1326,7 +1526,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
     if (S.tutorial >= 5) return;
     const steps = [
       { t: "Welcome to Pillar Plaza", d: "A living world that grows when you get better at real life. Tap the ground to walk, or use WASD keys." },
-      { t: "Six districts, six values", d: "Walk to a district and take a quest. Good choices grow Trust and heal blight. Say hi to Maya, Jay and Sam!" },
+      { t: "Six districts, six values", d: "Walk to a district and take a quest. Good choices grow Trust and heal blight. Maya, Jay and Sam patrol the paths under glowing beacons — and your crew can join your plaza to help!" },
       { t: "Real life powers the plaza", d: "Real chores and saving open Vault Mountain and Market Harbor — and grow Family Bond 💜, which unlocks Pillar powers like free builds." },
       { t: "Name the Doubtlings \u{1F32B}\uFE0F", d: "Glowing wisps drift through the plaza — Doubt, Impulse, Loneliness and their kin. Walk up to one, hear its whisper, then face it with the truth. Naming a feeling makes it smaller. +1 Courage each time." },
       { t: "Tilt, sound and Shift 🌀", d: "Tilt your phone to look around, and listen — water and birds come from their direction. With Courage, Shift into a parallel district for bigger rewards and bigger risk." },
@@ -1386,6 +1586,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
             `<button class="pp3d-btn" onclick="__pp3d.close()">Continue</button>`,
         );
         showAch("firstQuest");
+        crewHelpTick();
         dailyTick("quests");
         if (S.trust >= 5) showAch("trust5");
         if (S.blight[i] === 0) showAch("blightFree");
@@ -1528,6 +1729,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
       sfx.buzz([40, 40, 120]);
       floatText(`${faced.icon} Faced!`, "#ffd36e");
       say(`\u{1F49B} You named it: ${faced.name}. Feelings get smaller when you name them. +1 Courage.`);
+      crewHelpTick();
       dailyTick("face");
       showAch("doubt1");
       save();
@@ -1548,6 +1750,104 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
           }).join("") +
           `<button class="pp3d-btn alt" onclick="__pp3d.close()">Close</button>`,
       );
+    },
+    hiCrew(k: number) {
+      const cw = crewWalkers[k];
+      if (!cw) return;
+      sfx.click();
+      sfx.buzz([30, 40, 30]);
+      cw.w.hiT = 1.2;
+      dailyTick("talks");
+      floatText("👋", "#ffd36e");
+      const m = cw.m;
+      modal(
+        `<h3>${m.avatar || "🧒"} ${m.name}</h3>` +
+          (m.latest
+            ? `<p>Latest from their plaza: ${m.latest.icon} <b>${m.latest.headline}</b></p>`
+            : `<p>${m.name} is exploring the plaza too.</p>`) +
+          `<p>💪 ${m.helps} Crew Quest helps this week. Every good deed and faced Doubtling you do counts for the whole crew — open 👥 Crew to see the shared quest.</p>` +
+          `<button class="pp3d-btn" onclick="__pp3d.crew()">👥 Open Crew Quest</button>` +
+          `<button class="pp3d-btn alt" onclick="__pp3d.close()">Bye!</button>`,
+      );
+    },
+    async crew() {
+      sfx.click();
+      modal(`<h3>👥 Plaza Crew</h3><p>Finding your crew…</p>`);
+      let st: PlazaCrewState | null = null;
+      try { st = await hooks.crewState(); } catch { st = null; }
+      const bar = (n: number, goal: number) =>
+        `<div class="pp3d-track"><i style="width:${Math.min(100, (n / Math.max(1, goal)) * 100)}%"></i></div>`;
+      if (st) {
+        const me = st.members.find((m) => m.id === st.you);
+        const done = st.totalHelps >= st.goal;
+        modal(
+          `<h3>👥 Plaza Crew — Weekly Quest</h3>` +
+            `<p>Other students in your family share this plaza. Every good deed and faced Doubtling is a <b>help</b> — together you need <b>${st.goal} helps</b> this week. Finish together, and <b>everyone</b> claims +${20} Units.</p>` +
+            `<div class="pp3d-stat">💪 Crew progress: <b>${st.totalHelps} / ${st.goal}</b>${bar(st.totalHelps, st.goal)}</div>` +
+            st.members.map((m) =>
+              `<div class="pp3d-stat">${m.avatar || "🧒"} <b>${m.name}</b>${m.id === st.you ? " (you)" : ""} — ${m.helps} helps${m.hasPlaza ? " · 🏙️ in the plaza" : ""}${m.claimed ? " · ✅ claimed" : ""}${m.latest ? `<br><span style="opacity:.7">${m.latest.icon} ${m.latest.headline}</span>` : ""}</div>`,
+            ).join("") +
+            (done
+              ? me?.claimed
+                ? `<p>✅ You claimed your Crew Quest reward. New quest Monday!</p>`
+                : `<button class="pp3d-btn" onclick="__pp3d.crewClaim()">🎉 Claim +20 Units</button>`
+              : `<p>${st.goal - st.totalHelps} more helps to go — your crew is counting on you!</p>`) +
+            `<p style="opacity:.65;font-size:12px">Classroom crews are next: classmates from your teacher's class will stroll your plaza too. No strangers, ever — crews are family and classroom only.</p>` +
+            `<button class="pp3d-btn alt" onclick="__pp3d.close()">Close</button>`,
+        );
+      } else {
+        const goal = 8;
+        const done = S.crewHelps >= goal;
+        modal(
+          `<h3>👥 Plaza Crew — Weekly Quest</h3>` +
+            `<p>Every good deed and faced Doubtling is a <b>help</b>. Reach <b>${goal} helps</b> this week to earn +20 Units. When your family account is connected, your helps pool with your brothers, sisters and classmates — and they stroll right here in your plaza.</p>` +
+            `<div class="pp3d-stat">💪 Your helps this week: <b>${S.crewHelps} / ${goal}</b>${bar(S.crewHelps, goal)}</div>` +
+            (done
+              ? S.crewClaimed
+                ? `<p>✅ Reward claimed. New quest Monday!</p>`
+                : `<button class="pp3d-btn" onclick="__pp3d.crewClaim()">🎉 Claim +20 Units</button>`
+              : `<p>${goal - S.crewHelps} more helps to go. You’ve got this!</p>`) +
+            `<button class="pp3d-btn alt" onclick="__pp3d.close()">Close</button>`,
+        );
+      }
+    },
+    async crewClaim() {
+      let st: PlazaCrewState | null = null;
+      try { st = await hooks.crewState(); } catch { st = null; }
+      if (st) {
+        const r = await hooks.crewClaim();
+        if (r.ok && r.amount) {
+          S.crewClaimed = true;
+          save();
+          closeM();
+          sfx.reward();
+          sfx.buzz([40, 40, 40, 40, 150]);
+          floatText(`+${r.amount} Units`, "#ffd36e");
+          pushNews("👥", "Crew Quest complete!", `Your crew finished the weekly quest together — +${r.amount} Units.`);
+          hooks.serverEvent("👥", "Crew Quest complete!", `The crew finished the weekly quest together — +${r.amount} Units.`);
+          say("👥 Crew Quest complete! Teamwork pays — literally.");
+          drawHud();
+          return;
+        }
+        say(r.reason === "claimed" ? "✅ Already claimed — new quest Monday!" : "💪 The crew hasn't reached the goal yet.");
+        return;
+      }
+      // local-only mode
+      if (S.crewWeek !== crewWeekKeyClient()) { S.crewWeek = crewWeekKeyClient(); S.crewHelps = 0; S.crewClaimed = false; }
+      if (S.crewClaimed) return say("✅ Already claimed — new quest Monday!");
+      if (S.crewHelps < 8) return say("💪 Not yet — more helps needed!");
+      const ok = await api.earn(20, "Pillar Plaza Crew Quest reward");
+      if (ok) {
+        S.crewClaimed = true;
+        save();
+        closeM();
+        sfx.reward();
+        sfx.buzz([40, 40, 40, 40, 150]);
+        floatText("+20 Units", "#ffd36e");
+        pushNews("👥", "Crew Quest complete!", "Weekly quest finished — +20 Units.");
+        say("👥 Crew Quest complete! +20 Units.");
+        drawHud();
+      }
     },
     useCleanse() {
       if (!S.powerCleanse) return;
@@ -1593,6 +1893,8 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
           `<div class="pp3d-stat">🌀 <b>Shift:</b> 1 Courage for 45s in a parallel district — bigger rewards, bigger risk.</div>` +
           `<div class="pp3d-stat">💜 <b>Family Bond:</b> grows from real chores + saving. Powers at 15 / 30 / 50.</div>` +
           `<div class="pp3d-stat">🎯 <b>Daily:</b> one challenge a day pays +15 real Units.</div>` +
+          `<div class="pp3d-stat">💬 <b>People:</b> Maya, Jay and Sam patrol the paths under glowing beacons — walk up to talk. Neighbors stroll the plaza too.</div>` +
+          `<div class="pp3d-stat">👥 <b>Crew:</b> other students on your family account join your plaza (gold rings) and share a weekly Crew Quest — every good deed and faced Doubtling is a help for the whole crew. Finish together, everyone earns +20 Units.</div>` +
           `<button class="pp3d-btn" onclick="__pp3d.replayTut()">▶️ Replay tutorial</button>` +
           `<button class="pp3d-btn alt" onclick="__pp3d.close()">Close</button>`,
       );
@@ -1840,9 +2142,18 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
     }
     P.rotation.y = face;
     head.position.y = 2.1 + Math.sin(bob) * 0.05 * vel;
-    npcGroups.forEach((gr, gi) => {
-      gr.position.y = Math.sin(t * 2 + gi * 2.1) * 0.08;
-    });
+    // people: NPCs patrol, neighbors stroll, crew members wander
+    stepWalkers(dt, t);
+    citizenChatCd -= dt;
+    if (citizenChatCd <= 0) {
+      const nearCitizen = citizenWalkers.some((w) => Math.hypot(P.position.x - w.g.position.x, P.position.z - w.g.position.z) < 4.5);
+      if (nearCitizen) {
+        citizenChatCd = 18;
+        say(CITIZEN_LINES[Math.floor(Math.random() * CITIZEN_LINES.length)]);
+      } else {
+        citizenChatCd = 2;
+      }
+    }
     caches.forEach((c) => {
       if (c.open) {
         c.timer -= dt;
@@ -1923,12 +2234,10 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
       }
     }
 
-    // NPC proximity
+    // NPC proximity (they patrol now — use their live positions)
     let nn = -1;
-    NPCS.forEach((npc, k) => {
-      const wx = zones[npc.district].x + npc.x;
-      const wz = zones[npc.district].z + npc.z;
-      if (Math.hypot(P.position.x - wx, P.position.z - wz) < 5.5) nn = k;
+    npcWalkers.forEach((w, k) => {
+      if (Math.hypot(P.position.x - w.g.position.x, P.position.z - w.g.position.z) < 5.5) nn = k;
     });
     if (nn !== nearNpc) {
       nearNpc = nn;
@@ -1936,6 +2245,20 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
       if (nn >= 0) {
         sfx.click();
         say(`${NPCS[nn].icon} ${NPCS[nn].name} — tap 💬 to talk.`);
+      }
+    }
+
+    // crew member proximity
+    let ncr = -1;
+    crewWalkers.forEach((cw, k) => {
+      if (Math.hypot(P.position.x - cw.w.g.position.x, P.position.z - cw.w.g.position.z) < 5.5) ncr = k;
+    });
+    if (ncr !== nearCrew) {
+      nearCrew = ncr;
+      drawPanel();
+      if (ncr >= 0) {
+        sfx.click();
+        say(`👋 ${crewWalkers[ncr].m.name} from your crew is here!`);
       }
     }
 
@@ -2003,7 +2326,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
   drawHud();
   drawPanel();
   loop();
-  setTimeout(() => say("👋 Welcome to Pillar Plaza! Walk to a district. 📱 Tilt your phone to look around."), 600);
+  setTimeout(() => say("👋 Welcome to Pillar Plaza! Follow the glowing beacons to meet Maya, Jay and Sam."), 600);
   setTimeout(() => {
     if (S.tutorial < 5) runTutorial();
   }, 1100);
@@ -2037,6 +2360,32 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
     // cloud-saved. Offline or unauthenticated, the plaza falls back to the
     // local ledger with local caps — play never breaks.
     let serverChildId: number | null = null;
+    let crewRosterCache: PlazaCrewMember[] = [];
+    const crewHooks = {
+      crewRoster: () => crewRosterCache,
+      crewState: async (): Promise<PlazaCrewState | null> => {
+        if (serverChildId == null) return null;
+        try {
+          return (await getPlazaCrew({ data: { childId: serverChildId } })) as PlazaCrewState;
+        } catch {
+          return null;
+        }
+      },
+      crewHelp: () => {
+        if (serverChildId == null) return;
+        plazaCrewHelp({ data: { childId: serverChildId } }).catch(() => {});
+      },
+      crewClaim: async (): Promise<{ ok: boolean; amount?: number; reason?: string }> => {
+        if (serverChildId == null) return { ok: false, reason: "offline" };
+        try {
+          const r = await plazaCrewClaim({ data: { childId: serverChildId } });
+          if (r.ok && r.amount) useLedger.getState().creditUnits(r.amount, "Pillar Plaza Crew Quest reward");
+          return r;
+        } catch {
+          return { ok: false, reason: "error" };
+        }
+      },
+    };
     const serverEvent = (icon: string, headline: string, detail: string) => {
       if (serverChildId == null) return;
       logPlazaEvent({ data: { childId: serverChildId, icon, headline, detail } }).catch(() => {});
@@ -2126,6 +2475,14 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
           } else if (localRaw) {
             plazaSaveGame({ data: { childId: child.id, saveJson: localRaw } }).catch(() => {});
           }
+          // Plaza Crew roster: other students on this family account appear
+          // in-world and share the weekly Crew Quest.
+          try {
+            const crew = await getPlazaCrew({ data: { childId: child.id } });
+            crewRosterCache = (crew.members as PlazaCrewMember[]).filter((m) => m.id !== child.id);
+          } catch {
+            /* crew is server-backed; local-only mode plays solo */
+          }
         }
       } catch {
         /* local-only mode: play never breaks */
@@ -2134,7 +2491,7 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
       try {
         const THREE = await loadThree();
         if (cancelled || !rootRef.current) return;
-        cleanup = startPlaza(rootRef.current, THREE, api, { queueCloudSave, serverEvent });
+        cleanup = startPlaza(rootRef.current, THREE, api, { queueCloudSave, serverEvent, ...crewHooks });
         setStatus("ready");
       } catch (e) {
         if (!cancelled) {

@@ -1393,3 +1393,125 @@ export const getPlazaEvents = createServerFn({ method: "GET" })
       where user_id = ${context.userId}
       order by created_at desc limit ${limit}`;
   });
+
+/* ------------------------------------------------------------------ */
+/* Plaza Crew — other students join your plaza and help with quests.  */
+/*                                                                    */
+/* A crew is every child on the family account (classroom crews are   */
+/* the next step, once kid-scoped identities exist). Each helping     */
+/* action in the plaza counts as one "help" toward a shared weekly    */
+/* Crew Quest; helps pool across the crew, and when the goal is met   */
+/* each member claims the reward once. All parent-authenticated and   */
+/* child-scoped, like the rest of the plaza economy.                  */
+/* ------------------------------------------------------------------ */
+
+const CREW_GOAL_PER_MEMBER = 8;
+const CREW_REWARD_UNITS = 20;
+
+/** Monday (UTC) of the current week, as a YYYY-MM-DD key. */
+function crewWeekKey(): string {
+  const now = new Date();
+  const d = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const dow = (d.getUTCDay() + 6) % 7; // Monday = 0
+  d.setUTCDate(d.getUTCDate() - dow);
+  return d.toISOString().slice(0, 10);
+}
+
+async function crewState(sql: any, userId: string) {
+  const week = crewWeekKey();
+  const kids = await sql<{ id: number; name: string; avatar: string; units: number }>`
+    select id, name, avatar, units from children where user_id = ${userId} order by id`;
+  const helps = await sql<{ child_id: number; helps: number; claimed: boolean }>`
+    select child_id, helps, claimed from plaza_crew_helps
+    where user_id = ${userId} and week_key = ${week}`;
+  const saves = await sql<{ child_id: number }>`
+    select child_id from plaza_saves where user_id = ${userId}`;
+  const events = await sql<{ child_id: number; icon: string; headline: string }>`
+    select child_id, icon, headline from plaza_events
+    where user_id = ${userId} order by created_at desc limit 60`;
+  const helpByChild = new Map<number, { helps: number; claimed: boolean }>(
+    helps.map((h: any) => [h.child_id as number, { helps: h.helps as number, claimed: h.claimed as boolean }]),
+  );
+  const hasPlaza = new Set(saves.map((s: any) => s.child_id));
+  const latestByChild = new Map<number, { icon: string; headline: string }>();
+  for (const e of events) {
+    if (!latestByChild.has(e.child_id)) latestByChild.set(e.child_id, { icon: e.icon, headline: e.headline });
+  }
+  const members = kids.map((k: any) => {
+    const h = helpByChild.get(k.id);
+    return {
+      id: k.id,
+      name: k.name,
+      avatar: k.avatar || "🧒",
+      units: k.units,
+      helps: h?.helps ?? 0,
+      claimed: h?.claimed ?? false,
+      hasPlaza: hasPlaza.has(k.id),
+      latest: latestByChild.get(k.id) ?? null,
+    };
+  });
+  const totalHelps = members.reduce((a: number, m: any) => a + m.helps, 0);
+  const goal = Math.max(CREW_GOAL_PER_MEMBER, members.length * CREW_GOAL_PER_MEMBER);
+  return { week, goal, totalHelps, members };
+}
+
+/** Crew roster + this week's shared quest progress, for one plaza child. */
+export const getPlazaCrew = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number }) => input)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    await assertPlazaChild(sql, context.userId, data.childId);
+    const st = await crewState(sql, context.userId);
+    return { ...st, you: data.childId };
+  });
+
+/** Record one helping action toward the weekly Crew Quest. */
+export const plazaCrewHelp = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean; totalHelps: number; goal: number }> => {
+    const sql = await getSql();
+    await assertPlazaChild(sql, context.userId, data.childId);
+    const week = crewWeekKey();
+    await sql`
+      insert into plaza_crew_helps (user_id, child_id, week_key, helps, updated_at)
+      values (${context.userId}, ${data.childId}, ${week}, 1, now())
+      on conflict (user_id, child_id, week_key)
+      do update set helps = plaza_crew_helps.helps + 1, updated_at = now()`;
+    const st = await crewState(sql, context.userId);
+    return { ok: true, totalHelps: st.totalHelps, goal: st.goal };
+  });
+
+/**
+ * Claim the Crew Quest reward once per member per week, after the crew
+ * reaches the goal together. Credited through the same audited path as
+ * every other plaza earning (children.units mirror + transaction row).
+ */
+export const plazaCrewClaim = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean; reason?: string; amount?: number }> => {
+    const sql = await getSql();
+    await assertPlazaChild(sql, context.userId, data.childId);
+    const st = await crewState(sql, context.userId);
+    if (st.totalHelps < st.goal) return { ok: false, reason: "goal" };
+    const me = st.members.find((m: any) => m.id === data.childId);
+    if (!me || me.claimed) return { ok: false, reason: "claimed" };
+    const week = crewWeekKey();
+    await sql`
+      insert into plaza_crew_helps (user_id, child_id, week_key, helps, claimed, updated_at)
+      values (${context.userId}, ${data.childId}, ${week}, 0, true, now())
+      on conflict (user_id, child_id, week_key)
+      do update set claimed = true, updated_at = now()`;
+    await sql`
+      with credited as (
+        update children set units = units + ${CREW_REWARD_UNITS}
+        where id = ${data.childId} and user_id = ${context.userId}
+        returning id
+      )
+      insert into units_transactions (user_id, child_id, kind, amount, note)
+      select ${context.userId}, ${data.childId}, 'earn', ${CREW_REWARD_UNITS}, 'Pillar Plaza Crew Quest reward'
+      where exists (select 1 from credited)`;
+    return { ok: true, amount: CREW_REWARD_UNITS };
+  });
