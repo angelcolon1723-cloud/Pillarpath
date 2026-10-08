@@ -191,22 +191,26 @@ export async function signInDirect(
   const callbackURL = opts.callbackURL ?? "/";
   if (isNativeShell()) {
     // Native shell: Google blocks OAuth inside embedded WebViews (the
-    // redirect dies on a "network not available" error page), so run the
-    // flow in the system browser and bridge the finished session back
-    // through /auth/app-return → pillarpath://auth deep link.
-    await authClient.signOut().catch(() => {});
-    const back = `/auth/app-return?dest=${encodeURIComponent(callbackURL)}`;
-    const { data, error } = await authClient.signIn.social({
-      provider: provider.id,
-      callbackURL: back,
-      errorCallbackURL: `${back}&error=1`,
-      disableRedirect: true,
-    });
-    if (error) throw new Error(error.message ?? "Sign-in failed");
-    const url = (data as { url?: string } | undefined)?.url;
-    if (!url) throw new Error("Sign-in failed");
+    // redirect dies on a "network not available" error page), so the flow
+    // runs in the system browser and the finished session bridges back
+    // through /auth/app-return → pillarpath://auth deep link. The flow
+    // must START in the browser too (/auth/app-start 302s server-side):
+    // starting it here with a fetch would set Better Auth's state/PKCE
+    // cookies in the WebView's jar, while the callback runs in the
+    // browser's jar — split jars, failed state check.
     const { Browser } = await import("@capacitor/browser");
-    await Browser.open({ url });
+    const start = `${window.location.origin}/auth/app-start?provider=${encodeURIComponent(provider.id)}&dest=${encodeURIComponent(callbackURL)}`;
+    try {
+      const handle = await Browser.addListener("browserFinished", () => {
+        // Tab closed without a completed deep-link sign-in → release the
+        // in-flight guard so an immediate retry isn't blocked.
+        if (!getBearerToken()) clearOAuthInflight();
+        void handle.remove();
+      });
+    } catch {
+      /* listener unsupported — the guard expires on its own TTL */
+    }
+    await Browser.open({ url: start });
     return;
   }
   await authClient.signOut().catch(() => {});
