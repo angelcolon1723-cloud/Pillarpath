@@ -105,6 +105,7 @@ interface CitySave {
   structures: Record<string, Array<number | null>>; // districtId -> 3 slots, value = building index or null
   questsDone: string[];
   tutorialDone: boolean;
+  news: Array<{ icon: string; headline: string; detail: string; time: number }>;
 }
 function countBuildings(s: CitySave): number {
   return Object.values(s.structures).flat().filter((v) => v !== null).length;
@@ -123,15 +124,22 @@ function loadCity(): CitySave {
     const raw = localStorage.getItem("pillarpath-city");
     if (raw) {
       const s = JSON.parse(raw) as CitySave;
-      if (s.structures && s.questsDone) return s;
+      if (s.structures && s.questsDone) {
+        if (!s.news) s.news = [];
+        return s;
+      }
     }
   } catch { /* ignore */ }
   const structures: Record<string, Array<number | null>> = {};
   for (const d of DISTRICT_DEFS) structures[d.id] = [null, null, null];
-  return { structures, questsDone: [], tutorialDone: false };
+  return { structures, questsDone: [], tutorialDone: false, news: [] };
 }
 function saveCity(s: CitySave) {
   try { localStorage.setItem("pillarpath-city", JSON.stringify(s)); } catch { /* ignore */ }
+}
+function addNews(s: CitySave, icon: string, headline: string, detail: string): CitySave {
+  const news = [{ icon, headline, detail, time: Date.now() }, ...s.news].slice(0, 30);
+  return { ...s, news };
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
@@ -421,11 +429,15 @@ export function PillarGame() {
     const kind = dilemmaKind;
     setDilemma(null); setDilemmaKind(null);
     const S = stateRef.current;
+    const logNews = (icon: string, headline: string, detail: string) => {
+      persistCity(addNews(cityRef.current, icon, headline, detail));
+    };
     const good = (msg: string) => {
       const nt = Math.min(100, trustRef.current + 10);
       trustRef.current = nt; setTrust(nt);
       pushToast("Wise choice!", `${msg} Your city prospers.`, "#4ade80");
       S.blight = Math.max(0, S.blight - 0.2);
+      logNews("🤝", "Mayor guides citizen wisely", msg);
     };
     const bad = (msg: string) => {
       const nt = Math.max(0, trustRef.current - 10);
@@ -434,6 +446,7 @@ export function PillarGame() {
       S.blight = Math.min(1, S.blight + 0.25);
       const emo = EMOTIONS[Math.floor(Math.random() * 3)];
       recordEncounter(emo.id);
+      logNews("🌧️", "Tough day at City Hall", msg);
     };
     if (kind === "maya") {
       const setMem = (m: "good" | "bad") => {
@@ -460,6 +473,7 @@ export function PillarGame() {
 
   /* ------------------------------ building ------------------------------ */
   const [showQuests, setShowQuests] = useState(false);
+  const [showNews, setShowNews] = useState(false);
   const [buildSlot, setBuildSlot] = useState<null | { district: string; slot: number }>(null);
   const prosperity = prosperityOf(city);
   const cityTier = [...CITY_TIERS].reverse().find((t) => prosperity >= t.at) ?? CITY_TIERS[0];
@@ -470,6 +484,14 @@ export function PillarGame() {
     if (prevTierRef.current && prevTierRef.current !== cityTier.name) {
       setTierCeremony(cityTier.name);
       sfxRef2.current.tierUp();
+      persistCity(addNews(
+        cityRef.current,
+        cityTier.name === "Metropolis" ? "🌆" : "🎉",
+        cityTier.name === "Metropolis" ? "METROPOLIS! A city from nothing!" : `City reaches ${cityTier.name}!`,
+        cityTier.name === "Metropolis"
+          ? "Better than yesterday, every single day. The mayor did it."
+          : `Prosperity continues to climb under wise leadership.`,
+      ));
       if (cityTier.name === "Metropolis") {
         setFireworks(true);
         setTimeout(() => setFireworks(false), 8000);
@@ -491,13 +513,15 @@ export function PillarGame() {
     }
     sfxRef2.current.build();
     builtAtRef.current[`${districtId}:${slot}`] = performance.now();
-    const next: CitySave = {
+    const dName = DISTRICT_DEFS.find((d) => d.id === districtId)?.name ?? districtId;
+    let next: CitySave = {
       ...cityRef.current,
       structures: {
         ...cityRef.current.structures,
         [districtId]: cityRef.current.structures[districtId].map((v, i) => (i === slot ? slot : v)),
       },
     };
+    next = addNews(next, "🏗️", `${def.name} rises in ${dName}!`, `The mayor invested ${def.cost} Units. Prosperity +${def.prosperity}.`);
     persistCity(next);
     setBuildSlot(null);
     // Celebration.
@@ -524,7 +548,8 @@ export function PillarGame() {
     for (const q of QUESTS) {
       if (s.questsDone.includes(q.id)) continue;
       if (q.check(s)) {
-        const next = { ...s, questsDone: [...s.questsDone, q.id] };
+        let next = { ...s, questsDone: [...s.questsDone, q.id] };
+        next = addNews(next, "🎯", `Quest complete: ${q.name}`, q.desc);
         persistCity(next);
         sfxRef2.current.quest();
         if (q.reward === "trust10") {
@@ -1325,6 +1350,14 @@ export function PillarGame() {
           <Button variant="ghost" size="sm" onClick={() => setShowQuests(true)} className="gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
             <span>🎯</span> Quests
           </Button>
+          <Button variant="ghost" size="sm" onClick={() => setShowNews(true)} className="relative gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
+            <span>📰</span>
+            {city.news.length > 0 && (
+              <span className="absolute -right-0.5 -top-0.5 grid size-4 place-items-center rounded-full bg-red-500 text-[9px] font-bold text-white">
+                {Math.min(9, city.news.length)}
+              </span>
+            )}
+          </Button>
           <div className="flex items-center gap-1 text-xs font-bold text-white" title="Trust">
             <Heart className="size-4" style={{ color: trust >= 70 ? "#4ade80" : trust >= 40 ? "#fbbf24" : "#ef4444" }} />
             <span>{trust}</span>
@@ -1564,6 +1597,44 @@ export function PillarGame() {
                   <p className="mt-1 text-xs text-white/50">{nextTier.at - prosperity} to {nextTier.name}</p>
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Newspaper */}
+      {showNews && (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-black/70 p-4 backdrop-blur-sm">
+          <div className="flex max-h-[75%] w-full max-w-md flex-col overflow-hidden rounded-3xl border border-amber-200/20 bg-[#f5f0e6]">
+            <div className="border-b-4 border-double border-stone-800/60 p-4 text-center">
+              <p className="font-display text-2xl font-black tracking-tight text-stone-900">📰 The Pillar Post</p>
+              <p className="text-xs font-semibold uppercase tracking-widest text-stone-500">
+                {cityTier.name} · {new Date().toLocaleDateString(undefined, { weekday: "long", month: "long", day: "numeric" })}
+              </p>
+            </div>
+            <div className="flex-1 space-y-3 overflow-y-auto p-4">
+              {city.news.length === 0 ? (
+                <p className="py-8 text-center text-sm italic text-stone-500">
+                  No headlines yet... go make history, Mayor.
+                </p>
+              ) : (
+                city.news.map((n, i) => (
+                  <article key={`${n.time}-${i}`} className="border-b border-stone-300/70 pb-3 last:border-0">
+                    <p className="font-display text-base font-bold leading-snug text-stone-900">
+                      <span className="mr-1">{n.icon}</span>{n.headline}
+                    </p>
+                    <p className="mt-1 text-sm leading-relaxed text-stone-600">{n.detail}</p>
+                    <p className="mt-1 text-[11px] font-medium uppercase tracking-wider text-stone-400">
+                      {new Date(n.time).toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                    </p>
+                  </article>
+                ))
+              )}
+            </div>
+            <div className="border-t border-stone-300/70 p-3 text-center">
+              <Button variant="ghost" size="sm" onClick={() => setShowNews(false)} className="font-bold text-stone-700 hover:bg-stone-200">
+                Close Paper
+              </Button>
             </div>
           </div>
         </div>
