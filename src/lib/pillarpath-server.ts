@@ -1515,3 +1515,240 @@ export const plazaCrewClaim = createServerFn({ method: "POST" })
       where exists (select 1 from credited)`;
     return { ok: true, amount: CREW_REWARD_UNITS };
   });
+
+/* ------------------------------------------------------------------ */
+/* Plaza Live + parent-approved friends.                              */
+/*                                                                    */
+/* A kid's plaza friends ARE the parent-approved contacts: family on  */
+/* the same account (approved by definition), friends linked when    */
+/* BOTH parents approve (one shares a friend code, the other redeems  */
+/* it, the first confirms), and classmates whose parents both hold an */
+/* approved classroom connection. Presence is only ever shared inside */
+/* those circles — the server enforces it on every sync. Live mode is */
+/* a per-child parent switch. No free chat: preset actions only.      */
+/* ------------------------------------------------------------------ */
+
+const PLAZA_ACTIONS = ["wave", "great", "follow", "help"];
+
+async function plazaLiveEnabled(sql: any, userId: string, childId: number): Promise<boolean> {
+  const rows = await sql<{ live_enabled: boolean }>`
+    select live_enabled from plaza_live_settings where child_id = ${childId} and user_id = ${userId}`;
+  return rows.length ? rows[0].live_enabled : true;
+}
+
+/** Generate a friend code for my child to share with another parent. */
+export const createPlazaFriendInvite = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number }) => input)
+  .handler(async ({ context, data }): Promise<{ code: string; expiresAt: string }> => {
+    const sql = await getSql();
+    await assertPlazaChild(sql, context.userId, data.childId);
+    await sql`update plaza_friend_invites set status = 'expired'
+      where user_id = ${context.userId} and child_id = ${data.childId} and status = 'pending' and expires_at < now()`;
+    await sql`update plaza_friend_invites set status = 'cancelled'
+      where user_id = ${context.userId} and child_id = ${data.childId} and status = 'pending'`;
+    let code = generatePairingCode();
+    for (let i = 0; i < 3; i++) {
+      try {
+        const rows = await sql<{ expires_at: string }>`
+          insert into plaza_friend_invites (user_id, child_id, code, expires_at)
+          values (${context.userId}, ${data.childId}, ${code}, now() + interval '48 hours')
+          returning expires_at`;
+        return { code, expiresAt: rows[0].expires_at };
+      } catch {
+        code = generatePairingCode();
+      }
+    }
+    throw new Error("Couldn't generate a friend code — try again.");
+  });
+
+/**
+ * Redeem another family's friend code for my child. This parent's redeem
+ * is their approval; the friendship stays 'pending' until the code
+ * owner's parent confirms it too.
+ */
+export const redeemPlazaFriendInvite = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number; code: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean; friendName?: string; reason?: string }> => {
+    const sql = await getSql();
+    await assertPlazaChild(sql, context.userId, data.childId);
+    const code = String(data.code || "").trim();
+    const invites = await sql<{ id: number; user_id: string; child_id: number; status: string; expires_at: string }>`
+      select id, user_id, child_id, status, expires_at from plaza_friend_invites where code = ${code}`;
+    const inv = invites[0];
+    if (!inv || inv.status !== "pending") return { ok: false, reason: "invalid" };
+    if (new Date(inv.expires_at).getTime() < Date.now()) {
+      await sql`update plaza_friend_invites set status = 'expired' where id = ${inv.id}`;
+      return { ok: false, reason: "expired" };
+    }
+    if (inv.user_id === context.userId) return { ok: false, reason: "own-family" };
+    if (inv.child_id === data.childId) return { ok: false, reason: "invalid" };
+    const existing = await sql<{ id: number }>`
+      select id from plaza_friendships
+      where (child_a = ${inv.child_id} and child_b = ${data.childId})
+         or (child_a = ${data.childId} and child_b = ${inv.child_id})`;
+    if (existing.length) return { ok: false, reason: "exists" };
+    await sql`
+      insert into plaza_friendships (user_a, child_a, user_b, child_b, status)
+      values (${inv.user_id}, ${inv.child_id}, ${context.userId}, ${data.childId}, 'pending')`;
+    await sql`update plaza_friend_invites set status = 'used' where id = ${inv.id}`;
+    const owner = await sql<{ name: string }>`select name from children where id = ${inv.child_id}`;
+    return { ok: true, friendName: owner[0]?.name ?? "Friend" };
+  });
+
+/** Everything about a child's plaza social circle, for parents + the plaza. */
+export const getPlazaSocial = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number }) => input)
+  .handler(async ({ context, data }) => {
+    const sql = await getSql();
+    await assertPlazaChild(sql, context.userId, data.childId);
+    const liveEnabled = await plazaLiveEnabled(sql, context.userId, data.childId);
+    const rows = await sql<{
+      id: number; status: string; child_a: number; child_b: number;
+      a_name: string; a_avatar: string; b_name: string; b_avatar: string;
+    }>`
+      select f.id, f.status, f.child_a, f.child_b,
+             ca.name as a_name, ca.avatar as a_avatar, cb.name as b_name, cb.avatar as b_avatar
+      from plaza_friendships f
+      join children ca on ca.id = f.child_a
+      join children cb on cb.id = f.child_b
+      where f.child_a = ${data.childId} or f.child_b = ${data.childId}
+      order by f.created_at desc`;
+    const live = await sql<{ child_id: number }>`
+      select child_id from plaza_presence where updated_at > now() - interval '15 seconds'`;
+    const liveSet = new Set(live.map((r: any) => r.child_id));
+    const friends: any[] = [];
+    const incoming: any[] = [];
+    const outgoing: any[] = [];
+    for (const r of rows) {
+      const mineIsA = r.child_a === data.childId;
+      const other = mineIsA
+        ? { childId: r.child_b, name: r.b_name, avatar: r.b_avatar }
+        : { childId: r.child_a, name: r.a_name, avatar: r.a_avatar };
+      const entry = { friendshipId: r.id, ...other, live: liveSet.has(other.childId) };
+      if (r.status === "approved") friends.push(entry);
+      else if (mineIsA) incoming.push(entry); // I own the code; I confirm
+      else outgoing.push(entry); // I redeemed; waiting on them
+    }
+    return { liveEnabled, friends, incoming, outgoing };
+  });
+
+/** The code-owning parent confirms (or denies) a pending friendship. */
+export const respondPlazaFriend = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { friendshipId: number; approve: boolean }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    const rows = await sql<{ id: number }>`
+      select id from plaza_friendships where id = ${data.friendshipId} and user_a = ${context.userId} and status = 'pending'`;
+    if (!rows.length) throw new Error("Request not found.");
+    if (data.approve) {
+      await sql`update plaza_friendships set status = 'approved' where id = ${data.friendshipId}`;
+    } else {
+      await sql`delete from plaza_friendships where id = ${data.friendshipId}`;
+    }
+    return { ok: true };
+  });
+
+/** Either parent can end a friendship. */
+export const removePlazaFriend = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { friendshipId: number }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    await sql`delete from plaza_friendships
+      where id = ${data.friendshipId} and (user_a = ${context.userId} or user_b = ${context.userId})`;
+    return { ok: true };
+  });
+
+/** Parent switch for Live mode, per child. */
+export const setPlazaLiveEnabled = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number; enabled: boolean }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: boolean }> => {
+    const sql = await getSql();
+    await assertPlazaChild(sql, context.userId, data.childId);
+    await sql`
+      insert into plaza_live_settings (child_id, user_id, live_enabled, updated_at)
+      values (${data.childId}, ${context.userId}, ${data.enabled}, now())
+      on conflict (child_id) do update set live_enabled = excluded.live_enabled, updated_at = now()`;
+    if (!data.enabled) {
+      await sql`delete from plaza_presence where child_id = ${data.childId}`;
+    }
+    return { ok: true };
+  });
+
+/**
+ * Live heartbeat + peer fetch in one round trip. The server decides who
+ * can see whom: family (same account), approved friends, or classmates
+ * linked by two approved classroom connections. Nobody else exists.
+ */
+export const plazaLiveSync = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { childId: number; x: number; z: number; face: number; action?: string; live: boolean }) => input)
+  .handler(async ({ context, data }): Promise<{ liveEnabled: boolean; peers: any[] }> => {
+    const sql = await getSql();
+    await assertPlazaChild(sql, context.userId, data.childId);
+    const enabled = await plazaLiveEnabled(sql, context.userId, data.childId);
+    if (!enabled || !data.live) {
+      await sql`delete from plaza_presence where child_id = ${data.childId}`;
+      return { liveEnabled: enabled, peers: [] };
+    }
+    const x = Math.max(-160, Math.min(160, Number(data.x) || 0));
+    const z = Math.max(-160, Math.min(160, Number(data.z) || 0));
+    const face = Number(data.face) || 0;
+    const action = data.action && PLAZA_ACTIONS.includes(data.action) ? data.action : "";
+    if (action) {
+      await sql`
+        insert into plaza_presence (child_id, user_id, x, z, face, action, action_at, updated_at)
+        values (${data.childId}, ${context.userId}, ${x}, ${z}, ${face}, ${action}, now(), now())
+        on conflict (child_id) do update set x = excluded.x, z = excluded.z, face = excluded.face,
+          action = excluded.action, action_at = excluded.action_at, updated_at = now()`;
+    } else {
+      await sql`
+        insert into plaza_presence (child_id, user_id, x, z, face, updated_at)
+        values (${data.childId}, ${context.userId}, ${x}, ${z}, ${face}, now())
+        on conflict (child_id) do update set x = excluded.x, z = excluded.z, face = excluded.face, updated_at = now()`;
+    }
+    const me = await sql<{ name: string }>`select name from children where id = ${data.childId}`;
+    const myName = me[0]?.name ?? "";
+    const peers = await sql<{
+      child_id: number; name: string; avatar: string; x: number; z: number; face: number;
+      action: string; action_at: string | null; kind: string;
+    }>`
+      select p.child_id, c.name, c.avatar, p.x, p.z, p.face, p.action, p.action_at,
+        case
+          when p.user_id = ${context.userId} then 'family'
+          when exists (select 1 from plaza_friendships f
+            where f.status = 'approved'
+              and ((f.child_a = ${data.childId} and f.child_b = p.child_id)
+                or (f.child_a = p.child_id and f.child_b = ${data.childId}))) then 'friend'
+          else 'classmate'
+        end as kind
+      from plaza_presence p
+      join children c on c.id = p.child_id
+      where p.child_id != ${data.childId}
+        and p.updated_at > now() - interval '15 seconds'
+        and (
+          p.user_id = ${context.userId}
+          or exists (select 1 from plaza_friendships f
+            where f.status = 'approved'
+              and ((f.child_a = ${data.childId} and f.child_b = p.child_id)
+                or (f.child_a = p.child_id and f.child_b = ${data.childId})))
+          or exists (select 1 from classroom_connections cc1
+            join classroom_connections cc2 on cc2.classroom_id = cc1.classroom_id
+            where cc1.parent_user_id = ${context.userId} and cc1.status = 'approved' and cc1.child_name = ${myName}
+              and cc2.parent_user_id = p.user_id and cc2.status = 'approved' and cc2.child_name = c.name)
+        )
+      limit 12`;
+    return {
+      liveEnabled: true,
+      peers: peers.map((p: any) => ({
+        childId: p.child_id, name: p.name, avatar: p.avatar || "🧒",
+        x: p.x, z: p.z, face: p.face, action: p.action || "",
+        actionAt: p.action_at ? new Date(p.action_at).getTime() : 0, kind: p.kind,
+      })),
+    };
+  });

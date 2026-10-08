@@ -12,6 +12,8 @@ import {
   getPlazaCrew,
   plazaCrewHelp,
   plazaCrewClaim,
+  getPlazaSocial,
+  plazaLiveSync,
 } from "@/lib/pillarpath-server";
 
 /**
@@ -503,6 +505,18 @@ interface PlazaCrewState {
   you: number;
   members: PlazaCrewMember[];
 }
+/** A live peer as returned by the server (approved circles only). */
+interface PlazaLivePeer {
+  childId: number;
+  name: string;
+  avatar: string;
+  x: number;
+  z: number;
+  face: number;
+  action: string;
+  actionAt: number;
+  kind: string;
+}
 interface PlazaHooks {
   queueCloudSave: () => void;
   serverEvent: (icon: string, headline: string, detail: string) => void;
@@ -511,6 +525,9 @@ interface PlazaHooks {
   crewState: () => Promise<PlazaCrewState | null>;
   crewHelp: () => void;
   crewClaim: () => Promise<{ ok: boolean; amount?: number; reason?: string }>;
+  /** Parent's Live switch for this child, or null in local-only mode. */
+  liveEnabled: () => boolean | null;
+  liveSync: (p: { x: number; z: number; face: number; action: string; live: boolean }) => Promise<{ liveEnabled: boolean; peers: PlazaLivePeer[] } | null>;
 }
 function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHooks): () => void {
   const sfx = makeSfx();
@@ -680,6 +697,24 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
     S.crewHelps++;
     save();
     try { hooks.crewHelp(); } catch { /* offline: local mirror only */ }
+    // Team-up: helping side by side with a live friend counts double.
+    try {
+      if (liveOn && livePeers.size) {
+        const nowS = performance.now() / 1000;
+        let nearPeer = false;
+        livePeers.forEach((lp) => {
+          if (Math.hypot(P.position.x - lp.g.position.x, P.position.z - lp.g.position.z) < 9) nearPeer = true;
+        });
+        if (nearPeer && nowS - lastTeamUpAt > 30) {
+          lastTeamUpAt = nowS;
+          S.crewHelps++;
+          save();
+          try { hooks.crewHelp(); } catch { /* noop */ }
+          floatText("🤝 Team-up help!", "#ffd36e");
+          say("🤝 Team-up! Helping side by side counts double for the crew.");
+        }
+      }
+    } catch { /* noop */ }
   }
   async function dailyTick(key: string) {
     const d = S.daily;
@@ -1467,7 +1502,8 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
       `<button class="pp3d-chip" style="pointer-events:auto;cursor:pointer;border-color:#d4a017" onclick="__pp3d.post()">📰${S.news.length - S.newsSeen > 0 ? ` <b style="color:#ff5252">●${S.news.length - S.newsSeen}</b>` : ""}</button>` +
       (S.daily && !S.daily.done ? `<span class="pp3d-chip" style="border-color:#ffaa00">🎯 ${S.daily.progress}/${S.daily.need}</span>` : "") +
       (S.daily && S.daily.done ? `<span class="pp3d-chip" style="border-color:#00ff9d">✅ Daily done</span>` : "") +
-      (autoPilot ? `<span class="pp3d-chip" style="border-color:#00ff9d;background:rgba(0,170,102,.5)">🟢 AUTO</span>` : "");
+      (autoPilot ? `<span class="pp3d-chip" style="border-color:#00ff9d;background:rgba(0,170,102,.5)">🟢 AUTO</span>` : "") +
+      (liveOn ? `<span class="pp3d-chip" style="border-color:#4ade80;background:rgba(0,140,70,.45)">🟢 LIVE${livePeers.size ? ` · ${livePeers.size} here` : ""}</span>` : "");
     if (lastTier && lastTier !== tier) {
       const order = TIERS.map((x) => x[1]);
       if (order.indexOf(tier) > order.indexOf(lastTier)) {
@@ -1510,6 +1546,13 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
     if (nearWisp >= 0) b.push(`<button class="pp3d-btn" onclick="__pp3d.faceWisp(${nearWisp})">\u{1F32B}\uFE0F Face the Doubtling</button>`);
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.codex()">📖 Codex</button>`);
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.crew()">👥 Crew</button>`);
+    b.push(`<button class="pp3d-btn alt" onclick="__pp3d.toggleLive()">${liveOn ? "🟢 Live ON" : "🔴 Go Live"}</button>`);
+    if (liveOn) {
+      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.emote('wave')">👋 Wave</button>`);
+      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.emote('great')">🌟 Great job!</button>`);
+      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.emote('follow')">📍 Follow me!</button>`);
+      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.emote('help')">🆘 Help me!</button>`);
+    }
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.toggleAuto()">${autoPilot ? "🟢 Auto ON" : "⚪ Autopilot"}</button>`);
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.realLife()">🌟 Real-life progress</button>`);
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.mute()">${S.muted ? "🔇 Muted" : "🔊 Sound"}</button>`);
@@ -1543,6 +1586,123 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
   const closeM = () => {
     $("pp3d-modal").style.display = "none";
   };
+
+  /* ----- Live mode state (Go Live with your approved crew) -----
+   * Presence syncs through the server every ~2s, and the server only ever
+   * returns family, approved friends, and approved classmates. Peer
+   * characters glide between heartbeats so motion looks real-time. */
+  interface LivePeer {
+    childId: number; name: string; avatar: string; kind: string;
+    g: any; tx: number; tz: number; tface: number; hiT: number; lastActionAt: number;
+  }
+  let liveOn = false;
+  let liveSyncT = 0;
+  let pendingAction = "";
+  let selfWaveT = 0;
+  let lastTeamUpAt = -100;
+  const livePeers = new Map<number, LivePeer>();
+  function liveAvailable(): boolean {
+    try { return hooks.liveEnabled() !== null; } catch { return false; }
+  }
+  function removeLivePeer(id: number) {
+    const p = livePeers.get(id);
+    if (p) { scene.remove(p.g); livePeers.delete(id); }
+  }
+  function applyLivePeers(peers: PlazaLivePeer[]) {
+    const seen = new Set<number>();
+    peers.forEach((pp) => {
+      seen.add(pp.childId);
+      let lp = livePeers.get(pp.childId);
+      if (!lp) {
+        const grp = makePerson(pp.kind === "family" ? 0xffd36e : pp.kind === "friend" ? 0x38bdf8 : 0x4ade80, 0xf2c9a0, 1.15);
+        const tag = textSprite(pp.avatar || "🧒", 64, 2.0);
+        tag.position.set(0, 3.2, 0);
+        grp.add(tag);
+        const label = labelSprite(pp.name);
+        label.scale.set(8.5, 2.1, 1);
+        label.position.set(0, 4.3, 0);
+        grp.add(label);
+        grp.position.set(pp.x, 0, pp.z);
+        scene.add(grp);
+        lp = { childId: pp.childId, name: pp.name, avatar: pp.avatar, kind: pp.kind, g: grp, tx: pp.x, tz: pp.z, tface: pp.face, hiT: 0, lastActionAt: 0 };
+        livePeers.set(pp.childId, lp);
+        sfx.buzz([30, 40, 30]);
+        say(`🟢 ${pp.name} is in your plaza!`);
+        floatText(`🟢 ${pp.name}`, "#4ade80");
+      }
+      lp.tx = pp.x; lp.tz = pp.z; lp.tface = pp.face;
+      if (pp.action && pp.actionAt > lp.lastActionAt) {
+        lp.lastActionAt = pp.actionAt;
+        if (pp.action === "wave") lp.hiT = 1.2;
+        const phrases: Record<string, string> = {
+          wave: "👋 waves at you!",
+          great: "🌟 “Great job!”",
+          follow: "📍 “Follow me!”",
+          help: "🆘 “Help me with this quest!”",
+        };
+        if (phrases[pp.action]) say(`${pp.avatar || "🧒"} ${pp.name} ${phrases[pp.action]}`);
+      }
+    });
+    [...livePeers.keys()].forEach((id) => {
+      if (!seen.has(id)) {
+        say(`👋 ${livePeers.get(id)?.name || "A friend"} left the plaza.`);
+        removeLivePeer(id);
+      }
+    });
+    drawHud();
+  }
+  function stepLivePeers(dt: number, t: number) {
+    livePeers.forEach((lp) => {
+      if (lp.hiT > 0) {
+        lp.hiT = Math.max(0, lp.hiT - dt);
+        const p = 1 - lp.hiT / 1.2;
+        lp.g.position.y = Math.sin(p * Math.PI) * 0.7;
+        lp.g.rotation.y += dt * 9;
+        return;
+      }
+      const dx = lp.tx - lp.g.position.x, dz = lp.tz - lp.g.position.z;
+      const d = Math.hypot(dx, dz);
+      if (d > 0.05) {
+        const sp = Math.min(7, d * 2.2);
+        const step = Math.min(d, sp * dt);
+        lp.g.position.x += (dx / d) * step;
+        lp.g.position.z += (dz / d) * step;
+        const tf = Math.atan2(dx, dz);
+        let df = tf - lp.g.rotation.y;
+        df = Math.atan2(Math.sin(df), Math.cos(df));
+        lp.g.rotation.y += df * Math.min(1, dt * 8);
+        lp.g.position.y = Math.abs(Math.sin(t * 8 + lp.childId)) * 0.06;
+      } else {
+        lp.g.position.y = Math.sin(t * 2 + lp.childId) * 0.03;
+      }
+    });
+    if (selfWaveT > 0) {
+      selfWaveT = Math.max(0, selfWaveT - dt);
+      const p = 1 - selfWaveT / 1.2;
+      P.position.y = Math.sin(p * Math.PI) * 0.7;
+      if (selfWaveT === 0) P.position.y = 0;
+    }
+  }
+  async function liveSyncNow() {
+    try {
+      const r = await hooks.liveSync({ x: P.position.x, z: P.position.z, face, action: pendingAction, live: liveOn });
+      pendingAction = "";
+      if (!r) return;
+      if (!r.liveEnabled) {
+        if (liveOn) {
+          liveOn = false;
+          [...livePeers.keys()].forEach(removeLivePeer);
+          say("🔴 Live was turned off by your grown-up.");
+          drawPanel();
+          drawHud();
+        }
+        return;
+      }
+      if (liveOn) applyLivePeers(r.peers);
+    } catch {
+      /* connection blip: keep playing, next heartbeat retries */
+    }
+  }
 
 
   window.__pp3d = {
@@ -1770,6 +1930,42 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
           `<button class="pp3d-btn alt" onclick="__pp3d.close()">Bye!</button>`,
       );
     },
+    toggleLive() {
+      sfx.click();
+      if (!liveAvailable()) {
+        return say("🔴 Live needs your family account connection — ask your grown-up to open the plaza from their app.");
+      }
+      if (hooks.liveEnabled() === false) {
+        return say("🔴 Your grown-up has Live turned off for now.");
+      }
+      liveOn = !liveOn;
+      sfx.buzz(liveOn ? [40, 40, 90] : [60]);
+      if (liveOn) {
+        say("🟢 You're LIVE! Family and approved friends can see you in the plaza.");
+        liveSyncT = 99; // sync immediately
+      } else {
+        [...livePeers.keys()].forEach(removeLivePeer);
+        void hooks.liveSync({ x: P.position.x, z: P.position.z, face, action: "", live: false }).catch(() => null);
+        say("🔴 Live off. You're solo in the plaza.");
+      }
+      drawPanel();
+      drawHud();
+    },
+    emote(a: string) {
+      if (!liveOn) return;
+      pendingAction = a;
+      if (a === "wave") selfWaveT = 1.2;
+      const mine: Record<string, string> = {
+        wave: "👋 You wave!",
+        great: "🌟 You say: “Great job!”",
+        follow: "📍 You say: “Follow me!”",
+        help: "🆘 You say: “Help me with this quest!”",
+      };
+      if (mine[a]) say(mine[a]);
+      sfx.click();
+      sfx.buzz(20);
+      void liveSyncNow();
+    },
     async crew() {
       sfx.click();
       modal(`<h3>👥 Plaza Crew</h3><p>Finding your crew…</p>`);
@@ -1895,6 +2091,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
           `<div class="pp3d-stat">🎯 <b>Daily:</b> one challenge a day pays +15 real Units.</div>` +
           `<div class="pp3d-stat">💬 <b>People:</b> Maya, Jay and Sam patrol the paths under glowing beacons — walk up to talk. Neighbors stroll the plaza too.</div>` +
           `<div class="pp3d-stat">👥 <b>Crew:</b> other students on your family account join your plaza (gold rings) and share a weekly Crew Quest — every good deed and faced Doubtling is a help for the whole crew. Finish together, everyone earns +20 Units.</div>` +
+          `<div class="pp3d-stat">🟢 <b>Live:</b> tap 🔴 Go Live to be in the plaza together, in real time. Only family, parent-approved friends, and approved classmates can ever see you — nobody else. Talk with 👋 waves and preset phrases; helping side by side counts double.</div>` +
           `<button class="pp3d-btn" onclick="__pp3d.replayTut()">▶️ Replay tutorial</button>` +
           `<button class="pp3d-btn alt" onclick="__pp3d.close()">Close</button>`,
       );
@@ -2144,6 +2341,13 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
     head.position.y = 2.1 + Math.sin(bob) * 0.05 * vel;
     // people: NPCs patrol, neighbors stroll, crew members wander
     stepWalkers(dt, t);
+    // live peers glide toward their latest heartbeat; sync every ~2s
+    stepLivePeers(dt, t);
+    liveSyncT += dt;
+    if (liveOn && liveSyncT > 2) {
+      liveSyncT = 0;
+      void liveSyncNow();
+    }
     citizenChatCd -= dt;
     if (citizenChatCd <= 0) {
       const nearCitizen = citizenWalkers.some((w) => Math.hypot(P.position.x - w.g.position.x, P.position.z - w.g.position.z) < 4.5);
@@ -2332,6 +2536,10 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
   }, 1100);
 
   return () => {
+    if (liveOn) {
+      liveOn = false;
+      void hooks.liveSync({ x: P.position.x, z: P.position.z, face, action: "", live: false }).catch(() => null);
+    }
     cancelAnimationFrame(raf);
     cleanups.forEach((fn) => fn());
     sfx.stopAmbience();
@@ -2361,6 +2569,7 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
     // local ledger with local caps — play never breaks.
     let serverChildId: number | null = null;
     let crewRosterCache: PlazaCrewMember[] = [];
+    let liveEnabledCache: boolean | null = null;
     const crewHooks = {
       crewRoster: () => crewRosterCache,
       crewState: async (): Promise<PlazaCrewState | null> => {
@@ -2383,6 +2592,17 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
           return r;
         } catch {
           return { ok: false, reason: "error" };
+        }
+      },
+      liveEnabled: () => liveEnabledCache,
+      liveSync: async (p: { x: number; z: number; face: number; action: string; live: boolean }) => {
+        if (serverChildId == null) return null;
+        try {
+          const r = await plazaLiveSync({ data: { childId: serverChildId, ...p } });
+          liveEnabledCache = r.liveEnabled;
+          return r as { liveEnabled: boolean; peers: PlazaLivePeer[] };
+        } catch {
+          return null;
         }
       },
     };
@@ -2482,6 +2702,12 @@ export function PillarPlaza3D({ onExit }: { onExit: () => void }) {
             crewRosterCache = (crew.members as PlazaCrewMember[]).filter((m) => m.id !== child.id);
           } catch {
             /* crew is server-backed; local-only mode plays solo */
+          }
+          try {
+            const social = await getPlazaSocial({ data: { childId: child.id } });
+            liveEnabledCache = social.liveEnabled;
+          } catch {
+            /* live is server-backed; local-only mode plays solo */
           }
         }
       } catch {

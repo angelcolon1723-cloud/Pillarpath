@@ -40,6 +40,12 @@ import {
   createPromoCode,
   saveProfile,
   getPlazaEvents,
+  getPlazaSocial,
+  createPlazaFriendInvite,
+  redeemPlazaFriendInvite,
+  respondPlazaFriend,
+  removePlazaFriend,
+  setPlazaLiveEnabled,
 } from "@/lib/pillarpath-server";
 import { Button } from "@/components/ui/button";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
@@ -232,6 +238,177 @@ function PlazaActivityCard({ childId }: { childId: number }) {
           </div>
         ))}
       </div>
+    </Card>
+  );
+}
+
+interface PlazaFriendEntry {
+  friendshipId: number;
+  childId: number;
+  name: string;
+  avatar: string;
+  live: boolean;
+}
+interface PlazaSocialState {
+  liveEnabled: boolean;
+  friends: PlazaFriendEntry[];
+  incoming: PlazaFriendEntry[];
+  outgoing: PlazaFriendEntry[];
+}
+
+/**
+ * Plaza friends & Live — the parent-approved contacts list for the game.
+ * A friendship exists only when BOTH parents approve: one shares a friend
+ * code, the other redeems it, the first confirms. Parents also hold the
+ * per-child Live switch here.
+ */
+function PlazaFriendsCard({ childId, childName }: { childId: number; childName: string }) {
+  const [social, setSocial] = useState<PlazaSocialState | null>(null);
+  const [friendCode, setFriendCode] = useState<string | null>(null);
+  const [redeemValue, setRedeemValue] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  const load = useCallback(() => {
+    getPlazaSocial({ data: { childId } })
+      .then((s) => setSocial(s as PlazaSocialState))
+      .catch(() => setSocial(null));
+  }, [childId]);
+  useEffect(load, [load]);
+
+  if (!social) return null;
+
+  const makeCode = async () => {
+    setBusy(true);
+    try {
+      const r = await createPlazaFriendInvite({ data: { childId } });
+      setFriendCode(r.code);
+      setMsg("");
+    } catch {
+      setMsg("Couldn't create a code — try again.");
+    }
+    setBusy(false);
+  };
+  const redeem = async () => {
+    setBusy(true);
+    const r = await redeemPlazaFriendInvite({ data: { childId, code: redeemValue.trim() } }).catch(() => null);
+    if (r?.ok) {
+      setMsg(`Request sent! ${r.friendName ?? "Their"} parent confirms, then ${childName} and ${r.friendName ?? "they"} are plaza friends.`);
+      setRedeemValue("");
+    } else {
+      const reasons: Record<string, string> = {
+        invalid: "That code doesn't look right — check it and try again.",
+        expired: "That code expired. Ask for a fresh one.",
+        "own-family": "That code is from your own family — it's for sharing with another family.",
+        exists: "Already friends, or a request is already waiting.",
+      };
+      setMsg(reasons[r?.reason ?? ""] ?? "Something went wrong — try again.");
+    }
+    setBusy(false);
+    load();
+  };
+  const act = async (fn: () => Promise<unknown>) => {
+    setBusy(true);
+    await fn().catch(() => null);
+    setBusy(false);
+    load();
+  };
+
+  return (
+    <Card className="p-5">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <CardTitle className="text-base">👥 Plaza friends &amp; Live</CardTitle>
+          <CardHint className="mt-0.5">
+            {childName}&apos;s approved contacts for the game — family, approved friends, approved classmates. Nobody else can ever appear in their plaza.
+          </CardHint>
+        </div>
+        <button
+          type="button"
+          disabled={busy}
+          onClick={() => act(() => setPlazaLiveEnabled({ data: { childId, enabled: !social.liveEnabled } }))}
+          className={cn(
+            "shrink-0 rounded-full px-3 py-1.5 text-xs font-extrabold",
+            social.liveEnabled ? "bg-emerald-500/20 text-emerald-300" : "bg-white/10 text-muted",
+          )}
+        >
+          {social.liveEnabled ? "🟢 Live ON" : "⚪ Live OFF"}
+        </button>
+      </div>
+
+      {social.incoming.length > 0 ? (
+        <div className="mt-3 space-y-2">
+          {social.incoming.map((f) => (
+            <div key={f.friendshipId} className="flex items-center gap-3 rounded-xl bg-surface-2/70 px-3 py-2.5">
+              <span className="text-xl">{f.avatar}</span>
+              <p className="min-w-0 flex-1 text-sm">
+                <b>{f.name}</b> wants to be {childName}&apos;s plaza friend.
+                <span className="block text-xs text-muted">Their parent already approved. Your confirmation makes it final.</span>
+              </p>
+              <Button size="sm" disabled={busy} onClick={() => act(() => respondPlazaFriend({ data: { friendshipId: f.friendshipId, approve: true } }))}>
+                Approve
+              </Button>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => act(() => respondPlazaFriend({ data: { friendshipId: f.friendshipId, approve: false } }))}>
+                Deny
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : null}
+
+      {social.friends.length > 0 ? (
+        <div className="mt-3 divide-y divide-border">
+          {social.friends.map((f) => (
+            <div key={f.friendshipId} className="flex items-center gap-3 py-2.5 first:pt-1 last:pb-0">
+              <span className="text-xl leading-none">{f.avatar}</span>
+              <p className="min-w-0 flex-1 text-sm font-semibold">
+                {f.name}
+                {f.live ? <span className="ml-2 text-xs font-bold text-emerald-400">🟢 in the plaza now</span> : null}
+              </p>
+              <Button size="sm" variant="ghost" disabled={busy} onClick={() => act(() => removePlazaFriend({ data: { friendshipId: f.friendshipId } }))}>
+                Remove
+              </Button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="mt-3 text-sm text-muted">No plaza friends yet. Share a friend code with another parent to connect their kids.</p>
+      )}
+      {social.outgoing.length > 0 ? (
+        <p className="mt-2 text-xs text-muted">
+          Waiting for the other parent to confirm: {social.outgoing.map((f) => f.name).join(", ")}
+        </p>
+      ) : null}
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-xl bg-surface-2/70 p-3">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-muted">Share {childName}&apos;s code</p>
+          {friendCode ? (
+            <p className="mt-1.5 font-mono text-2xl font-extrabold tracking-[0.3em]">{friendCode}</p>
+          ) : (
+            <Button size="sm" className="mt-2" disabled={busy} onClick={makeCode}>
+              Create friend code
+            </Button>
+          )}
+          <p className="mt-1.5 text-xs text-muted">Give it to the other parent. It works once, for 48 hours.</p>
+        </div>
+        <div className="rounded-xl bg-surface-2/70 p-3">
+          <p className="text-xs font-extrabold uppercase tracking-wide text-muted">Got a code from another parent?</p>
+          <div className="mt-2 flex gap-2">
+            <Input
+              value={redeemValue}
+              onChange={(e) => setRedeemValue(e.target.value.replace(/\D/g, "").slice(0, 6))}
+              placeholder="6-digit code"
+              inputMode="numeric"
+            />
+            <Button size="sm" disabled={busy || redeemValue.length !== 6} onClick={redeem}>
+              Connect
+            </Button>
+          </div>
+          <p className="mt-1.5 text-xs text-muted">Connecting sends a request — the other parent confirms before the kids are friends.</p>
+        </div>
+      </div>
+      {msg ? <p className="mt-3 text-sm font-semibold">{msg}</p> : null}
     </Card>
   );
 }
@@ -585,6 +762,10 @@ export function Dashboard({
 
       {/* Plaza activity — the game alive in the app */}
       {data.children[0] != null ? <PlazaActivityCard childId={data.children[0].id} /> : null}
+
+      {data.children[0] != null ? (
+        <PlazaFriendsCard childId={data.children[0].id} childName={data.children[0].name} />
+      ) : null}
 
       {/* Discover more */}
       <div>
