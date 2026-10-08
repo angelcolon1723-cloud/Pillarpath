@@ -52,6 +52,88 @@ const JOBS = [
   { id: "neighbor", name: "Neighbor Hero", desc: "Help a neighbor carry groceries.", reward: 60 },
 ];
 
+/* ------------------------------ build system ------------------------------ */
+interface BuildingDef { name: string; icon: string; cost: number; prosperity: number }
+const BUILDINGS: Record<string, BuildingDef[]> = {
+  chore: [
+    { name: "Cottage", icon: "🏡", cost: 50, prosperity: 20 },
+    { name: "Workshop", icon: "🏭", cost: 120, prosperity: 45 },
+    { name: "Town Hall", icon: "🏛️", cost: 250, prosperity: 80 },
+  ],
+  vault: [
+    { name: "Coin Hut", icon: "🛖", cost: 50, prosperity: 20 },
+    { name: "Silver Vault", icon: "🏦", cost: 150, prosperity: 50 },
+    { name: "Gold Tower", icon: "🗼", cost: 300, prosperity: 90 },
+  ],
+  market: [
+    { name: "Stall", icon: "⛺", cost: 50, prosperity: 20 },
+    { name: "Shop", icon: "🏪", cost: 120, prosperity: 45 },
+    { name: "Grand Bazaar", icon: "🏬", cost: 250, prosperity: 80 },
+  ],
+  studio: [
+    { name: "Easel", icon: "🎨", cost: 50, prosperity: 20 },
+    { name: "Art Studio", icon: "🖌️", cost: 120, prosperity: 45 },
+    { name: "Gallery", icon: "🖼️", cost: 250, prosperity: 80 },
+  ],
+  learn: [
+    { name: "Book Nook", icon: "📚", cost: 50, prosperity: 20 },
+    { name: "Library", icon: "🏫", cost: 150, prosperity: 50 },
+    { name: "University", icon: "🎓", cost: 300, prosperity: 90 },
+  ],
+  hall: [
+    { name: "Shrine", icon: "⛩️", cost: 50, prosperity: 20 },
+    { name: "Monument", icon: "🗿", cost: 150, prosperity: 50 },
+    { name: "Pillar of Legends", icon: "🏆", cost: 300, prosperity: 90 },
+  ],
+};
+const CITY_TIERS = [
+  { name: "Settlement", at: 0 },
+  { name: "Hamlet", at: 60 },
+  { name: "Village", at: 150 },
+  { name: "Town", at: 300 },
+  { name: "City", at: 500 },
+  { name: "Metropolis", at: 750 },
+];
+const QUESTS = [
+  { id: "first-build", name: "Break Ground", desc: "Build your first structure", check: (s: CitySave) => countBuildings(s) >= 1, reward: "trust10" },
+  { id: "builder", name: "Developer", desc: "Build 4 structures", check: (s: CitySave) => countBuildings(s) >= 4, reward: "courage15" },
+  { id: "village", name: "Growing Community", desc: "Reach Village tier", check: (s: CitySave) => prosperityOf(s) >= 150, reward: "both10" },
+  { id: "town", name: "Town Founder", desc: "Reach Town tier", check: (s: CitySave) => prosperityOf(s) >= 300, reward: "both15" },
+  { id: "magnate", name: "City Magnate", desc: "Build 10 structures", check: (s: CitySave) => countBuildings(s) >= 10, reward: "both20" },
+];
+interface CitySave {
+  structures: Record<string, Array<number | null>>; // districtId -> 3 slots, value = building index or null
+  questsDone: string[];
+  tutorialDone: boolean;
+}
+function countBuildings(s: CitySave): number {
+  return Object.values(s.structures).flat().filter((v) => v !== null).length;
+}
+function prosperityOf(s: CitySave): number {
+  let p = 0;
+  for (const [did, slots] of Object.entries(s.structures)) {
+    slots.forEach((bi) => {
+      if (bi !== null) p += BUILDINGS[did][bi].prosperity;
+    });
+  }
+  return p;
+}
+function loadCity(): CitySave {
+  try {
+    const raw = localStorage.getItem("pillarpath-city");
+    if (raw) {
+      const s = JSON.parse(raw) as CitySave;
+      if (s.structures && s.questsDone) return s;
+    }
+  } catch { /* ignore */ }
+  const structures: Record<string, Array<number | null>> = {};
+  for (const d of DISTRICT_DEFS) structures[d.id] = [null, null, null];
+  return { structures, questsDone: [], tutorialDone: false };
+}
+function saveCity(s: CitySave) {
+  try { localStorage.setItem("pillarpath-city", JSON.stringify(s)); } catch { /* ignore */ }
+}
+
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
   ctx.moveTo(x + r, y);
@@ -65,7 +147,19 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
 export function PillarGame() {
   const setScreen = useLedger((s) => s.setScreen);
   const awardUnits = useLedger((s) => s.awardUnits);
+  const debitUnits = useLedger((s) => s.debitUnits);
+  const balance = useLedger((s) => s.balance);
   const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  // City save: structures, quests, tutorial.
+  const [city, setCity] = useState<CitySave>(() => loadCity());
+  const cityRef = useRef(city);
+  cityRef.current = city;
+  const persistCity = (next: CitySave) => {
+    setCity(next);
+    cityRef.current = next;
+    saveCity(next);
+  };
 
   const completedChoreIds = useLedger((s) => s.completedChoreIds);
   const vault = useLedger((s) => s.vault);
@@ -300,6 +394,75 @@ export function PillarGame() {
     setMissionsDone((m) => [...m, id]);
     setSelected(null);
     pushToast("Mission accepted!", "Do it in real life, tell your parent — your Chore Village grows.", "#4ade80");
+  };
+
+  /* ------------------------------ building ------------------------------ */
+  const [showQuests, setShowQuests] = useState(false);
+  const [buildSlot, setBuildSlot] = useState<null | { district: string; slot: number }>(null);
+  const prosperity = prosperityOf(city);
+  const cityTier = [...CITY_TIERS].reverse().find((t) => prosperity >= t.at) ?? CITY_TIERS[0];
+  const nextTier = CITY_TIERS[CITY_TIERS.indexOf(cityTier) + 1];
+
+  const buildStructure = (districtId: string, slot: number) => {
+    const defs = BUILDINGS[districtId];
+    const def = defs[slot];
+    if (!def) return;
+    const err = debitUnits(def.cost, `Built ${def.name} in ${districtId}`);
+    if (err) {
+      pushToast("Not enough Units", `You need ${def.cost} Units. Earn them through chores and good decisions!`, "#ef4444");
+      return;
+    }
+    const next: CitySave = {
+      ...cityRef.current,
+      structures: {
+        ...cityRef.current.structures,
+        [districtId]: cityRef.current.structures[districtId].map((v, i) => (i === slot ? slot : v)),
+      },
+    };
+    persistCity(next);
+    setBuildSlot(null);
+    // Celebration.
+    const S = stateRef.current;
+    const d = S.districts.find((x) => x.id === districtId);
+    if (d) {
+      for (let i = 0; i < 36; i++) {
+        const a = Math.random() * Math.PI * 2;
+        const sp = 80 + Math.random() * 180;
+        S.particles.push({
+          x: d.pos.x, y: d.pos.y,
+          vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60,
+          life: 1 + Math.random() * 0.8, color: d.color,
+        });
+      }
+    }
+    const nt = Math.min(100, trustRef.current + 5);
+    trustRef.current = nt; setTrust(nt);
+    pushToast(`${def.icon} ${def.name} built!`, `+${def.prosperity} Prosperity, +5 Trust. Your city grows!`, "#4ade80");
+    checkQuests(next);
+  };
+
+  const checkQuests = (s: CitySave) => {
+    for (const q of QUESTS) {
+      if (s.questsDone.includes(q.id)) continue;
+      if (q.check(s)) {
+        const next = { ...s, questsDone: [...s.questsDone, q.id] };
+        persistCity(next);
+        if (q.reward === "trust10") {
+          const nt = Math.min(100, trustRef.current + 10);
+          trustRef.current = nt; setTrust(nt);
+          pushToast(`Quest: ${q.name}!`, "Completed! +10 Trust.", "#fbbf24");
+        } else if (q.reward === "courage15") {
+          setCourage((c) => c + 15);
+          pushToast(`Quest: ${q.name}!`, "Completed! +15 Courage.", "#fbbf24");
+        } else {
+          const amt = q.reward === "both20" ? 20 : q.reward === "both15" ? 15 : 10;
+          const nt = Math.min(100, trustRef.current + amt);
+          trustRef.current = nt; setTrust(nt);
+          setCourage((c) => c + amt);
+          pushToast(`Quest: ${q.name}!`, `Completed! +${amt} Trust, +${amt} Courage.`, "#fbbf24");
+        }
+      }
+    }
   };
 
   /* ------------------------------ canvas loop ------------------------------ */
@@ -792,6 +955,44 @@ export function PillarGame() {
         }
       }
 
+      // Built structures around each district.
+      const structRef = cityRef.current.structures;
+      const SLOT_OFFSETS = [
+        { x: -95, y: -70 }, { x: 95, y: -70 }, { x: 0, y: 105 },
+      ];
+      for (const d of S.districts) {
+        const slots = structRef[d.id] ?? [null, null, null];
+        slots.forEach((bi, si) => {
+          if (bi === null) return;
+          const def = BUILDINGS[d.id][bi];
+          if (!def) return;
+          const ox = SLOT_OFFSETS[si].x;
+          const oy = SLOT_OFFSETS[si].y;
+          const bx = d.pos.x + ox;
+          const by = d.pos.y + oy;
+          const bBounce = Math.abs(Math.sin(S.time * 2 + si * 2 + d.pos.x)) * 3;
+          // Glow.
+          const bg = ctx.createRadialGradient(bx, by, 4, bx, by, 44);
+          bg.addColorStop(0, `${d.color}55`);
+          bg.addColorStop(1, `${d.color}00`);
+          ctx.fillStyle = bg;
+          ctx.beginPath(); ctx.arc(bx, by, 44, 0, Math.PI * 2); ctx.fill();
+          // Base.
+          ctx.fillStyle = "rgba(0,0,0,0.45)";
+          ctx.beginPath(); ctx.ellipse(bx, by + 22, 24, 8, 0, 0, Math.PI * 2); ctx.fill();
+          ctx.fillStyle = "#0f172a";
+          roundRect(ctx, bx - 26, by - 26 + bBounce * 0.3, 52, 52, 12);
+          ctx.fill();
+          ctx.strokeStyle = d.color;
+          ctx.lineWidth = 2;
+          roundRect(ctx, bx - 26, by - 26 + bBounce * 0.3, 52, 52, 12);
+          ctx.stroke();
+          ctx.font = "28px system-ui";
+          ctx.textAlign = "center";
+          ctx.fillText(def.icon, bx, by + 10 + bBounce * 0.3);
+        });
+      }
+
       // Citizens walking.
       for (const c of S.citizens!) {
         const bob = c.pause > 0 ? 0 : Math.abs(Math.sin(S.time * 8 + c.ph)) * 3;
@@ -1008,12 +1209,21 @@ export function PillarGame() {
           <Button variant="ghost" size="sm" onClick={() => setShowCodex(true)} className="gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
             <BookOpen className="size-4" /> Codex
           </Button>
+          <Button variant="ghost" size="sm" onClick={() => setShowQuests(true)} className="gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
+            <span>🎯</span> Quests
+          </Button>
           <div className="flex items-center gap-1 text-xs font-bold text-white" title="Trust">
             <Heart className="size-4" style={{ color: trust >= 70 ? "#4ade80" : trust >= 40 ? "#fbbf24" : "#ef4444" }} />
             <span>{trust}</span>
           </div>
           <div className="flex items-center gap-1 text-xs font-bold text-amber-300" title="Courage">
             <span>💪</span><span>{courage}</span>
+          </div>
+          <div className="flex items-center gap-1 rounded-full bg-white/10 px-2 py-0.5 text-xs font-bold text-emerald-300" title="Prosperity">
+            <span>🏙️</span><span>{cityTier.name}</span><span className="text-white/60">{prosperity}</span>
+          </div>
+          <div className="flex items-center gap-1 text-xs font-bold text-yellow-300" title="Units">
+            <span>🪙</span><span>{balance}</span>
           </div>
           <div className="flex items-center gap-1 text-xs font-bold text-cyan-300" title="Rank">
             <Sparkles className="size-4" /> {rank.name}
@@ -1092,6 +1302,34 @@ export function PillarGame() {
             </div>
           ) : (
             <div className="mt-4">
+              {/* Build slots */}
+              <p className="mb-2 text-xs font-bold uppercase tracking-widest text-white/60">🏗️ Build</p>
+              <div className="mb-4 grid grid-cols-3 gap-2">
+                {([0, 1, 2] as const).map((si) => {
+                  const built = city.structures[selected!]?.[si];
+                  const def = BUILDINGS[selected!][si];
+                  if (built !== null && built !== undefined) {
+                    return (
+                      <div key={si} className="rounded-xl border p-2 text-center" style={{ borderColor: `${selDef.color}66`, background: `${selDef.color}11` }}>
+                        <p className="text-2xl">{def.icon}</p>
+                        <p className="mt-1 text-[10px] font-bold text-white">{def.name}</p>
+                        <p className="text-[10px] text-white/50">+{def.prosperity} 🏙️</p>
+                      </div>
+                    );
+                  }
+                  return (
+                    <button
+                      key={si}
+                      onClick={() => setBuildSlot({ district: selected!, slot: si })}
+                      className="rounded-xl border-2 border-dashed border-white/20 p-2 text-center transition hover:border-white/40 hover:bg-white/5"
+                    >
+                      <p className="text-2xl text-white/40">+</p>
+                      <p className="mt-1 text-[10px] font-bold text-white/60">{def.name}</p>
+                      <p className="text-[10px] font-bold text-yellow-300">🪙 {def.cost}</p>
+                    </button>
+                  );
+                })}
+              </div>
               {selected === "chore" && (
                 <div className="space-y-2">
                   {JOBS.map((job) => {
@@ -1157,7 +1395,88 @@ export function PillarGame() {
         </div>
       )}
 
-      {/* Ceremony */}
+      {/* Build confirmation */}
+      {buildSlot && (() => {
+        const def = BUILDINGS[buildSlot.district][buildSlot.slot];
+        const dName = DISTRICT_DEFS.find((d) => d.id === buildSlot.district)?.name;
+        return (
+          <div className="absolute inset-0 z-30 grid place-items-center bg-black/70 p-6 backdrop-blur-sm">
+            <div className="w-full max-w-xs rounded-3xl border border-white/15 bg-[#0b1020] p-6 text-center">
+              <p className="text-5xl">{def.icon}</p>
+              <p className="mt-2 font-display text-xl font-bold text-white">{def.name}</p>
+              <p className="text-sm text-white/60">{dName}</p>
+              <div className="mt-3 flex items-center justify-center gap-4 text-sm font-bold">
+                <span className="text-yellow-300">🪙 {def.cost} Units</span>
+                <span className="text-emerald-300">🏙️ +{def.prosperity}</span>
+              </div>
+              <p className="mt-2 text-xs text-white/50">You have {balance} Units</p>
+              <div className="mt-4 flex gap-2">
+                <Button variant="outline" className="flex-1 border-white/20 text-white hover:bg-white/10" onClick={() => setBuildSlot(null)}>Cancel</Button>
+                <Button className="flex-1 bg-emerald-400 font-bold text-black hover:bg-emerald-300" onClick={() => buildStructure(buildSlot.district, buildSlot.slot)}>Build!</Button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Quests panel */}
+      {showQuests && (
+        <div className="absolute inset-0 z-30 grid place-items-center bg-black/70 p-6 backdrop-blur-sm">
+          <div className="max-h-[70%] w-full max-w-sm overflow-y-auto rounded-3xl border border-white/15 bg-[#0b1020] p-5">
+            <div className="flex items-center justify-between">
+              <p className="font-display text-xl font-bold text-white">🎯 City Quests</p>
+              <Button variant="ghost" size="sm" onClick={() => setShowQuests(false)} className="text-white hover:bg-white/10">✕</Button>
+            </div>
+            <div className="mt-3 space-y-2">
+              {QUESTS.map((q) => {
+                const done = city.questsDone.includes(q.id);
+                return (
+                  <div key={q.id} className={`rounded-xl border p-3 ${done ? "border-emerald-400/40 bg-emerald-400/10" : "border-white/10 bg-white/5"}`}>
+                    <div className="flex items-center justify-between">
+                      <p className="font-bold text-white">{done ? "✅" : "⬜"} {q.name}</p>
+                    </div>
+                    <p className="mt-0.5 text-xs text-white/60">{q.desc}</p>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="mt-4 rounded-xl bg-white/5 p-3">
+              <p className="text-xs font-bold uppercase tracking-widest text-white/50">City Tier</p>
+              <p className="font-display text-lg font-bold text-white">🏙️ {cityTier.name} <span className="text-sm text-white/50">{prosperity} prosperity</span></p>
+              {nextTier && (
+                <div className="mt-2">
+                  <div className="h-2 overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full rounded-full bg-gradient-to-r from-emerald-400 to-cyan-300" style={{ width: `${Math.min(100, Math.round(((prosperity - cityTier.at) / (nextTier.at - cityTier.at)) * 100))}%` }} />
+                  </div>
+                  <p className="mt-1 text-xs text-white/50">{nextTier.at - prosperity} to {nextTier.name}</p>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Tutorial */}
+      {!city.tutorialDone && (
+        <div className="absolute inset-0 z-40 grid place-items-center bg-black/80 p-6 backdrop-blur-sm">
+          <div className="w-full max-w-sm rounded-3xl border border-cyan-300/30 bg-[#0b1020] p-6 text-center">
+            <p className="text-4xl">🏙️</p>
+            <p className="mt-2 font-display text-2xl font-bold text-white">Welcome, Builder!</p>
+            <div className="mt-4 space-y-3 text-left text-sm text-white/80">
+              <p><span className="font-bold text-cyan-300">1.</span> Tap any district to enter it.</p>
+              <p><span className="font-bold text-cyan-300">2.</span> Spend Units you've earned to build structures.</p>
+              <p><span className="font-bold text-cyan-300">3.</span> Buildings raise Prosperity — grow from Settlement to Metropolis!</p>
+              <p><span className="font-bold text-cyan-300">4.</span> Do real chores and save real Units to unlock more.</p>
+            </div>
+            <Button
+              className="mt-6 w-full bg-cyan-400 font-bold text-black hover:bg-cyan-300"
+              onClick={() => persistCity({ ...cityRef.current, tutorialDone: true })}
+            >
+              Start Building!
+            </Button>
+          </div>
+        </div>
+      )}
       {ceremony && (
         <div className="absolute inset-0 z-20 grid place-items-center bg-black/70 backdrop-blur-sm">
           <div className="mx-6 rounded-3xl border border-amber-300/50 bg-gradient-to-b from-amber-950/90 to-black/90 p-8 text-center">
