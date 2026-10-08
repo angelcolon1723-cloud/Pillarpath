@@ -473,7 +473,8 @@ const NPC_MEMORY: Record<string, { good: string; bad: string }> = {
 const PLAZA_CSS = `
 .pp3d{position:absolute;inset:0;overflow:hidden;font-family:ui-rounded,system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
 .pp3d canvas{display:block;width:100%;height:100%}
-.pp3d-hud{position:absolute;left:8px;right:8px;top:calc(env(safe-area-inset-top,0px) + 8px);display:flex;flex-wrap:wrap;gap:6px;pointer-events:none;z-index:5}
+.pp3d-hud{position:absolute;left:8px;right:8px;top:calc(env(safe-area-inset-top,0px) + 8px);display:flex;flex-wrap:wrap;gap:6px;pointer-events:none;z-index:5;padding-right:100px;box-sizing:border-box}
+.pp3d-menubtn{border:1px solid #67e8f9aa !important;box-shadow:0 4px 18px #06b6d488}
 .pp3d-chip{background:rgba(15,10,40,.72);border:1px solid rgba(139,92,246,.35);color:#f3efff;border-radius:14px;padding:5px 10px;font-size:12px;font-weight:700;box-shadow:0 2px 10px #0006;backdrop-filter:blur(6px)}
 .pp3d-bar{display:inline-block;width:46px;height:7px;border-radius:4px;background:#ffffff22;vertical-align:middle;overflow:hidden;margin-left:4px}
 .pp3d-bar i{display:block;height:100%;border-radius:4px}
@@ -1512,7 +1513,6 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
       (shiftActive
         ? `<span class="pp3d-chip" style="border-color:#9b4dff;background:rgba(106,27,154,.8)">🌀 ${Math.ceil(shiftTimer)}s</span>`
         : "") +
-      `<button class="pp3d-chip" style="pointer-events:auto;cursor:pointer;border-color:#d4a017" onclick="__pp3d.post()">📰${S.news.length - S.newsSeen > 0 ? ` <b style="color:#ff5252">●${S.news.length - S.newsSeen}</b>` : ""}</button>` +
       (S.daily && !S.daily.done ? `<span class="pp3d-chip" style="border-color:#ffaa00">🎯 ${S.daily.progress}/${S.daily.need}</span>` : "") +
       (S.daily && S.daily.done ? `<span class="pp3d-chip" style="border-color:#00ff9d">✅ Daily done</span>` : "") +
       (autoPilot ? `<span class="pp3d-chip" style="border-color:#00ff9d;background:rgba(0,170,102,.5)">🟢 AUTO</span>` : "") +
@@ -1533,6 +1533,10 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
   let near = -1;
   let nearNpc = -1;
   let nearCache = -1;
+  // The button panel lives behind one ☰ Menu button (King's call,
+  // 2026-10-08): the world stays clean; only contextual actions
+  // (quest / build / talk / cache / Doubtling) are always visible.
+  let panelOpen = false;
   let lastTier = "";
   let msgT = 0;
   function say(t: string) {
@@ -1557,23 +1561,34 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
       b.push(`<button class="pp3d-btn" onclick="__pp3d.hiCrew(${nearCrew})">👋 Say hi to ${crewWalkers[nearCrew].m.name}</button>`);
     if (nearCache >= 0) b.push(`<button class="pp3d-btn" onclick="__pp3d.openCache(${nearCache})">🎁 Open supply cache</button>`);
     if (nearWisp >= 0) b.push(`<button class="pp3d-btn" onclick="__pp3d.faceWisp(${nearWisp})">\u{1F32B}\uFE0F Face the Doubtling</button>`);
-    b.push(`<button class="pp3d-btn alt" onclick="__pp3d.codex()">📖 Codex</button>`);
-    b.push(`<button class="pp3d-btn alt" onclick="__pp3d.crew()">👥 Crew</button>`);
-    b.push(`<button class="pp3d-btn alt" onclick="__pp3d.toggleLive()">${liveOn ? "🟢 Live ON" : "🔴 Go Live"}</button>`);
-    if (liveOn) {
-      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.emote('wave')">👋 Wave</button>`);
-      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.emote('great')">🌟 Great job!</button>`);
-      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.emote('follow')">📍 Follow me!</button>`);
-      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.emote('help')">🆘 Help me!</button>`);
+    if (panelOpen) {
+      const unread = S.news.length - S.newsSeen;
+      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.post()">📰 The Pillar Post${unread > 0 ? ` <b style="color:#ff5252">●${unread}</b>` : ""}</button>`);
+      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.codex()">📖 Codex</button>`);
+      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.crew()">👥 Crew</button>`);
+      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.toggleLive()">${liveOn ? "🟢 Live ON" : "🔴 Go Live"}</button>`);
+      if (liveOn) {
+        b.push(`<button class="pp3d-btn alt" onclick="__pp3d.emote('wave')">👋 Wave</button>`);
+        b.push(`<button class="pp3d-btn alt" onclick="__pp3d.emote('great')">🌟 Great job!</button>`);
+        b.push(`<button class="pp3d-btn alt" onclick="__pp3d.emote('follow')">📍 Follow me!</button>`);
+        b.push(`<button class="pp3d-btn alt" onclick="__pp3d.emote('help')">🆘 Help me!</button>`);
+      }
+      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.toggleAuto()">${autoPilot ? "🟢 Auto ON" : "⚪ Autopilot"}</button>`);
+      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.realLife()">🌟 Real-life progress</button>`);
+      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.mute()">${S.muted ? "🔇 Muted" : "🔊 Sound"}</button>`);
+      b.push(`<button class="pp3d-btn alt" onclick="__pp3d.help()">❓ Guide</button>`);
+      if (tiltHas) b.push(`<button class="pp3d-btn alt" onclick="__pp3d.tilt()">📱 Tilt: ${tiltOn ? "on" : "off"}</button>`);
     }
-    b.push(`<button class="pp3d-btn alt" onclick="__pp3d.toggleAuto()">${autoPilot ? "🟢 Auto ON" : "⚪ Autopilot"}</button>`);
-    b.push(`<button class="pp3d-btn alt" onclick="__pp3d.realLife()">🌟 Real-life progress</button>`);
-    b.push(`<button class="pp3d-btn alt" onclick="__pp3d.mute()">${S.muted ? "🔇 Muted" : "🔊 Sound"}</button>`);
-    b.push(`<button class="pp3d-btn alt" onclick="__pp3d.help()">❓</button>`);
-    if (tiltHas) b.push(`<button class="pp3d-btn alt" onclick="__pp3d.tilt()">📱 Tilt: ${tiltOn ? "on" : "off"}</button>`);
+    const unreadDot = !panelOpen && S.news.length - S.newsSeen > 0 ? ` <b style="color:#ff5252">●</b>` : "";
+    b.push(`<button class="pp3d-btn pp3d-menubtn" onclick="__pp3d.togglePanel()">${panelOpen ? "✖ Close" : "☰ Menu"}${unreadDot}</button>`);
     panel.innerHTML = b.join("");
   }
   function modal(html: string) {
+    // Opening any full-screen view tucks the menu away behind it.
+    if (panelOpen) {
+      panelOpen = false;
+      drawPanel();
+    }
     $("pp3d-mbox").innerHTML = html;
     $("pp3d-modal").style.display = "flex";
   }
@@ -1581,7 +1596,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
   function runTutorial() {
     if (S.tutorial >= 5) return;
     const steps = [
-      { t: "Welcome to Pillar Plaza", d: "A living world that grows when you get better at real life. Tap the ground to walk, or use WASD keys." },
+      { t: "Welcome to Pillar Plaza", d: "A living world that grows when you get better at real life. Tap the ground to walk, or use WASD keys. Everything else — Crew, Codex, Live, settings — lives behind the ☰ Menu button, so the plaza stays calm and clean." },
       { t: "Six districts, six values", d: "Walk to a district and take a quest. Good choices grow Trust and heal blight. Maya, Jay and Sam patrol the paths under glowing beacons — and your crew can join your plaza to help!" },
       { t: "Real life powers the plaza", d: "Real chores and saving open Vault Mountain and Market Harbor — and grow Family Bond 💜, which unlocks Pillar powers like free builds." },
       { t: "Name the Doubtlings \u{1F32B}\uFE0F", d: "Glowing wisps drift through the plaza — Doubt, Impulse, Loneliness and their kin. Walk up to one, hear its whisper, then face it with the truth. Naming a feeling makes it smaller. +1 Courage each time." },
@@ -1943,6 +1958,11 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
           `<button class="pp3d-btn alt" onclick="__pp3d.close()">Bye!</button>`,
       );
     },
+    togglePanel() {
+      panelOpen = !panelOpen;
+      sfx.click();
+      drawPanel();
+    },
     toggleLive() {
       sfx.click();
       if (!liveAvailable()) {
@@ -1952,6 +1972,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
         return say("🔴 Your grown-up has Live turned off for now.");
       }
       liveOn = !liveOn;
+      panelOpen = false;
       sfx.buzz(liveOn ? [40, 40, 90] : [60]);
       if (liveOn) {
         say("🟢 You're LIVE! Family and approved friends can see you in the plaza.");
@@ -1977,6 +1998,8 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
       if (mine[a]) say(mine[a]);
       sfx.click();
       sfx.buzz(20);
+      panelOpen = false;
+      drawPanel();
       void liveSyncNow();
     },
     async crew() {
@@ -2095,6 +2118,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
       sfx.click();
       modal(
         `<h3>❓ Plaza Guide</h3>` +
+          `<div class="pp3d-stat">☰ <b>Menu:</b> the ☰ Menu button at the bottom opens everything — the Pillar Post, Codex, Crew, Live, Autopilot and settings — so the plaza itself stays clean. Buttons like Take quest and Build appear on their own when you walk up to something.</div>` +
           `<div class="pp3d-stat">🚶 <b>Move:</b> tap the ground to walk, or WASD / arrow keys. Drag to look, pinch or wheel to zoom.</div>` +
           `<div class="pp3d-stat">🏙️ <b>Districts:</b> take quests, build structures with real Units. Good choices heal blight.</div>` +
           `<div class="pp3d-stat">\u{1F32B}\uFE0F <b>Doubtlings:</b> face glowing wisps with the truth (+1 Courage). Open the 📖 Codex.</div>` +
@@ -2104,7 +2128,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi, hooks: PlazaHo
           `<div class="pp3d-stat">🎯 <b>Daily:</b> one challenge a day pays +15 real Units.</div>` +
           `<div class="pp3d-stat">💬 <b>People:</b> Maya, Jay and Sam patrol the paths under glowing beacons — walk up to talk. Neighbors stroll the plaza too.</div>` +
           `<div class="pp3d-stat">👥 <b>Crew:</b> other students on your family account join your plaza (gold rings) and share a weekly Crew Quest — every good deed and faced Doubtling is a help for the whole crew. Finish together, everyone earns +20 Units.</div>` +
-          `<div class="pp3d-stat">🟢 <b>Live:</b> tap 🔴 Go Live to be in the plaza together, in real time. Only family, parent-approved friends, and approved classmates can ever see you — nobody else. Talk with 👋 waves and preset phrases; helping side by side counts double.</div>` +
+          `<div class="pp3d-stat">🟢 <b>Live:</b> open ☰ Menu and tap 🔴 Go Live to be in the plaza together, in real time. Only family, parent-approved friends, and approved classmates can ever see you — nobody else. Talk with 👋 waves and preset phrases; helping side by side counts double.</div>` +
           `<div class="pp3d-stat">🔑 <b>Kid pass:</b> playing on your own tablet? Tap 🔑 Kid pass and enter the pass a grown-up makes for you on their dashboard (Plaza friends &amp; Live) — your crew, cloud saves and Live friends connect on this device too.</div>` +
           `<button class="pp3d-btn" onclick="__pp3d.replayTut()">▶️ Replay tutorial</button>` +
           `<button class="pp3d-btn alt" onclick="__pp3d.close()">Close</button>`,
