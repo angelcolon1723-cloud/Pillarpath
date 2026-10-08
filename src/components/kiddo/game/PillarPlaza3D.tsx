@@ -121,6 +121,14 @@ function makeSfx() {
     reward() {
       [880, 1174, 1568].forEach((f, i) => tone(f, i * 0.07, 0.2, "triangle", 0.09));
     },
+    shift() {
+      tone(200, 0, 0.28, "sine", 0.06);
+      tone(420, 0.14, 0.35, "triangle", 0.05);
+    },
+    ach() {
+      tone(659, 0, 0.09, "sine", 0.1);
+      tone(880, 0.09, 0.18, "sine", 0.1);
+    },
     bird(pan: number) {
       const c = ac();
       if (!c) return;
@@ -234,6 +242,7 @@ interface District {
   c: number;
   gate?: string;
   qs: Dilemma[];
+  pq: Dilemma;
 }
 const DIST: District[] = [
   {
@@ -242,6 +251,7 @@ const DIST: District[] = [
       { t: "Your neighbour is sick and her garden is full of weeds. You have free time.", g: "Help weed the garden before playing.", b: "Skip it. Not your problem." },
       { t: "You promised to take out the trash, but your show is starting.", g: "Pause the show — a promise is a promise.", b: "Somebody else will do it." },
     ],
+    pq: { t: "A whole street needs weeding and the sun is setting.", g: "Organise a quick team and finish before dark.", b: "Pretend you didn't notice." },
   },
   {
     n: "Vault Mountain", e: "🏦", v: "savings", c: 0x8fa6c9,
@@ -250,6 +260,7 @@ const DIST: District[] = [
       { t: "A shiny toy costs all your savings. A bigger goal is two weeks away.", g: "Wait and keep saving for the bigger goal.", b: "Spend it all right now." },
       { t: "Jay found a “double your Units” trick from a stranger online.", g: "Tell Jay it sounds like a scam and walk away.", b: "Try the trick — fast Units!" },
     ],
+    pq: { t: "A limited-edition item is half-price for one hour only.", g: "Check if it fits your bigger goal first.", b: "Buy it immediately — it's a deal!" },
   },
   {
     n: "Market Harbor", e: "🏪", v: "smart spending", c: 0x5fb8b0,
@@ -258,6 +269,7 @@ const DIST: District[] = [
       { t: "A stall sells the same pencil for half the price down the pier.", g: "Compare prices, then buy the cheaper one.", b: "Buy the first one you see." },
       { t: "A merchant offers “one free candy” if you buy three bags.", g: "Do the math — check if it is really a deal.", b: "Free candy! Take it!" },
     ],
+    pq: { t: "Two stalls claim the same quality. One is 30% more expensive.", g: "Ask questions and choose value over brand.", b: "Grab the expensive one so you look cool." },
   },
   {
     n: "Studio Island", e: "🎨", v: "creativity", c: 0xd98cb3,
@@ -265,6 +277,7 @@ const DIST: District[] = [
       { t: "Your painting looks wrong to you. A friend is watching.", g: "Keep going and try a new colour.", b: "Crumple it up and quit." },
       { t: "Maya says your song needs a weird verse. It feels risky.", g: "Try the weird verse — new sounds grow you.", b: "Play it safe and keep it boring." },
     ],
+    pq: { t: "You have 10 minutes left and the canvas is still blank.", g: "Start with one bold stroke and see where it leads.", b: "Give up and say you're not creative." },
   },
   {
     n: "Learning Lagoon", e: "📚", v: "knowledge", c: 0x7bb661,
@@ -272,6 +285,7 @@ const DIST: District[] = [
       { t: "A puzzle is hard. A classmate offers to just give you the answer.", g: "Ask for a hint instead and solve it yourself.", b: "Copy the answer." },
       { t: "You got a question wrong in front of everyone.", g: "Ask what you missed so you can learn it.", b: "Laugh it off and never think about it again." },
     ],
+    pq: { t: "The test is tomorrow and you still don't understand one chapter.", g: "Teach the idea out loud to a toy or sibling.", b: "Hope the question won't appear." },
   },
   {
     n: "Hall of Becoming", e: "🏛️", v: "growth", c: 0xe6c65a,
@@ -279,6 +293,7 @@ const DIST: District[] = [
       { t: "You made a mistake that hurt a friend. Nobody saw it.", g: "Say sorry and make it right.", b: "Stay quiet and hope it passes." },
       { t: "Doubt whispers: “You will never reach Pillar.”", g: "Answer it: “Better than yesterday is enough.”", b: "Believe the whisper and stop trying." },
     ],
+    pq: { t: "You were blamed for something you only partly caused.", g: "Own your part and help fix the whole thing.", b: "Point the finger at someone else." },
   },
 ];
 
@@ -288,7 +303,22 @@ const TIERS: [number, string][] = [
   [60, "Town"],
   [120, "City"],
   [220, "Metropolis"],
+  [400, "Dimensional Hub"],
 ];
+
+const ACH: Record<string, { t: string; d: string }> = {
+  firstQuest: { t: "First Step", d: "Complete your first quest" },
+  firstBuild: { t: "Builder", d: "Build your first structure" },
+  trust5: { t: "Trusted", d: "Reach 5 Trust" },
+  family10: { t: "Family Bond", d: "Reach 10 Family Bond" },
+  shift1: { t: "Dimensional Traveller", d: "Use Dimensional Shift" },
+  allOpen: { t: "Explorer", d: "Open every district" },
+  fullDistrict: { t: "City Planner", d: "Fill a district" },
+  blightFree: { t: "Healer", d: "Clear all blight from a district" },
+};
+
+const SHIFT_COST = 1;
+const SHIFT_DUR = 45;
 const R = 48;
 const COST = 20;
 const GATE = 15;
@@ -319,6 +349,12 @@ const PLAZA_CSS = `
 .pp3d-track{height:8px;border-radius:5px;background:#ffffff1c;margin-top:6px;overflow:hidden}
 .pp3d-track i{display:block;height:100%;border-radius:5px;background:linear-gradient(90deg,#06b6d4,#8b5cf6)}
 .pp3d-err{position:absolute;left:8px;right:8px;top:60px;background:#fff;color:#900;padding:8px;font:12px monospace;display:none;z-index:20;border-radius:10px}
+.pp3d-dimfx{position:absolute;inset:0;pointer-events:none;z-index:3;opacity:0;transition:opacity .7s;background:radial-gradient(ellipse at 50% 40%, transparent 25%, #6a1b9aaa 100%);mix-blend-mode:screen}
+.pp3d-dimfx.on{opacity:.6}
+.pp3d-ach{position:absolute;top:calc(env(safe-area-inset-top,0px) + 76px);left:50%;transform:translateX(-50%) translateY(-24px);background:linear-gradient(135deg,#f0d78c,#d4a017);color:#1a1200;padding:10px 18px;border-radius:16px;font-weight:800;font-size:13px;opacity:0;pointer-events:none;transition:.45s;z-index:15;box-shadow:0 8px 28px #0008;white-space:nowrap;max-width:92%;overflow:hidden;text-overflow:ellipsis}
+.pp3d-ach.show{opacity:1;transform:translateX(-50%) translateY(0)}
+.pp3d-tutdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#ffffff30;margin:0 3px}
+.pp3d-tutdot.on{background:#d4a017}
 `;
 
 /* ---------------- The plaza itself (adapted from the contributed foundation) ---------------- */
@@ -339,10 +375,19 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   interface PlazaState {
     trust: number;
     courage: number;
+    family: number;
+    freeBuild: number;
+    famBase: { chores: number; saved: number };
+    ach: Record<string, boolean>;
+    tutorial: number;
     blight: number[];
     built: number[];
   }
-  let S: PlazaState = { trust: 0, courage: 0, blight: [0, 0, 0, 0, 0, 0], built: [0, 0, 0, 0, 0, 0] };
+  let S: PlazaState = {
+    trust: 0, courage: 0, family: 0, freeBuild: 0,
+    famBase: { chores: 0, saved: 0 }, ach: {}, tutorial: 0,
+    blight: [0, 0, 0, 0, 0, 0], built: [0, 0, 0, 0, 0, 0],
+  };
   try {
     const j = localStorage.getItem(SAVE_KEY);
     if (j) S = Object.assign(S, JSON.parse(j));
@@ -358,8 +403,57 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   };
   const isOpen = (i: number) => (i === 1 ? api.getSaved() >= 50 : i === 2 ? api.getChores() >= 3 : true);
   const prosp = () =>
-    S.built.reduce((a, b) => a + b * 5, 0) + Math.floor(S.trust / 2) - S.blight.reduce((a, b) => a + b, 0);
+    S.built.reduce((a, b) => a + b * 5, 0) +
+    Math.floor(S.trust / 2) +
+    Math.floor(S.family / 3) -
+    S.blight.reduce((a, b) => a + b, 0);
   const rankIdx = () => Math.max(0, RANK_ORDER.indexOf(api.getRank()));
+
+  // --- Dimensional Shift state (runtime only, never saved) ---
+  let shiftActive = false, shiftTimer = 0, shiftDistrict = -1;
+
+  // --- Family Bond: derived from REAL chores + savings deltas, never fake-logged ---
+  function checkFamilyPowers() {
+    if (S.family >= 15 && S.freeBuild < 1) {
+      S.freeBuild = 1;
+      save();
+      showAch("family10");
+      say("💜 Pillar power unlocked: 1 free build!");
+      sfx.reward();
+      sfx.buzz([40, 40, 40, 40, 120]);
+    } else if (S.family >= 10) {
+      showAch("family10");
+    }
+  }
+  function syncFamily() {
+    const chores = api.getChores();
+    const saved = api.getSaved();
+    const dc = Math.max(0, chores - S.famBase.chores);
+    const ds = Math.max(0, saved - S.famBase.saved);
+    const gain = dc * 2 + Math.floor(ds / 10) * 3;
+    if (gain > 0) {
+      S.family += gain;
+      S.famBase = { chores, saved };
+      save();
+      checkFamilyPowers();
+    } else if (chores !== S.famBase.chores || saved !== S.famBase.saved) {
+      S.famBase = { chores, saved };
+      save();
+    }
+  }
+
+  function showAch(key: string) {
+    if (S.ach[key]) return;
+    const a = ACH[key];
+    if (!a) return;
+    S.ach[key] = true;
+    save();
+    achBox.textContent = `🏆 ${a.t} — ${a.d}`;
+    achBox.classList.add("show");
+    sfx.ach();
+    sfx.buzz([30, 50, 30, 50, 90]);
+    window.setTimeout(() => achBox.classList.remove("show"), 3400);
+  }
 
   /* ----- DOM scaffold ----- */
   const style = document.createElement("style");
@@ -370,6 +464,8 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   wrap.innerHTML = `
     <div class="pp3d-hud" id="pp3d-hud"></div>
     <div class="pp3d-msg" id="pp3d-msg"></div>
+    <div class="pp3d-ach" id="pp3d-ach"></div>
+    <div class="pp3d-dimfx" id="pp3d-dimfx"></div>
     <div class="pp3d-joy" id="pp3d-joy"><div class="pp3d-knob" id="pp3d-knob"></div></div>
     <div class="pp3d-panel" id="pp3d-panel"></div>
     <div class="pp3d-modal" id="pp3d-modal"><div class="box" id="pp3d-mbox"></div></div>
@@ -377,11 +473,17 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   root.appendChild(wrap);
   const $ = (id: string) => wrap.querySelector<HTMLElement>("#" + id)!;
   const hud = $("pp3d-hud"), panel = $("pp3d-panel"), msgBox = $("pp3d-msg");
+  const dimfx = $("pp3d-dimfx"), achBox = $("pp3d-ach");
 
   /* ----- three.js scene ----- */
   const rd = new THREE.WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
   rd.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
   rd.shadowMap.enabled = true;
+  rd.shadowMap.type = THREE.PCFSoftShadowMap;
+  if (THREE.ACESFilmicToneMapping !== undefined) {
+    rd.toneMapping = THREE.ACESFilmicToneMapping;
+    rd.toneMappingExposure = 1.15;
+  }
   if (THREE.sRGBEncoding !== undefined) rd.outputEncoding = THREE.sRGBEncoding;
   wrap.prepend(rd.domElement);
   const scene = new THREE.Scene();
@@ -400,6 +502,8 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   scene.fog = new THREE.Fog(0x9fd8f7, 70, 200);
 
   const M = (c: number, o?: any) => new THREE.MeshLambertMaterial(Object.assign({ color: c }, o || {}));
+  const std = (c: number, o?: any) =>
+    new THREE.MeshStandardMaterial(Object.assign({ color: c, roughness: 0.75, metalness: 0.05 }, o || {}));
   const add = (g: any, m: any, x: number, y: number, z: number, p?: any): any => {
     const o = new THREE.Mesh(g, m);
     o.position.set(x, y, z);
@@ -409,8 +513,8 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   };
 
   // Ground + central plaza
-  add(new THREE.CircleGeometry(170, 48), M(0x7cc46a), 0, 0, 0).rotation.x = -Math.PI / 2;
-  add(new THREE.CylinderGeometry(15, 15, 0.3, 40), M(0xf0e4cc), 0, 0.15, 0);
+  add(new THREE.CircleGeometry(170, 48), std(0x7cc46a, { roughness: 0.92 }), 0, 0, 0).rotation.x = -Math.PI / 2;
+  add(new THREE.CylinderGeometry(15, 15, 0.3, 40), std(0xf0e4cc, { roughness: 0.65 }), 0, 0.15, 0);
 
   // Central Pillar monument — grows with the kid's real Society rank
   const mon = new THREE.Group();
@@ -420,9 +524,13 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   const pillarCol = add(new THREE.CylinderGeometry(0.7, 0.9, 7, 16), M(0xfaf3e3), 0, 4, 0, mon);
   const pillarOrb = add(
     new THREE.SphereGeometry(0.9, 16, 12),
-    M(0xffd36e, { emissive: 0x664400 }),
+    std(0xffd36e, { roughness: 0.25, metalness: 0.35, emissive: 0xaa5500, emissiveIntensity: 0.55 }),
     0, 7.9, 0, mon,
   );
+  const orbMat = pillarOrb.material as any;
+  const orbLight = new THREE.PointLight(0xffaa44, 0.9, 25, 2);
+  orbLight.position.set(0, 8.5, 0);
+  mon.add(orbLight);
   const orbColors = [0xffd36e, 0x7cf29c, 0x6ec6ff, 0xc58cff, 0xff8ad4];
   function sizeMonument() {
     const h = 7 + rankIdx() * 1.6;
@@ -451,7 +559,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     const g = new THREE.Group();
     g.position.set(cx, 0, cz);
     scene.add(g);
-    const gm = M(d.c);
+    const gm = std(d.c, { roughness: 0.85 });
     groundMats.push(gm);
     add(new THREE.CylinderGeometry(15, 15, 0.2, 32), gm, 0, 0.1, 0, g);
     const wall = M(0xfff4e0), roof = M(0xc0563a);
@@ -610,6 +718,17 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   });
   const flies = new THREE.Points(flyGeo, flyMat);
   scene.add(flies);
+  // dimensional-shift particles (purple, visible during Shift)
+  const pCount = 100;
+  const pGeo = new THREE.BufferGeometry();
+  const pPos = new Float32Array(pCount * 3);
+  for (let i = 0; i < pCount * 3; i++) pPos[i] = (Math.random() - 0.5) * 50;
+  pGeo.setAttribute("position", new THREE.BufferAttribute(pPos, 3));
+  const pMat = new THREE.PointsMaterial({
+    color: 0xbb66ff, size: 0.28, transparent: true, opacity: 0, depthWrite: false,
+  });
+  const particles = new THREE.Points(pGeo, pMat);
+  scene.add(particles);
 
   /* ----- player ----- */
   const P = new THREE.Group();
@@ -746,13 +865,19 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     `<span class="pp3d-bar"><i style="width:${Math.min(v, 10) * 10}%;background:${c}"></i></span>`;
   function drawHud() {
     sizeMonument();
+    syncFamily();
     const p = Math.max(0, prosp());
     const tier = [...TIERS].reverse().find((t) => p >= t[0])![1];
     hud.innerHTML =
       `<span class="pp3d-chip">🪙 ${api.getBalance()} Units</span>` +
       `<span class="pp3d-chip">🏙️ ${p} · ${tier}</span>` +
       `<span class="pp3d-chip">🎖️ ${api.getRank()}</span>` +
-      `<span class="pp3d-chip">Trust${bar(S.trust, "#4ade80")} Courage${bar(S.courage, "#fb923c")}</span>`;
+      `<span class="pp3d-chip">Trust${bar(S.trust, "#4ade80")} Courage${bar(S.courage, "#fb923c")}</span>` +
+      `<span class="pp3d-chip">💜 ${S.family}</span>` +
+      (shiftActive
+        ? `<span class="pp3d-chip" style="border-color:#9b4dff;background:rgba(106,27,154,.8)">🌀 ${Math.ceil(shiftTimer)}s</span>`
+        : "");
+    if (DIST.every((_, i) => isOpen(i))) showAch("allOpen");
   }
   let near = -1;
   let msgT = 0;
@@ -768,7 +893,9 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     const b: string[] = [];
     if (near >= 0 && isOpen(near)) {
       b.push(`<button class="pp3d-btn" onclick="__pp3d.quest(${near})">${DIST[near].e} Take quest</button>`);
-      b.push(`<button class="pp3d-btn" onclick="__pp3d.build(${near})">🏗️ Build (${COST})</button>`);
+      b.push(`<button class="pp3d-btn" onclick="__pp3d.build(${near})">🏗️ Build (${S.freeBuild > 0 ? "FREE" : COST})</button>`);
+      if (!shiftActive && S.courage >= SHIFT_COST)
+        b.push(`<button class="pp3d-btn" style="background:linear-gradient(135deg,#9b4dff,#6a1b9a)" onclick="__pp3d.doShift(${near})">🌀 Shift</button>`);
     }
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.realLife()">🌟 Real-life progress</button>`);
     if (tiltHas) b.push(`<button class="pp3d-btn alt" onclick="__pp3d.tilt()">📱 Tilt: ${tiltOn ? "on" : "off"}</button>`);
@@ -777,6 +904,24 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   function modal(html: string) {
     $("pp3d-mbox").innerHTML = html;
     $("pp3d-modal").style.display = "flex";
+  }
+
+  function runTutorial() {
+    if (S.tutorial >= 4) return;
+    const steps = [
+      { t: "Welcome to Pillar Plaza", d: "A living world that grows when you get better at real life. Move with the joystick or WASD keys." },
+      { t: "Six districts, six values", d: "Walk to a district and take a quest. Good choices grow Trust and heal blight." },
+      { t: "Real life powers the plaza", d: "Real chores and saving open Vault Mountain and Market Harbor — and grow Family Bond 💜, which unlocks Pillar powers like free builds." },
+      { t: "Tilt, sound and Shift 🌀", d: "Tilt your phone to look around, and listen — water and birds come from their direction. With Courage, Shift into a parallel district for bigger rewards and bigger risk." },
+    ];
+    const s = steps[S.tutorial];
+    modal(
+      `<h3>${s.t}</h3><p>${s.d}</p>` +
+        `<div style="text-align:center;margin:14px 0">` +
+        steps.map((_, k) => `<span class="pp3d-tutdot${k === S.tutorial ? " on" : ""}"></span>`).join("") +
+        `</div>` +
+        `<button class="pp3d-btn" onclick="__pp3d.nextTut()">${S.tutorial < 3 ? "Next" : "Start exploring!"}</button>`,
+    );
   }
   const closeM = () => {
     $("pp3d-modal").style.display = "none";
@@ -806,16 +951,18 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     quest(i: number) {
       sfx.click();
       sfx.buzz(15);
-      const q = DIST[i].qs[Math.floor(Math.random() * DIST[i].qs.length)];
+      const parallel = shiftActive && shiftDistrict === i;
+      const q = parallel ? DIST[i].pq : DIST[i].qs[Math.floor(Math.random() * DIST[i].qs.length)];
       const o: [string, number][] = [[q.g, 1], [q.b, 0]];
       if (Math.random() < 0.5) o.reverse();
       modal(
-        `<h3>${DIST[i].e} ${DIST[i].n}</h3><p>${q.t}</p>` +
+        `<h3>${DIST[i].e} ${DIST[i].n}${parallel ? " 🌀 Parallel" : ""}</h3><p>${q.t}</p>` +
           o.map(([t, g]) => `<button class="pp3d-btn" onclick="__pp3d.ans(${i},${g})">${t}</button>`).join("") +
           `<button class="pp3d-btn alt" onclick="__pp3d.close()">Not now</button>`,
       );
     },
     ans(i: number, g: number) {
+      const parallel = shiftActive && shiftDistrict === i;
       S.courage++;
       if (g) {
         S.trust++;
@@ -824,21 +971,25 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
         sfx.buzz([25, 40, 25, 40, 80]);
         let extra = "";
         if (bumpReward()) {
-          api.earn(5, "Pillar Plaza good deed");
-          extra = `<p>✨ +5 real Units for a good deed (up to 3 a day).</p>`;
+          const rw = parallel ? 8 : 5;
+          api.earn(rw, `Pillar Plaza good deed${parallel ? " (parallel)" : ""}`);
+          extra = `<p>✨ +${rw} real Units for a good deed (up to 3 a day).</p>`;
           sfx.reward();
           sfx.buzz([25, 40, 25, 40, 120]);
         }
         modal(
-          `<h3>Trust grows 🌱</h3><p>Good choice. The district brightens.</p>${extra}` +
+          `<h3>Trust grows 🌱</h3><p>Good choice${parallel ? " — parallel bonus" : ""}. The district brightens.</p>${extra}` +
             `<button class="pp3d-btn" onclick="__pp3d.close()">Continue</button>`,
         );
+        showAch("firstQuest");
+        if (S.trust >= 5) showAch("trust5");
+        if (S.blight[i] === 0) showAch("blightFree");
       } else {
-        S.blight[i] = Math.min(4, S.blight[i] + 1);
+        S.blight[i] = Math.min(4, S.blight[i] + (parallel ? 2 : 1));
         sfx.bad();
         sfx.buzz(150);
         modal(
-          `<h3>Blight spreads 🥀</h3><p>The district dims a little. Take another quest to heal it.</p>` +
+          `<h3>Blight spreads 🥀</h3><p>The district dims a little${parallel ? " — the parallel realm is riskier" : ""}. Take another quest to heal it.</p>` +
             `<button class="pp3d-btn" onclick="__pp3d.close()">Continue</button>`,
         );
       }
@@ -851,17 +1002,43 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
         sfx.locked();
         return say("This district is full!");
       }
-      if (!api.spend(COST, `Built in ${DIST[i].n} (3D plaza)`)) {
+      const cost = S.freeBuild > 0 ? 0 : COST;
+      if (cost > 0 && !api.spend(cost, `Built in ${DIST[i].n} (3D plaza)`)) {
         sfx.locked();
         return say(`Need ${COST} Units to build. Earn them through chores and good decisions!`);
       }
+      if (cost === 0) S.freeBuild--;
       S.built[i]++;
       sfx.build();
       sfx.buzz([40, 60, 90]);
       save();
       rebuild();
       drawHud();
-      say("Built! Prosperity grows ✨");
+      say(cost === 0 ? "💜 Pillar power used: free build! ✨" : "Built! Prosperity grows ✨");
+      showAch("firstBuild");
+      if (S.built[i] >= 8) showAch("fullDistrict");
+    },
+    doShift(i: number) {
+      if (shiftActive || S.courage < SHIFT_COST) return;
+      S.courage -= SHIFT_COST;
+      shiftActive = true;
+      shiftTimer = SHIFT_DUR;
+      shiftDistrict = i;
+      dimfx.classList.add("on");
+      pMat.opacity = 0.65;
+      sfx.shift();
+      sfx.buzz([50, 50, 50, 50, 100]);
+      showAch("shift1");
+      say(`🌀 Entered parallel ${DIST[i].n}! Higher rewards, higher risk.`);
+      save();
+      drawHud();
+      drawPanel();
+    },
+    nextTut() {
+      S.tutorial++;
+      save();
+      closeM();
+      if (S.tutorial < 4) setTimeout(runTutorial, 380);
     },
     realLife() {
       sfx.click();
@@ -1012,6 +1189,37 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       }
     }
 
+    // dimensional shift: timer, particles, screen fx
+    if (shiftActive) {
+      shiftTimer -= dt;
+      if (shiftTimer <= 0) {
+        shiftActive = false;
+        shiftDistrict = -1;
+        dimfx.classList.remove("on");
+        pMat.opacity = 0;
+        say("The parallel realm closes.");
+        drawHud();
+        drawPanel();
+      } else {
+        const pos = pGeo.attributes.position.array as Float32Array;
+        const pt = performance.now() * 0.001;
+        for (let k = 0; k < pCount; k++) {
+          const k3 = k * 3;
+          pos[k3] += Math.sin(pt + k) * 0.025;
+          pos[k3 + 1] += 0.012;
+          pos[k3 + 2] += Math.cos(pt + k) * 0.025;
+          if (pos[k3 + 1] > 22) pos[k3 + 1] = -6;
+        }
+        pGeo.attributes.position.needsUpdate = true;
+        particles.position.copy(P.position);
+        if ((frame & 15) === 0) drawHud();
+      }
+    }
+
+    // orb pulse
+    orbMat.emissiveIntensity = 0.45 + Math.sin(t * 2.8) * 0.2;
+    orbLight.intensity = 0.7 + Math.max(0, -h) * 0.6;
+
     // positional ambience + daytime birds (throttled)
     if ((frame++ & 7) === 0) sfx.updateAmbience(P.position.x, P.position.z, yaw, h > 0 ? 1 : 0.15);
     birdT -= dt;
@@ -1032,6 +1240,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       tz + Math.cos(ey) * Math.cos(ep) * dist,
     );
     cam.lookAt(tx, ty, tz);
+    cam.rotation.z = shiftActive ? Math.sin(performance.now() * 0.0018) * 0.07 : 0;
     rd.render(scene, cam);
   }
 
@@ -1040,6 +1249,9 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   drawPanel();
   loop();
   setTimeout(() => say("👋 Welcome to Pillar Plaza! Walk to a district. 📱 Tilt your phone to look around."), 600);
+  setTimeout(() => {
+    if (S.tutorial < 4) runTutorial();
+  }, 1100);
 
   return () => {
     cancelAnimationFrame(raf);
