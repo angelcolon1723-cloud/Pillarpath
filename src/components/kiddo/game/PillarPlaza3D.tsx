@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useLedger } from "@/store/ledger";
 import { rankForScore, societyScore } from "@/components/kiddo/world/WorldMap";
+import { EMOTIONS, type Emotion } from "./emotions";
 
 /**
  * PillarPlaza3D — the 3D Pillar Plaza built on the Three.js foundation
@@ -57,6 +58,7 @@ interface PlazaApi {
 /* ---------------- Tiny WebAudio SFX (no assets, mobile-safe) ---------------- */
 function makeSfx() {
   let ctx: AudioContext | null = null;
+  let muted = false;
   const ac = (): AudioContext | null => {
     if (!ctx) {
       try {
@@ -69,6 +71,7 @@ function makeSfx() {
     return ctx;
   };
   const tone = (f: number, delay = 0, dur = 0.15, type: OscillatorType = "sine", vol = 0.12) => {
+    if (muted) return;
     const c = ac();
     if (!c) return;
     const o = c.createOscillator();
@@ -85,6 +88,7 @@ function makeSfx() {
     o.stop(now + dur + 0.05);
   };
   const buzz = (p: number | number[]) => {
+    if (muted) return;
     try {
       (navigator as any).vibrate?.(p);
     } catch {
@@ -97,6 +101,9 @@ function makeSfx() {
   return {
     unlock() {
       ac();
+    },
+    setMuted(m: boolean) {
+      muted = m;
     },
     buzz,
     click() {
@@ -113,6 +120,11 @@ function makeSfx() {
     bad() {
       tone(160, 0, 0.28, "sawtooth", 0.07);
       tone(110, 0.1, 0.32, "sawtooth", 0.07);
+    },
+    whisper() {
+      tone(196, 0, 0.5, "sine", 0.05);
+      tone(147, 0.18, 0.6, "sine", 0.04);
+      tone(98, 0.36, 0.7, "sine", 0.035);
     },
     locked() {
       tone(220, 0, 0.1, "square", 0.07);
@@ -327,6 +339,7 @@ const ACH: Record<string, { t: string; d: string }> = {
   allOpen: { t: "Explorer", d: "Open every district" },
   fullDistrict: { t: "City Planner", d: "Fill a district" },
   blightFree: { t: "Healer", d: "Clear all blight from a district" },
+  doubt1: { t: "Name It", d: "Face your first Doubtling" },
 };
 
 const SHIFT_COST = 1;
@@ -426,8 +439,6 @@ const PLAZA_CSS = `
 .pp3d-btn{font:inherit;font-size:14px;font-weight:800;border:0;border-radius:14px;padding:10px 16px;background:linear-gradient(135deg,#06b6d4,#8b5cf6,#d946ef);color:#fff;box-shadow:0 4px 14px #8b5cf680;cursor:pointer}
 .pp3d-btn.alt{background:rgba(15,10,40,.78);color:#f3efff;border:1px solid rgba(139,92,246,.4);box-shadow:0 2px 8px #0006}
 .pp3d-msg{position:absolute;left:50%;top:24%;transform:translateX(-50%);background:rgba(15,10,40,.85);border:1px solid rgba(139,92,246,.4);color:#f3efff;padding:8px 14px;border-radius:14px;font-size:13px;font-weight:700;text-align:center;max-width:82%;display:none;z-index:6;box-shadow:0 4px 16px #0008}
-.pp3d-joy{position:absolute;left:18px;bottom:calc(env(safe-area-inset-bottom,0px) + 74px);width:104px;height:104px;border-radius:50%;background:#ffffff14;border:2px solid #ffffff40;z-index:5;touch-action:none}
-.pp3d-knob{position:absolute;left:34px;top:34px;width:36px;height:36px;border-radius:50%;background:radial-gradient(circle at 35% 30%,#fff,#c4b5fd);box-shadow:0 2px 8px #0008}
 .pp3d-modal{position:absolute;inset:0;background:#06031299;display:none;align-items:center;justify-content:center;padding:16px;z-index:10}
 .pp3d-modal .box{background:linear-gradient(160deg,#1b1040,#0d0728);border:1px solid rgba(139,92,246,.45);color:#f3efff;border-radius:20px;padding:18px;max-width:380px;width:100%;max-height:82%;overflow:auto;box-shadow:0 12px 40px #000c}
 .pp3d-modal h3{margin:0 0 8px;font-size:17px}
@@ -443,6 +454,7 @@ const PLAZA_CSS = `
 .pp3d-ach.show{opacity:1;transform:translateX(-50%) translateY(0)}
 .pp3d-tutdot{display:inline-block;width:8px;height:8px;border-radius:50%;background:#ffffff30;margin:0 3px}
 .pp3d-tutdot.on{background:#d4a017}
+.pp3d-movehint{position:absolute;left:50%;bottom:calc(env(safe-area-inset-bottom,0px) + 86px);transform:translateX(-50%);background:#0c1228cc;color:#00e5ffaa;font-size:12px;padding:6px 14px;border-radius:20px;z-index:4;pointer-events:none;border:1px solid #00e5ff33;transition:opacity .4s;white-space:nowrap}
 .pp3d-float{position:absolute;left:50%;top:38%;transform:translate(-50%,-50%);font-size:22px;font-weight:800;pointer-events:none;opacity:0;transition:opacity .3s,transform .6s;z-index:12;text-shadow:0 0 14px currentColor;white-space:nowrap}
 `;
 
@@ -476,13 +488,17 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     npcMem: Record<string, "good" | "bad">;
     cacheDay: string;
     cacheUnits: number;
+    doubts: Record<string, number>;
+    powerCleanse: boolean;
+    powerAscend: boolean;
+    muted: boolean;
     blight: number[];
     built: number[][];
   }
   let S: PlazaState = {
     trust: 0, courage: 0, family: 0, freeBuild: 0,
     famBase: { chores: 0, saved: 0 }, ach: {}, tutorial: 0,
-    news: [], newsSeen: 0, daily: null, lastRank: -1, npcMem: {}, cacheDay: "", cacheUnits: 0,
+    news: [], newsSeen: 0, daily: null, lastRank: -1, npcMem: {}, cacheDay: "", cacheUnits: 0, doubts: {}, powerCleanse: false, powerAscend: false, muted: false,
     blight: [0, 0, 0, 0, 0, 0], built: [[], [], [], [], [], []],
   };
   try {
@@ -504,6 +520,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       /* storage unavailable */
     }
   };
+  sfx.setMuted(!!S.muted);
   const isOpen = (i: number) => (i === 1 ? api.getSaved() >= 50 : i === 2 ? api.getChores() >= 3 : true);
   const prosp = () => {
     let p = 0;
@@ -536,6 +553,22 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     } else if (S.family >= 10) {
       showAch("family10");
     }
+    if (S.family >= 30 && !S.powerCleanse) {
+      S.powerCleanse = true;
+      save();
+      pushNews("\u{1F6E1}\uFE0F", "Pillar power unlocked!", "Family Bond reached 30 — Blight Cleansing armed.");
+      say("\u{1F6E1}\uFE0F Pillar power unlocked: Blight Cleansing!");
+      sfx.reward();
+      sfx.buzz([40, 40, 40, 40, 120]);
+    }
+    if (S.family >= 50 && !S.powerAscend) {
+      S.powerAscend = true;
+      save();
+      pushNews("\u{1F31F}", "Pillar power unlocked!", "Family Bond reached 50 — Pillar Ascendant armed.");
+      say("\u{1F31F} Pillar power unlocked: Pillar Ascendant!");
+      sfx.reward();
+      sfx.buzz([40, 40, 40, 40, 200]);
+    }
   }
   function syncFamily() {
     const chores = api.getChores();
@@ -562,6 +595,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
         { key: "builds", text: "Build 1 structure", need: 1 },
         { key: "shifts", text: "Use Dimensional Shift once", need: 1 },
         { key: "talks", text: "Talk to 2 friends", need: 2 },
+        { key: "face", text: "Face 1 Doubtling with the truth", need: 1 },
       ];
       const g = goals[Math.floor(Math.random() * goals.length)];
       S.daily = { date: today, key: g.key, text: g.text, need: g.need, progress: 0, done: false };
@@ -617,9 +651,10 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     const a = ACH[key];
     if (!a) return;
     S.ach[key] = true;
+    S.courage++;
     save();
-    pushNews("🏆", `Achievement: ${a.t}`, a.d);
-    achBox.textContent = `🏆 ${a.t} — ${a.d}`;
+    pushNews("🏆", `Achievement: ${a.t}`, `${a.d} (+1 Courage)`);
+    achBox.textContent = `🏆 ${a.t} — ${a.d} · +1 Courage`;
     achBox.classList.add("show");
     sfx.ach();
     sfx.buzz([30, 50, 30, 50, 90]);
@@ -638,7 +673,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     <div class="pp3d-ach" id="pp3d-ach"></div>
     <div class="pp3d-float" id="pp3d-float"></div>
     <div class="pp3d-dimfx" id="pp3d-dimfx"></div>
-    <div class="pp3d-joy" id="pp3d-joy"><div class="pp3d-knob" id="pp3d-knob"></div></div>
+    <div class="pp3d-movehint" id="pp3d-movehint">Tap the ground to walk · WASD / arrows · Autopilot</div>
     <div class="pp3d-panel" id="pp3d-panel"></div>
     <div class="pp3d-modal" id="pp3d-modal"><div class="box" id="pp3d-mbox"></div></div>
     <div class="pp3d-err" id="pp3d-err"></div>`;
@@ -1008,51 +1043,15 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   add(new THREE.SphereGeometry(0.12, 8, 6), glow(0x00e5ff, 0.9), 0, 1.4, 0.42, P);
   let yaw = 0, pitch = 0.45, dist = 13, face = 0, vel = 0, bob = 0;
 
-  /* ----- input: keys + joystick + orbit/zoom ----- */
+  /* ----- input: keys + tap-to-move + orbit/zoom ----- */
   const keys: Record<string, number> = {};
   on(window, "keydown", (e: KeyboardEvent) => {
     keys[e.key.toLowerCase()] = 1;
+    hideHint();
   });
   on(window, "keyup", (e: KeyboardEvent) => {
     keys[e.key.toLowerCase()] = 0;
   });
-  let joy = { x: 0, y: 0 };
-  let jid: number | null = null;
-  const jel = $("pp3d-joy"), knob = $("pp3d-knob");
-  const jm = (e: PointerEvent) => {
-    const r = jel.getBoundingClientRect();
-    let x = (e.clientX - r.left - 52) / 40;
-    let y = (e.clientY - r.top - 52) / 40;
-    const l = Math.hypot(x, y);
-    if (l > 1) {
-      x /= l;
-      y /= l;
-    }
-    joy = { x, y };
-    knob.style.transform = `translate(${x * 32}px,${y * 32}px)`;
-  };
-  on(jel, "pointerdown", (e: PointerEvent) => {
-    jid = e.pointerId;
-    try {
-      jel.setPointerCapture(jid);
-    } catch {
-      /* noop */
-    }
-    sfx.unlock();
-    jm(e);
-  });
-  on(jel, "pointermove", (e: PointerEvent) => {
-    if (e.pointerId === jid) jm(e);
-  });
-  const jend = (e: PointerEvent) => {
-    if (e.pointerId === jid) {
-      jid = null;
-      joy = { x: 0, y: 0 };
-      knob.style.transform = "";
-    }
-  };
-  on(jel, "pointerup", jend);
-  on(jel, "pointercancel", jend);
   const cv = rd.domElement;
   let oid: number | null = null;
   let last: [number, number] | null = null;
@@ -1070,6 +1069,30 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   scene.add(targetRing);
   // autopilot
   let autoPilot = false, autoTarget = -1, autoPause = 0;
+  // Doubtlings — King's Emotion Codex as living wisps. Naming a feeling makes it smaller.
+  interface Wisp { emo: Emotion; g: any; core: any; halo: any; tx: number; tz: number; whisperCd: number; facedCd: number }
+  const wisps: Wisp[] = [];
+  let nearWisp = -1;
+  function wispColor(w: Wisp) { return new THREE.Color(w.emo.color).getHex(); }
+  function spawnWisps() {
+    const pool = [...EMOTIONS].sort(() => Math.random() - 0.5);
+    for (let i = 0; i < 3; i++) {
+      const emo = pool[i % pool.length];
+      const g = new THREE.Group();
+      const col = new THREE.Color(emo.color).getHex();
+      const core = add(new THREE.SphereGeometry(0.5, 14, 10), glow(col, 1.2), 0, 1.6, 0, g);
+      const halo = new THREE.Mesh(
+        new THREE.SphereGeometry(0.95, 14, 10),
+        new THREE.MeshBasicMaterial({ color: col, transparent: true, opacity: 0.22, blending: THREE.AdditiveBlending, depthWrite: false }),
+      );
+      halo.position.y = 1.6;
+      g.add(halo);
+      const a = Math.random() * Math.PI * 2, r = 25 + Math.random() * 20;
+      g.position.set(Math.sin(a) * r, 0, -Math.cos(a) * r);
+      scene.add(g);
+      wisps.push({ emo, g, core, halo, tx: g.position.x, tz: g.position.z, whisperCd: 6 + Math.random() * 12, facedCd: 0 });
+    }
+  }
   // supply caches (salvaged from the 2D city's treasure chests)
   interface Cache { x: number; z: number; g: any; open: boolean; timer: number }
   const caches: Cache[] = [];
@@ -1098,8 +1121,16 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       caches.push(c);
     }
   }
+  let hintHidden = false;
+  const hideHint = () => {
+    if (hintHidden) return;
+    hintHidden = true;
+    const h = $("pp3d-movehint");
+    if (h) h.style.opacity = "0";
+  };
   on(cv, "pointerdown", (e: PointerEvent) => {
     sfx.unlock();
+    hideHint();
     oid = e.pointerId;
     last = [e.clientX, e.clientY];
     downPos = [e.clientX, e.clientY];
@@ -1235,8 +1266,12 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     if (nearNpc >= 0)
       b.push(`<button class="pp3d-btn" onclick="__pp3d.talkNpc(${nearNpc})">💬 Talk to ${NPCS[nearNpc].name}</button>`);
     if (nearCache >= 0) b.push(`<button class="pp3d-btn" onclick="__pp3d.openCache(${nearCache})">🎁 Open supply cache</button>`);
+    if (nearWisp >= 0) b.push(`<button class="pp3d-btn" onclick="__pp3d.faceWisp(${nearWisp})">\u{1F32B}\uFE0F Face the Doubtling</button>`);
+    b.push(`<button class="pp3d-btn alt" onclick="__pp3d.codex()">📖 Codex</button>`);
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.toggleAuto()">${autoPilot ? "🟢 Auto ON" : "⚪ Autopilot"}</button>`);
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.realLife()">🌟 Real-life progress</button>`);
+    b.push(`<button class="pp3d-btn alt" onclick="__pp3d.mute()">${S.muted ? "🔇 Muted" : "🔊 Sound"}</button>`);
+    b.push(`<button class="pp3d-btn alt" onclick="__pp3d.help()">❓</button>`);
     if (tiltHas) b.push(`<button class="pp3d-btn alt" onclick="__pp3d.tilt()">📱 Tilt: ${tiltOn ? "on" : "off"}</button>`);
     panel.innerHTML = b.join("");
   }
@@ -1246,11 +1281,12 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   }
 
   function runTutorial() {
-    if (S.tutorial >= 4) return;
+    if (S.tutorial >= 5) return;
     const steps = [
-      { t: "Welcome to Pillar Plaza", d: "A living world that grows when you get better at real life. Tap the ground to walk, or use the joystick / WASD keys." },
+      { t: "Welcome to Pillar Plaza", d: "A living world that grows when you get better at real life. Tap the ground to walk, or use WASD keys." },
       { t: "Six districts, six values", d: "Walk to a district and take a quest. Good choices grow Trust and heal blight. Say hi to Maya, Jay and Sam!" },
       { t: "Real life powers the plaza", d: "Real chores and saving open Vault Mountain and Market Harbor — and grow Family Bond 💜, which unlocks Pillar powers like free builds." },
+      { t: "Name the Doubtlings \u{1F32B}\uFE0F", d: "Glowing wisps drift through the plaza — Doubt, Impulse, Loneliness and their kin. Walk up to one, hear its whisper, then face it with the truth. Naming a feeling makes it smaller. +1 Courage each time." },
       { t: "Tilt, sound and Shift 🌀", d: "Tilt your phone to look around, and listen — water and birds come from their direction. With Courage, Shift into a parallel district for bigger rewards and bigger risk." },
     ];
     const s = steps[S.tutorial];
@@ -1259,7 +1295,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
         `<div style="text-align:center;margin:14px 0">` +
         steps.map((_, k) => `<span class="pp3d-tutdot${k === S.tutorial ? " on" : ""}"></span>`).join("") +
         `</div>` +
-        `<button class="pp3d-btn" onclick="__pp3d.nextTut()">${S.tutorial < 3 ? "Next" : "Start exploring!"}</button>`,
+        `<button class="pp3d-btn" onclick="__pp3d.nextTut()">${S.tutorial < 4 ? "Next" : "Start exploring!"}</button>`,
     );
   }
   const closeM = () => {
@@ -1431,6 +1467,114 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       drawHud();
       drawPanel();
     },
+    faceWisp(k: number) {
+      const w = wisps[k];
+      if (!w || w.facedCd > 0) return;
+      sfx.click();
+      sfx.buzz(15);
+      modal(
+        `<h3>\u{1F32B}\uFE0F ${w.emo.icon} ${w.emo.name} <span style="opacity:.55;font-size:12px">· ${w.emo.family}</span></h3>` +
+          `<p><i>"${w.emo.whisper}"</i></p>` +
+          `<p>But the truth is: <b>${w.emo.truth}</b></p>` +
+          `<button class="pp3d-btn" onclick="__pp3d.faceTruth(${k})">\u{1F49B} Believe the truth</button>` +
+          `<button class="pp3d-btn alt" onclick="__pp3d.close()">Walk away</button>`,
+      );
+    },
+    faceTruth(k: number) {
+      const w = wisps[k];
+      if (!w) return;
+      const faced = w.emo;
+      S.doubts[faced.id] = (S.doubts[faced.id] || 0) + 1;
+      S.courage++;
+      w.facedCd = 60;
+      w.whisperCd = 20;
+      const rest = EMOTIONS.filter((e) => e.id !== faced.id);
+      const ne = rest[Math.floor(Math.random() * rest.length)];
+      w.emo = ne;
+      const col = new THREE.Color(ne.color).getHex();
+      (w.core.material as any).color.setHex(col);
+      (w.core.material as any).emissive.setHex(col);
+      (w.halo.material as any).color.setHex(col);
+      closeM();
+      sfx.good();
+      sfx.buzz([40, 40, 120]);
+      floatText(`${faced.icon} Faced!`, "#ffd36e");
+      say(`\u{1F49B} You named it: ${faced.name}. Feelings get smaller when you name them. +1 Courage.`);
+      dailyTick("face");
+      showAch("doubt1");
+      save();
+      drawHud();
+      drawPanel();
+    },
+    codex() {
+      sfx.click();
+      const discovered = EMOTIONS.filter((e) => (S.doubts[e.id] || 0) > 0).length;
+      modal(
+        `<h3>📖 Emotion Codex</h3>` +
+          `<p style="opacity:.8">${discovered} of ${EMOTIONS.length} named. Every feeling has a name — naming it makes it smaller.</p>` +
+          EMOTIONS.map((e) => {
+            const n = S.doubts[e.id] || 0;
+            return n > 0
+              ? `<div class="pp3d-stat"><span style="color:${e.color}">${e.icon} <b>${e.name}</b></span> <span style="opacity:.55">· ${e.family} · faced ${n}×</span><br><span style="font-size:12px;opacity:.75"><i>"${e.whisper}"</i> → ${e.truth}</span></div>`
+              : `<div class="pp3d-stat" style="opacity:.45">\u{1F32B}\uFE0F <b>???</b> <span style="opacity:.6">· a Doubtling drifts in the plaza...</span></div>`;
+          }).join("") +
+          `<button class="pp3d-btn alt" onclick="__pp3d.close()">Close</button>`,
+      );
+    },
+    useCleanse() {
+      if (!S.powerCleanse) return;
+      S.powerCleanse = false;
+      S.blight = [0, 0, 0, 0, 0, 0];
+      closeM();
+      save(); rebuild(); drawHud(); drawPanel();
+      sfx.good();
+      sfx.buzz([60, 60, 120]);
+      floatText("Blight Cleansed!", "#4ade80");
+      say("\u{1F6E1}\uFE0F Blight Cleansing! Every district shines again.");
+      pushNews("\u{1F6E1}\uFE0F", "Blight Cleansing!", "A Family Bond power washed every district clean.");
+    },
+    useAscend() {
+      if (!S.powerAscend) return;
+      S.powerAscend = false;
+      S.blight = [0, 0, 0, 0, 0, 0];
+      S.trust += 3;
+      S.courage += 3;
+      closeM();
+      save(); rebuild(); drawHud(); drawPanel();
+      sfx.ach();
+      sfx.buzz([60, 60, 60, 60, 200]);
+      floatText("\u{1F31F} ASCENDANT!", "#ffd36e");
+      say("\u{1F31F} Pillar Ascendant! +3 Trust, +3 Courage, blight gone.");
+      pushNews("\u{1F31F}", "Pillar Ascendant!", "+3 Trust, +3 Courage — the plaza glows gold.");
+    },
+    mute() {
+      S.muted = !S.muted;
+      sfx.setMuted(S.muted);
+      save();
+      drawPanel();
+      say(S.muted ? "🔇 Sound and vibration off." : "🔊 Sound on.");
+    },
+    help() {
+      sfx.click();
+      modal(
+        `<h3>❓ Plaza Guide</h3>` +
+          `<div class="pp3d-stat">🚶 <b>Move:</b> tap the ground to walk, or WASD / arrow keys. Drag to look, pinch or wheel to zoom.</div>` +
+          `<div class="pp3d-stat">🏙️ <b>Districts:</b> take quests, build structures with real Units. Good choices heal blight.</div>` +
+          `<div class="pp3d-stat">\u{1F32B}\uFE0F <b>Doubtlings:</b> face glowing wisps with the truth (+1 Courage). Open the 📖 Codex.</div>` +
+          `<div class="pp3d-stat">🎁 <b>Caches:</b> open supply caches for Units, Courage, or wisdom.</div>` +
+          `<div class="pp3d-stat">🌀 <b>Shift:</b> 1 Courage for 45s in a parallel district — bigger rewards, bigger risk.</div>` +
+          `<div class="pp3d-stat">💜 <b>Family Bond:</b> grows from real chores + saving. Powers at 15 / 30 / 50.</div>` +
+          `<div class="pp3d-stat">🎯 <b>Daily:</b> one challenge a day pays +15 real Units.</div>` +
+          `<button class="pp3d-btn" onclick="__pp3d.replayTut()">▶️ Replay tutorial</button>` +
+          `<button class="pp3d-btn alt" onclick="__pp3d.close()">Close</button>`,
+      );
+    },
+    replayTut() {
+      S.tutorial = 0;
+      save();
+      closeM();
+      setTimeout(runTutorial, 300);
+    },
     post() {
       sfx.click();
       S.newsSeen = S.news.length;
@@ -1466,7 +1610,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       S.tutorial++;
       save();
       closeM();
-      if (S.tutorial < 4) setTimeout(runTutorial, 380);
+      if (S.tutorial < 5) setTimeout(runTutorial, 380);
     },
     toggleAuto() {
       autoPilot = !autoPilot;
@@ -1499,6 +1643,10 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
           `<div class="pp3d-stat">🐷 Units saved: ${saved} / 50<div class="pp3d-track"><i style="width:${Math.min(100, (saved / 50) * 100)}%"></i></div></div>` +
           `<button class="pp3d-btn" onclick="__pp3d.go('chores')">Do chores →</button>` +
           `<button class="pp3d-btn" onclick="__pp3d.go('vault')">Grow savings →</button>` +
+          `<div class="pp3d-stat">💜 <b>Pillar Powers</b> <span style="opacity:.6">(Bond ${S.family})</span></div>` +
+          `<div class="pp3d-stat">${S.freeBuild > 0 ? "✅" : S.family >= 15 ? "✅" : "🔒"} <b>Free build</b> — Bond 15${S.freeBuild > 0 ? "<br><span style='opacity:.7'>Ready! Tap 🏗️ Build on any structure.</span>" : ""}</div>` +
+          `<div class="pp3d-stat">${S.powerCleanse ? "🛡️" : "🔒"} <b>Blight Cleansing</b> — Bond 30${S.powerCleanse ? `<button class="pp3d-btn" onclick="__pp3d.useCleanse()">Cleanse now</button>` : "<br><span style='opacity:.6'>Washes every district clean.</span>"}</div>` +
+          `<div class="pp3d-stat">${S.powerAscend ? "🌟" : "🔒"} <b>Pillar Ascendant</b> — Bond 50${S.powerAscend ? `<button class="pp3d-btn" onclick="__pp3d.useAscend()">Ascend now</button>` : "<br><span style='opacity:.6'>+3 Trust, +3 Courage, blight gone.</span>"}</div>` +
           `<button class="pp3d-btn alt" onclick="__pp3d.close()">Back to the plaza</button>`,
       );
     },
@@ -1584,9 +1732,9 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
 
     // movement
     const ix =
-      (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0) + joy.x;
+      (keys.d || keys.arrowright ? 1 : 0) - (keys.a || keys.arrowleft ? 1 : 0);
     const iz =
-      (keys.s || keys.arrowdown ? 1 : 0) - (keys.w || keys.arrowup ? 1 : 0) + joy.y;
+      (keys.s || keys.arrowdown ? 1 : 0) - (keys.w || keys.arrowup ? 1 : 0);
     const l = Math.hypot(ix, iz);
     let nx = ix, nz = iz;
     if (l > 1) {
@@ -1676,6 +1824,40 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
         c.g.rotation.y += dt * 0.6;
       }
     });
+    // Doubtling wisps drift, whisper, and shrink when faced with the truth
+    let nw = -1;
+    wisps.forEach((w, wi) => {
+      const dx = w.tx - w.g.position.x, dz = w.tz - w.g.position.z;
+      const dd = Math.hypot(dx, dz);
+      if (dd < 1.5) {
+        const a = Math.random() * Math.PI * 2, r = 20 + Math.random() * 45;
+        w.tx = Math.sin(a) * r; w.tz = -Math.cos(a) * r;
+      } else {
+        const sp = 1.6;
+        w.g.position.x += (dx / dd) * sp * dt;
+        w.g.position.z += (dz / dd) * sp * dt;
+      }
+      w.g.position.y = Math.sin(t * 2 + wi * 2.4) * 0.25;
+      w.facedCd = Math.max(0, w.facedCd - dt);
+      const sc = w.facedCd > 0 ? 0.35 : 1;
+      w.g.scale.set(sc, sc, sc);
+      w.halo.rotation.y += dt * 0.8;
+      w.whisperCd -= dt;
+      const dk = Math.hypot(P.position.x - w.g.position.x, P.position.z - w.g.position.z);
+      if (dk < 8 && w.facedCd <= 0) {
+        if (nw < 0) nw = wi;
+        if (w.whisperCd <= 0) {
+          w.whisperCd = 30;
+          sfx.whisper();
+          say(`\u{1F32B}\uFE0F ${w.emo.icon} ${w.emo.name} whispers: "${w.emo.whisper}"`);
+        }
+      }
+    });
+    if (nw !== nearWisp) {
+      nearWisp = nw;
+      drawPanel();
+      if (nw >= 0) { sfx.click(); say(`\u{1F32B}\uFE0F A Doubtling drifts near... tap \u{1F32B}\uFE0F to face it.`); }
+    }
 
     // district proximity + locked gates push the player out
     let n = -1;
@@ -1788,13 +1970,14 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
 
   ensureDaily();
   spawnCaches();
+  spawnWisps();
   rebuild();
   drawHud();
   drawPanel();
   loop();
   setTimeout(() => say("👋 Welcome to Pillar Plaza! Walk to a district. 📱 Tilt your phone to look around."), 600);
   setTimeout(() => {
-    if (S.tutorial < 4) runTutorial();
+    if (S.tutorial < 5) runTutorial();
   }, 1100);
 
   return () => {
