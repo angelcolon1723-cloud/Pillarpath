@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { ArrowLeft, Sparkles, Lock, Heart, BookOpen, Volume2, VolumeX } from "lucide-react";
 import { rankForScore, societyScore } from "@/components/kiddo/world/WorldMap";
 import { EMOTIONS, getEncounters, recordEncounter } from "./emotions";
+import { PillarPlaza3D } from "./PillarPlaza3D";
 
 /* ------------------------------------------------------------------ */
 /* Pillar Plaza — City Builder.                                        */
@@ -198,6 +199,7 @@ export function PillarGame() {
   const [missionsDone, setMissionsDone] = useState<string[]>([]);
   const [showCodex, setShowCodex] = useState(false);
   const [ceremony, setCeremony] = useState<null | string>(null);
+  const [plaza3d, setPlaza3d] = useState(false);
   const [mayaMemory, setMayaMemory] = useState<null | "good" | "bad">(null);
   const [marketChoice, setMarketChoice] = useState<null | string>(null);
   const [courage, setCourage] = useState(0);
@@ -1334,6 +1336,7 @@ export function PillarGame() {
   return (
     <div className="fixed inset-0 z-[60] bg-black">
       <canvas ref={canvasRef} className="block touch-none" />
+      {plaza3d && <PillarPlaza3D onExit={() => setPlaza3d(false)} />}
 
       {/* Top HUD */}
       <div className="absolute inset-x-0 top-0 flex items-center justify-between bg-gradient-to-b from-black/70 to-transparent p-3">
@@ -1349,6 +1352,9 @@ export function PillarGame() {
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowQuests(true)} className="gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
             <span>🎯</span> Quests
+          </Button>
+          <Button variant="ghost" size="sm" onClick={() => setPlaza3d(true)} className="gap-1 text-xs font-extrabold text-white hover:bg-white/15 hover:text-white" title="Walk the plaza in 3D">
+            <span>🏙️</span> 3D
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowNews(true)} className="relative gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
             <span>📰</span>
