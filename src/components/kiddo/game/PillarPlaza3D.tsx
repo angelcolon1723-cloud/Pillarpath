@@ -84,10 +84,21 @@ function makeSfx() {
     o.start(now);
     o.stop(now + dur + 0.05);
   };
+  const buzz = (p: number | number[]) => {
+    try {
+      (navigator as any).vibrate?.(p);
+    } catch {
+      /* haptics unavailable */
+    }
+  };
+  // --- positional ambience (fountain + water, panned by camera) ---
+  let noiseBuf: AudioBuffer | null = null;
+  const amb: any[] = [];
   return {
     unlock() {
       ac();
     },
+    buzz,
     click() {
       tone(620, 0, 0.07, "triangle", 0.07);
     },
@@ -109,6 +120,103 @@ function makeSfx() {
     },
     reward() {
       [880, 1174, 1568].forEach((f, i) => tone(f, i * 0.07, 0.2, "triangle", 0.09));
+    },
+    bird(pan: number) {
+      const c = ac();
+      if (!c) return;
+      try {
+        const o = c.createOscillator();
+        const g = c.createGain();
+        o.type = "sine";
+        const t0 = c.currentTime;
+        o.frequency.setValueAtTime(2300 + Math.random() * 900, t0);
+        o.frequency.exponentialRampToValueAtTime(1700, t0 + 0.12);
+        g.gain.setValueAtTime(0.0001, t0);
+        g.gain.exponentialRampToValueAtTime(0.055, t0 + 0.02);
+        g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.18);
+        o.connect(g);
+        if (c.createStereoPanner) {
+          const p = c.createStereoPanner();
+          p.pan.value = Math.max(-1, Math.min(1, pan));
+          g.connect(p);
+          p.connect(c.destination);
+        } else {
+          g.connect(c.destination);
+        }
+        o.start(t0);
+        o.stop(t0 + 0.25);
+      } catch {
+        /* noop */
+      }
+    },
+    startAmbience(spots: { x: number; z: number; kind: string }[]) {
+      const c = ac();
+      if (!c || amb.length) return;
+      try {
+        if (!noiseBuf) {
+          const len = c.sampleRate * 2;
+          noiseBuf = c.createBuffer(1, len, c.sampleRate);
+          const d = noiseBuf.getChannelData(0);
+          for (let i = 0; i < len; i++) d[i] = Math.random() * 2 - 1;
+        }
+        spots.forEach((s) => {
+          const src = c.createBufferSource();
+          src.buffer = noiseBuf!;
+          src.loop = true;
+          const f = c.createBiquadFilter();
+          f.type = "bandpass";
+          f.frequency.value = s.kind === "fountain" ? 1000 : 480;
+          f.Q.value = 0.7;
+          const g = c.createGain();
+          g.gain.value = 0;
+          const pan = c.createStereoPanner ? c.createStereoPanner() : null;
+          src.connect(f);
+          f.connect(g);
+          if (pan) {
+            g.connect(pan);
+            pan.connect(c.destination);
+          } else {
+            g.connect(c.destination);
+          }
+          src.start();
+          amb.push({ src, gain: g, pan, x: s.x, z: s.z, kind: s.kind });
+        });
+      } catch {
+        /* noop */
+      }
+    },
+    updateAmbience(px: number, pz: number, yaw: number, dayF: number) {
+      const c = ctx;
+      if (!c || !amb.length) return;
+      try {
+        const t = c.currentTime;
+        const fwd = yaw + Math.PI;
+        amb.forEach((n) => {
+          const dx = n.x - px;
+          const dz = n.z - pz;
+          const dist = Math.hypot(dx, dz);
+          const srcAng = Math.atan2(dx, dz);
+          const panV = Math.sin(fwd - srcAng);
+          const vol =
+            Math.max(0, 1 - dist / 95) *
+            (n.kind === "fountain" ? 0.045 : 0.075) *
+            (0.35 + 0.65 * dayF);
+          n.gain.gain.setTargetAtTime(vol, t, 0.4);
+          if (n.pan) n.pan.pan.setTargetAtTime(Math.max(-1, Math.min(1, panV)), t, 0.4);
+        });
+      } catch {
+        /* noop */
+      }
+    },
+    stopAmbience() {
+      amb.forEach((n) => {
+        try {
+          n.src.stop();
+        } catch {
+          /* noop */
+        }
+      });
+      amb.length = 0;
     },
   };
 }
@@ -403,6 +511,13 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     path.rotation.y = -a;
   });
 
+  // positional ambience: fountain + harbor/lagoon water, panned by camera
+  sfx.startAmbience([
+    { x: 0, z: 0, kind: "fountain" },
+    { x: zones[2].x, z: zones[2].z, kind: "water" },
+    { x: zones[4].x, z: zones[4].z, kind: "water" },
+  ]);
+
   function rebuild() {
     DIST.forEach((d, i) => {
       const s = slots[i];
@@ -610,6 +725,22 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
     dist = Math.max(7, Math.min(26, dist + e.deltaY * 0.01));
   }, { passive: true });
 
+  // tilt-to-look (phones with a gyroscope; auto-enables on first reading)
+  let tiltOn = false, tiltHas = false, tiltYaw = 0, tiltPitch = 0, tiltYawSm = 0, tiltPitchSm = 0;
+  on(window, "deviceorientation", (e: DeviceOrientationEvent) => {
+    if (e.gamma == null || e.beta == null) return;
+    if (!tiltHas) {
+      tiltHas = true;
+      tiltOn = true;
+      drawPanel();
+    }
+    if (!tiltOn) return;
+    const g = Math.max(-45, Math.min(45, e.gamma));
+    const b = Math.max(0, Math.min(90, e.beta));
+    tiltYaw = ((-g * Math.PI) / 180) * 0.9;
+    tiltPitch = (((45 - b) * Math.PI) / 180) * 0.5;
+  });
+
   /* ----- UI ----- */
   const bar = (v: number, c: string) =>
     `<span class="pp3d-bar"><i style="width:${Math.min(v, 10) * 10}%;background:${c}"></i></span>`;
@@ -640,6 +771,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       b.push(`<button class="pp3d-btn" onclick="__pp3d.build(${near})">🏗️ Build (${COST})</button>`);
     }
     b.push(`<button class="pp3d-btn alt" onclick="__pp3d.realLife()">🌟 Real-life progress</button>`);
+    if (tiltHas) b.push(`<button class="pp3d-btn alt" onclick="__pp3d.tilt()">📱 Tilt: ${tiltOn ? "on" : "off"}</button>`);
     panel.innerHTML = b.join("");
   }
   function modal(html: string) {
@@ -673,6 +805,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   window.__pp3d = {
     quest(i: number) {
       sfx.click();
+      sfx.buzz(15);
       const q = DIST[i].qs[Math.floor(Math.random() * DIST[i].qs.length)];
       const o: [string, number][] = [[q.g, 1], [q.b, 0]];
       if (Math.random() < 0.5) o.reverse();
@@ -688,11 +821,13 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
         S.trust++;
         S.blight[i] = Math.max(0, S.blight[i] - 1);
         sfx.good();
+        sfx.buzz([25, 40, 25, 40, 80]);
         let extra = "";
         if (bumpReward()) {
           api.earn(5, "Pillar Plaza good deed");
           extra = `<p>✨ +5 real Units for a good deed (up to 3 a day).</p>`;
           sfx.reward();
+          sfx.buzz([25, 40, 25, 40, 120]);
         }
         modal(
           `<h3>Trust grows 🌱</h3><p>Good choice. The district brightens.</p>${extra}` +
@@ -701,6 +836,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       } else {
         S.blight[i] = Math.min(4, S.blight[i] + 1);
         sfx.bad();
+        sfx.buzz(150);
         modal(
           `<h3>Blight spreads 🥀</h3><p>The district dims a little. Take another quest to heal it.</p>` +
             `<button class="pp3d-btn" onclick="__pp3d.close()">Continue</button>`,
@@ -721,6 +857,7 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       }
       S.built[i]++;
       sfx.build();
+      sfx.buzz([40, 60, 90]);
       save();
       rebuild();
       drawHud();
@@ -744,6 +881,13 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       closeM();
       api.go(screen);
     },
+    tilt() {
+      tiltOn = !tiltOn;
+      sfx.click();
+      sfx.buzz(20);
+      drawPanel();
+      say(tiltOn ? "📱 Tilt-look on — tip your phone to look around." : "📱 Tilt-look off.");
+    },
     close: closeM,
   };
 
@@ -766,6 +910,9 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   const clock = new THREE.Clock();
   const fv = new THREE.Vector3();
   let raf = 0;
+  let frame = 0;
+  let birdT = 3;
+  let lastGateBuzz = -10;
 
   function loop() {
     raf = requestAnimationFrame(loop);
@@ -849,6 +996,10 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
         P.position.x = z.x + (dx / d) * 12;
         P.position.z = z.z + (dz / d) * 12;
         sfx.locked();
+        if (t - lastGateBuzz > 1.6) {
+          lastGateBuzz = t;
+          sfx.buzz([70, 50, 70]);
+        }
         say("🔒 " + DIST[i].gate);
       }
     });
@@ -861,12 +1012,24 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
       }
     }
 
-    // follow camera
+    // positional ambience + daytime birds (throttled)
+    if ((frame++ & 7) === 0) sfx.updateAmbience(P.position.x, P.position.z, yaw, h > 0 ? 1 : 0.15);
+    birdT -= dt;
+    if (birdT <= 0) {
+      birdT = 4 + Math.random() * 6;
+      if (h > 0.2) sfx.bird(Math.random() * 2 - 1);
+    }
+
+    // follow camera (blended with tilt-look when enabled)
+    tiltYawSm += (tiltYaw - tiltYawSm) * Math.min(1, dt * 3);
+    tiltPitchSm += (tiltPitch - tiltPitchSm) * Math.min(1, dt * 3);
+    const ey = yaw + (tiltOn ? tiltYawSm : 0);
+    const ep = Math.max(0.1, Math.min(1.2, pitch + (tiltOn ? tiltPitchSm : 0)));
     const tx = P.position.x, ty = 2, tz = P.position.z;
     cam.position.set(
-      tx + Math.sin(yaw) * Math.cos(pitch) * dist,
-      ty + Math.sin(pitch) * dist,
-      tz + Math.cos(yaw) * Math.cos(pitch) * dist,
+      tx + Math.sin(ey) * Math.cos(ep) * dist,
+      ty + Math.sin(ep) * dist,
+      tz + Math.cos(ey) * Math.cos(ep) * dist,
     );
     cam.lookAt(tx, ty, tz);
     rd.render(scene, cam);
@@ -876,11 +1039,12 @@ function startPlaza(root: HTMLElement, THREE: any, api: PlazaApi): () => void {
   drawHud();
   drawPanel();
   loop();
-  setTimeout(() => say("👋 Welcome to Pillar Plaza! Walk to a district."), 600);
+  setTimeout(() => say("👋 Welcome to Pillar Plaza! Walk to a district. 📱 Tilt your phone to look around."), 600);
 
   return () => {
     cancelAnimationFrame(raf);
     cleanups.forEach((fn) => fn());
+    sfx.stopAmbience();
     if (window.__pp3d) delete window.__pp3d;
     try {
       rd.dispose();
