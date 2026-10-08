@@ -1,97 +1,56 @@
 import { useEffect, useRef, useState, useCallback } from "react";
 import { useLedger } from "@/store/ledger";
 import { Button } from "@/components/ui/button";
-import { ArrowLeft, Sparkles, CloudLightning, Lock, Heart, BookOpen } from "lucide-react";
+import { ArrowLeft, Sparkles, Lock, Heart, BookOpen, Volume2, VolumeX } from "lucide-react";
 import { rankForScore, societyScore } from "@/components/kiddo/world/WorldMap";
 import { EMOTIONS, getEncounters, recordEncounter } from "./emotions";
 
 /* ------------------------------------------------------------------ */
-/* Pillar Plaza v2 — full-screen immersive rebuild.                     */
-/* Collision remapped to match the AAA background. Bigger, denser.     */
+/* Pillar Plaza — City Builder.                                        */
+/* You're not running around anymore. You're BUILDING.                 */
+/* Districts grow from real life. Decisions shape the skyline.         */
 /* ------------------------------------------------------------------ */
 
 const WORLD_W = 1600;
 const WORLD_H = 1200;
-const PLAYER_SPEED = 260;
-const PLAYER_R = 16;
 
 interface Vec { x: number; y: number }
-interface Orb extends Vec { taken: boolean; ph: number }
-interface Doubtling extends Vec { ph: number; dir: number; speed: number; stun: number; emotionId: string }
-interface StormCloud extends Vec { r: number; vx: number; ph: number }
-interface Chest extends Vec { opened: boolean; ph: number }
-interface CourageOrb extends Vec { taken: boolean; ph: number; value: number }
-interface Wanderer extends Vec { dir: number; speed: number; ph: number; pauseT: number; name: string }
+interface District {
+  id: string;
+  name: string;
+  icon: string;
+  color: string;
+  pos: Vec;
+  desc: string;
+  level: number; // 1-5, computed from real stats
+  maxLevel: number;
+  locked: boolean;
+  lockReason: string;
+}
 interface GameEvent extends Vec {
   id: number;
-  type: "lost" | "kindness" | "shower" | "surge";
+  type: "lost" | "kindness" | "shower" | "dilemma";
   label: string;
   ttl: number;
-  data: number;
   ph: number;
+  dilemmaKind?: "maya" | "peer" | "sam";
 }
+interface Chest extends Vec { opened: boolean; ph: number }
 
-const EVENT_DEFS = [
-  { type: "lost", label: "😢 Lost Units!", desc: "A kid dropped 3 Units nearby. Find them!" },
-  { type: "kindness", label: "🤝 Help Needed!", desc: "An elder needs help. Walk to them!" },
-  { type: "shower", label: "✨ Orb Shower!", desc: "Bonus orbs are falling! Grab them!" },
-  { type: "surge", label: "🌪️ Doubtling Surge!", desc: "Extra Doubtlings! Survive 30 seconds!" },
-] as const;
-interface RectObs { x: number; y: number; w: number; h: number; label?: string; color: string }
-interface CircleObs { x: number; y: number; r: number }
-
-/* Collision remapped to the AAA plaza background:
-   - Central monument: circular
-   - Buildings at perimeter where the visual structures are
-   - Gardens and pathways: open */
-const CIRCLE_OBS: CircleObs[] = [
-  { x: 800, y: 600, r: 75 }, // central pillar monument (just the pillar, rings are walkable)
+const DISTRICT_DEFS = [
+  { id: "chore", name: "Chore Village", icon: "🏠", color: "#4ade80", x: 320, y: 320, desc: "Where work ethic lives. Every chore builds a home." },
+  { id: "vault", name: "Vault Mountain", icon: "🏦", color: "#fbbf24", x: 1280, y: 320, desc: "Your savings, carved into the mountain." },
+  { id: "market", name: "Market Harbor", icon: "🏪", color: "#a78bfa", x: 1280, y: 880, desc: "Every purchase is a decision. Trade wisely." },
+  { id: "studio", name: "Studio Island", icon: "🎨", color: "#e879f9", x: 320, y: 880, desc: "Where creativity becomes real." },
+  { id: "learn", name: "Learning Lagoon", icon: "📚", color: "#38bdf8", x: 800, y: 180, desc: "Knowledge is the deepest water." },
+  { id: "hall", name: "Hall of Becoming", icon: "🏛️", color: "#f472b6", x: 800, y: 1020, desc: "Your journey, carved in stone." },
 ];
-
-const RECT_OBS: RectObs[] = [
-  { x: 660, y: 20, w: 280, h: 80, label: "Hall of Becoming", color: "#f472b6" },
-  { x: 40, y: 60, w: 140, h: 100, label: "Chore Village", color: "#4ade80" },
-  { x: 1420, y: 60, w: 140, h: 100, label: "Vault Mountain", color: "#fbbf24" },
-  { x: 40, y: 1040, w: 140, h: 100, label: "Studio Island", color: "#e879f9" },
-  { x: 1420, y: 1040, w: 140, h: 100, label: "Market Harbor", color: "#a78bfa" },
-  { x: 660, y: 1100, w: 280, h: 80, label: "Learning Lagoon", color: "#38bdf8" },
-];
-
-const ORB_SPOTS: Vec[] = [
-  { x: 350, y: 600 }, { x: 1250, y: 600 }, { x: 800, y: 300 },
-  { x: 300, y: 900 }, { x: 1300, y: 900 }, { x: 500, y: 300 },
-  { x: 1100, y: 300 }, { x: 800, y: 950 },
-];
-
-const KEEPER_POS: Vec = { x: 800, y: 800 };
-const MAYA_POS: Vec = { x: 1050, y: 950 };
-const PEER_POS: Vec = { x: 550, y: 950 };
-const SAM_POS: Vec = { x: 800, y: 200 };
-const CHORE_DOOR: Vec = { x: 110, y: 200 };
-const VAULT_DOOR: Vec = { x: 1490, y: 200 };
-const MARKET_DOOR: Vec = { x: 1490, y: 1100 };
 
 const JOBS = [
   { id: "dishes", name: "Dish Dynamo", desc: "Wash the dinner dishes without being asked.", reward: 30 },
   { id: "room", name: "Room Rescue", desc: "Clean your room top to bottom in 20 minutes.", reward: 40 },
   { id: "neighbor", name: "Neighbor Hero", desc: "Help a neighbor carry groceries.", reward: 60 },
 ];
-
-function circleHit(cx: number, cy: number, r: number): boolean {
-  for (const c of CIRCLE_OBS) {
-    const dx = cx - c.x;
-    const dy = cy - c.y;
-    if (dx * dx + dy * dy < (r + c.r) * (r + c.r)) return true;
-  }
-  for (const o of RECT_OBS) {
-    const nx = Math.max(o.x, Math.min(cx, o.x + o.w));
-    const ny = Math.max(o.y, Math.min(cy, o.y + o.h));
-    const dx = cx - nx;
-    const dy = cy - ny;
-    if (dx * dx + dy * dy < r * r) return true;
-  }
-  return false;
-}
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number) {
   ctx.beginPath();
@@ -121,19 +80,20 @@ export function PillarGame() {
   const vaultUnlocked = vault >= 50;
   const marketUnlocked = choresDone >= 3;
 
-  const [quest, setQuest] = useState<"intro" | "active" | "done">("intro");
-  const [orbsHeld, setOrbsHeld] = useState(0);
-  const [dialog, setDialog] = useState<string | null>(
-    "Welcome to Pillar Plaza, traveler. I'm the Keeper. Our Unit orbs have scattered — and Doubtlings hunt in the shadows. Will you bring back 8 orbs?"
-  );
-  const [hits, setHits] = useState(0);
-  const [won, setWon] = useState(false);
-  const [interior, setInterior] = useState<null | "chore" | "vault" | "market">(null);
+  // District levels from real life.
+  const districtLevels: Record<string, number> = {
+    chore: Math.min(5, 1 + Math.floor(choresDone / 2)),
+    vault: vaultUnlocked ? Math.min(5, 1 + Math.floor(vault / 100)) : 1,
+    market: marketUnlocked ? Math.min(5, 2 + Math.floor(choresDone / 4)) : 1,
+    studio: 1,
+    learn: 1,
+    hall: Math.min(5, 1 + ["Sprout", "Trailblazer", "Luminary", "Pillar"].indexOf(rank.name)),
+  };
+
+  const [selected, setSelected] = useState<null | string>(null);
   const [dilemma, setDilemma] = useState<null | { q: string; a: string; b: string; c: string }>(null);
   const [dilemmaKind, setDilemmaKind] = useState<null | "maya" | "peer" | "sam">(null);
   const [missionsDone, setMissionsDone] = useState<string[]>([]);
-  const [nearWhat, setNearWhat] = useState<null | "keeper" | "maya" | "peer" | "sam" | "chore" | "vault" | "market" | "chest">(null);
-  const [inStorm, setInStorm] = useState(false);
   const [showCodex, setShowCodex] = useState(false);
   const [ceremony, setCeremony] = useState<null | string>(null);
   const [mayaMemory, setMayaMemory] = useState<null | "good" | "bad">(null);
@@ -142,17 +102,58 @@ export function PillarGame() {
   const [trust, setTrust] = useState(50);
   const [toasts, setToasts] = useState<Array<{ id: number; title: string; msg: string; color: string }>>([]);
   const [soundOn, setSoundOn] = useState(false);
+  const [cityMood, setCityMood] = useState<"dawn" | "day" | "sunset" | "night">("day");
   const toastId = useRef(0);
-  const audioRef = useRef<{ ctx: AudioContext; nodes: OscillatorNode[] } | null>(null);
+  const audioRef = useRef<{ ctx: AudioContext } | null>(null);
+
+  const trustRef = useRef(50);
+  const rankRef = useRef(rank);
+  rankRef.current = rank;
 
   const pushToast = (title: string, msg: string, color = "#fbbf24") => {
     const id = ++toastId.current;
     setToasts((t) => [...t.slice(-2), { id, title, msg, color }]);
-    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 4500);
+    setTimeout(() => setToasts((t) => t.filter((x) => x.id !== id)), 5000);
   };
   const toastRef = useRef(pushToast);
   toastRef.current = pushToast;
-  const toggleSound = () => {
+
+  const stateRef = useRef({
+    districts: DISTRICT_DEFS.map((d) => ({ ...d, pos: { x: d.x, y: d.y } })),
+    chests: [
+      { x: 550, y: 550, opened: false, ph: 0 },
+      { x: 1050, y: 550, opened: false, ph: 2 },
+      { x: 550, y: 750, opened: false, ph: 4 },
+      { x: 1050, y: 750, opened: false, ph: 1 },
+    ] as Chest[],
+    events: [] as GameEvent[],
+    eventTimer: 20,
+    eventId: 0,
+    particles: [] as Array<Vec & { vx: number; vy: number; life: number; color: string }>,
+    fireflies: null as null | Array<{ x: number; y: number; ph: number; sp: number }>,
+    time: 0,
+    dayTime: 0.3,
+    blight: 0, // 0-1, grows when trust is low
+  });
+
+  // Rank-up ceremony.
+  useEffect(() => {
+    try {
+      const lastRank = localStorage.getItem("pillarpath-last-rank");
+      if (lastRank && lastRank !== rank.name) {
+        const order = ["Seedling", "Sprout", "Trailblazer", "Luminary", "Pillar"];
+        if (order.indexOf(rank.name) > order.indexOf(lastRank)) setCeremony(rank.name);
+      }
+      localStorage.setItem("pillarpath-last-rank", rank.name);
+    } catch { /* ignore */ }
+    try {
+      const mem = localStorage.getItem("pillarpath-maya");
+      if (mem === "good" || mem === "bad") setMayaMemory(mem);
+    } catch { /* ignore */ }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const toggleSound = useCallback(() => {
     if (audioRef.current) {
       audioRef.current.ctx.close();
       audioRef.current = null;
@@ -163,11 +164,9 @@ export function PillarGame() {
       const AC = window.AudioContext || (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
       const ctx = new AC();
       const master = ctx.createGain();
-      master.gain.value = 0.08;
+      master.gain.value = 0.06;
       master.connect(ctx.destination);
-      // Gentle pentatonic pad — C major pentatonic.
-      const notes = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25];
-      const nodes: OscillatorNode[] = [];
+      const notes = [261.63, 293.66, 329.63, 392.0, 440.0, 523.25, 587.33];
       const playNote = () => {
         if (!audioRef.current) return;
         const osc = ctx.createOscillator();
@@ -175,320 +174,119 @@ export function PillarGame() {
         osc.type = "sine";
         osc.frequency.value = notes[Math.floor(Math.random() * notes.length)];
         g.gain.setValueAtTime(0, ctx.currentTime);
-        g.gain.linearRampToValueAtTime(0.5, ctx.currentTime + 2);
-        g.gain.linearRampToValueAtTime(0, ctx.currentTime + 6);
-        osc.connect(g);
-        g.connect(master);
-        osc.start();
-        osc.stop(ctx.currentTime + 6.5);
-        setTimeout(playNote, 2500 + Math.random() * 3000);
+        g.gain.linearRampToValueAtTime(0.4, ctx.currentTime + 2.5);
+        g.gain.linearRampToValueAtTime(0, ctx.currentTime + 7);
+        osc.connect(g); g.connect(master);
+        osc.start(); osc.stop(ctx.currentTime + 7.5);
+        setTimeout(playNote, 3000 + Math.random() * 4000);
       };
       playNote();
-      // Soft shimmer.
-      const shimmer = ctx.createOscillator();
-      const sg = ctx.createGain();
-      shimmer.type = "triangle";
-      shimmer.frequency.value = 1046.5;
-      sg.gain.value = 0.03;
-      shimmer.connect(sg);
-      sg.connect(master);
-      shimmer.start();
-      nodes.push(shimmer);
-      audioRef.current = { ctx, nodes };
+      audioRef.current = { ctx };
       setSoundOn(true);
-    } catch { /* audio unavailable */ }
+    } catch { /* ignore */ }
+  }, []);
+
+  useEffect(() => {
+    return () => { if (audioRef.current) { audioRef.current.ctx.close(); audioRef.current = null; } };
+  }, []);
+
+  const openChest = (chest: Chest) => {
+    if (chest.opened) return;
+    chest.opened = true;
+    const roll = Math.random();
+    if (roll < 0.4) {
+      const nt = Math.min(100, trustRef.current + 5);
+      trustRef.current = nt; setTrust(nt);
+      pushToast("Treasure!", "+5 Trust — your city glows brighter.", "#4ade80");
+    } else if (roll < 0.7) {
+      setCourage((c) => c + 10);
+      pushToast("Treasure!", "+10 Courage — bravery builds cities.", "#fbbf24");
+    } else {
+      pushToast("Wisdom!", "💎 \"Wealth is what you don't see.\"", "#e879f9");
+    }
+    const S = stateRef.current;
+    for (let i = 0; i < 18; i++) {
+      const a = Math.random() * Math.PI * 2;
+      const sp = 60 + Math.random() * 120;
+      S.particles.push({ x: chest.x, y: chest.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.8, color: "#fbbf24" });
+    }
   };
 
-  useEffect(() => {
-    return () => {
-      if (audioRef.current) {
-        audioRef.current.ctx.close();
-        audioRef.current = null;
-      }
-    };
-  }, []);
-
-  const trustRef = useRef(50);
-  const stateRef = useRef({
-    player: { x: 800, y: 1000 } as Vec,
-    orbs: ORB_SPOTS.map((s) => ({ ...s, taken: false, ph: Math.random() * 6 })) as Orb[],
-    doubtlings: [
-      { x: 500, y: 600, ph: 0, dir: 0, speed: 95, stun: 0, emotionId: "doubt" },
-      { x: 1100, y: 600, ph: 2, dir: 2, speed: 105, stun: 0, emotionId: "impulse" },
-      { x: 1300, y: 800, ph: 4, dir: 4, speed: 120, stun: 0, emotionId: "loneliness" },
-      { x: 350, y: 750, ph: 1, dir: 1, speed: 88, stun: 0, emotionId: "doubt" },
-    ] as Doubtling[],
-    clouds: [
-      { x: 400, y: 300, r: 130, vx: 22, ph: 0 },
-      { x: 1200, y: 500, r: 150, vx: -18, ph: 2 },
-      { x: 800, y: 950, r: 110, vx: 26, ph: 4 },
-    ] as StormCloud[],
-    chests: [
-      { x: 300, y: 420, opened: false, ph: 0 },
-      { x: 1300, y: 450, opened: false, ph: 2 },
-      { x: 800, y: 1100, opened: false, ph: 4 },
-      { x: 200, y: 700, opened: false, ph: 1 },
-      { x: 1400, y: 700, opened: false, ph: 3 },
-    ] as Chest[],
-    courageOrbs: [] as CourageOrb[],
-    wanderers: [
-      { x: 600, y: 450, dir: 0, speed: 40, ph: 0, pauseT: 0, name: "Lily" },
-      { x: 1000, y: 750, dir: 2, speed: 35, ph: 2, pauseT: 0, name: "Max" },
-      { x: 700, y: 950, dir: 4, speed: 45, ph: 4, pauseT: 0, name: "Zoe" },
-      { x: 1150, y: 400, dir: 1, speed: 38, ph: 1, pauseT: 0, name: "Kai" },
-      { x: 450, y: 800, dir: 3, speed: 42, ph: 3, pauseT: 0, name: "Ava" },
-      { x: 950, y: 550, dir: 5, speed: 36, ph: 5, pauseT: 0, name: "Leo" },
-    ] as Wanderer[],
-    courageTimer: 0,
-    courage: 0,
-    fireflies: null as null | Array<{ x: number; y: number; ph: number; sp: number }>,
-    events: [] as GameEvent[],
-    eventTimer: 25,
-    eventId: 0,
-    dayTime: 0.25,
-    bonusOrbs: [] as Array<Vec & { taken: boolean; ph: number }>,
-    keys: {} as Record<string, boolean>,
-    joy: { x: 0, y: 0, active: false },
-    cam: { x: 0, y: 0 } as Vec,
-    slowUntil: 0,
-    particles: [] as Array<Vec & { vx: number; vy: number; life: number; color: string }>,
-    time: 0,
-    nearMissCd: 0,
-    nearMissT: 0,
-    faceAngle: 0,
-    inStorm: false,
-  });
-
-  const questRef = useRef(quest);
-  questRef.current = quest;
-  const rankRef = useRef(rank);
-  rankRef.current = rank;
-
-  useEffect(() => {
-    try {
-      const mem = localStorage.getItem("pillarpath-maya");
-      if (mem === "good" || mem === "bad") setMayaMemory(mem);
-    } catch { /* ignore */ }
-    try {
-      const lastRank = localStorage.getItem("pillarpath-last-rank");
-      if (lastRank && lastRank !== rank.name) {
-        const order = ["Seedling", "Sprout", "Trailblazer", "Luminary", "Pillar"];
-        if (order.indexOf(rank.name) > order.indexOf(lastRank)) setCeremony(rank.name);
-      }
-      localStorage.setItem("pillarpath-last-rank", rank.name);
-    } catch { /* ignore */ }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  useEffect(() => {
-    const id = setInterval(() => {
-      if (interior) { setNearWhat(null); return; }
-      const p = stateRef.current.player;
-      const d = (a: Vec, b: Vec) => Math.hypot(a.x - b.x, a.y - b.y);
-      if (d(p, KEEPER_POS) < 100) setNearWhat("keeper");
-      else if (d(p, MAYA_POS) < 100) setNearWhat("maya");
-      else if (d(p, PEER_POS) < 100) setNearWhat("peer");
-      else if (d(p, SAM_POS) < 100) setNearWhat("sam");
-      else if (d(p, CHORE_DOOR) < 120) setNearWhat("chore");
-      else if (d(p, VAULT_DOOR) < 120) setNearWhat("vault");
-      else if (d(p, MARKET_DOOR) < 120) setNearWhat("market");
-      else {
-        const chest = stateRef.current.chests.find((c) => !c.opened && d(p, c) < 85);
-        setNearWhat(chest ? "chest" : null);
-      }
-      setInStorm(stateRef.current.inStorm);
-    }, 250);
-    return () => clearInterval(id);
-  }, [interior]);
-
-  const startQuest = useCallback(() => {
-    questRef.current = "active";
-    setQuest("active");
-    setDialog(null);
-    toastRef.current("Quest started!", "8 orbs glow across the plaza. Storms slow you, Doubtlings hunt you. The brave earn more.", "#22d3ee");
-  }, []);
-
-  const talkToKeeper = () => {
-    const q = questRef.current;
-    const held = stateRef.current.orbs.filter((o) => o.taken).length;
-    if (q === "intro") {
-      setDialog("Our Unit orbs have scattered across the plaza — and Doubtlings hunt in the shadows. Bring back 8 orbs. Will you do it?");
-    } else if (q === "active" && held >= 8) {
-      questRef.current = "done";
-      setQuest("done");
-      setWon(true);
-      const hitCount = hits;
-      if (hitCount === 0) {
-        const nt = Math.min(100, trustRef.current + 15);
-        trustRef.current = nt;
-        setTrust(nt);
-        setCourage((c) => c + 20);
-        stateRef.current.courage += 20;
-      }
-      // Real-life connection: award real Units once per day (anti-farm).
-      try {
-        const today = new Date().toISOString().slice(0, 10);
-        const lastClaim = localStorage.getItem("pillarpath-quest-claim");
-        if (lastClaim !== today) {
-          localStorage.setItem("pillarpath-quest-claim", today);
-          const err = awardUnits(50, "Pillar Plaza orb quest");
-          if (!err) {
-            toastRef.current("Real reward!", "+50 real Units added to your balance. Game and life, connected.", "#4ade80");
-          }
-        }
-      } catch { /* ignore */ }
-      const p = stateRef.current.player;
-      const colors = ["#22d3ee", "#e879f9", "#fbbf24", "#4ade80", "#a78bfa"];
-      for (let i = 0; i < 100; i++) {
-        const a = Math.random() * Math.PI * 2;
-        const sp = 80 + Math.random() * 240;
-        stateRef.current.particles.push({
-          x: p.x, y: p.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 60,
-          life: 1.2 + Math.random() * 0.8, color: colors[i % colors.length],
+  const triggerDilemma = (kind: "maya" | "peer" | "sam") => {
+    setDilemmaKind(kind);
+    const mem = mayaMemory;
+    if (kind === "maya") {
+      if (mem === "good") {
+        setDilemma({
+          q: "Maya beams! \"Your advice worked! But now my friend wants me to lend him ALL my savings. What should I do?\"",
+          a: "Lend it all — that's what friends do!", b: "Lend a little, keep the rest safe", c: "Say no — money ruins friendships",
+        });
+      } else if (mem === "bad") {
+        setDilemma({
+          q: "Maya looks down. \"I kept all that money... and I feel awful. I want to make it right. What now?\"",
+          a: "Too late — forget about it", b: "Try to find the owner and return it", c: "Give it to someone who needs it",
+        });
+      } else {
+        setDilemma({
+          q: "Maya found 100 Units! Nobody saw. A citizen needs your wisdom — what should she do?",
+          a: "Keep it all — finders keepers!", b: "Save half, try to find the owner", c: "Spend it all on candy now",
         });
       }
-      setDialog(null);
-      toastRef.current(
-        hitCount === 0 ? "FLAWLESS!" : "Quest complete!",
-        hitCount === 0
-          ? "Not a single Doubtling touched you. +15 Trust, +20 Courage. The plaza whispers your name."
-          : `Every orb recovered in ${hitCount} hits. That's what a Pillar does. +50 Units.`,
-        "#fbbf24"
-      );
-    } else if (q === "active") {
-      setDialog(`You carry ${held} of 8 orbs. ${8 - held} still out there. Watch the shadows, mind the storms.`);
-    } else {
-      setDialog("The plaza is safe because of you, traveler. Better than yesterday — every single day.");
-    }
-  };
-
-  const talkToMaya = () => {
-    setDilemmaKind("maya");
-    const mem = mayaMemory;
-    if (mem === "good") {
+    } else if (kind === "peer") {
       setDilemma({
-        q: "Maya beams! \"Your advice worked! But now my friend wants me to lend him ALL my savings. What should I do?\"",
-        a: "Lend it all — that's what friends do!",
-        b: "Lend a little, keep the rest safe",
-        c: "Say no — money ruins friendships",
-      });
-    } else if (mem === "bad") {
-      setDilemma({
-        q: "Maya looks down. \"I kept all that money... and I feel awful. I want to make it right. What now?\"",
-        a: "Too late — forget about it",
-        b: "Try to find the owner and return it",
-        c: "Give it to someone who needs it",
+        q: "Jay: \"Everyone's getting the Hover Board! 500 Units! Just borrow from your vault!\"",
+        a: "Borrow — everyone's doing it!", b: "No — the vault is my future", c: "Let's save up together!",
       });
     } else {
       setDilemma({
-        q: "Maya found 100 Units! Nobody saw. What should she do?",
-        a: "Keep it all — finders keepers!",
-        b: "Save half, try to find the owner",
-        c: "Spend it all on candy now",
+        q: "Sam: \"FLASH SALE! 50% off for 5 MINUTES! Should I buy everything?!\"",
+        a: "YES! Buy it all!", b: "Stop. Need it or just want it?", c: "Buy one small thing",
       });
     }
-  };
-
-  const talkToPeer = () => {
-    setDilemmaKind("peer");
-    setDilemma({
-      q: "Jay: \"Everyone's getting the Hover Board! 500 Units! Just borrow from your vault!\"",
-      a: "Borrow — everyone's doing it!",
-      b: "No — the vault is my future",
-      c: "Let's save up together!",
-    });
-  };
-
-  const talkToSam = () => {
-    setDilemmaKind("sam");
-    setDilemma({
-      q: "Sam: \"FLASH SALE! 50% off for 5 MINUTES! Should I buy everything?!\"",
-      a: "YES! Buy it all!",
-      b: "Stop. Need it or just want it?",
-      c: "Buy one small thing",
-    });
   };
 
   const answerDilemma = (choice: "a" | "b" | "c") => {
     const kind = dilemmaKind;
-    setDilemma(null);
-    setDilemmaKind(null);
+    setDilemma(null); setDilemmaKind(null);
+    const S = stateRef.current;
     const good = (msg: string) => {
       const nt = Math.min(100, trustRef.current + 10);
-      trustRef.current = nt;
-      setTrust(nt);
-      toastRef.current("Good choice!", `${msg} Trust up — Doubtlings weaken.`, "#4ade80");
+      trustRef.current = nt; setTrust(nt);
+      pushToast("Wise choice!", `${msg} Your city prospers.`, "#4ade80");
+      S.blight = Math.max(0, S.blight - 0.2);
     };
-    const bad = (msg: string, penalty = 10) => {
-      const nt = Math.max(0, trustRef.current - penalty);
-      trustRef.current = nt;
-      setTrust(nt);
-      toastRef.current("Tough call...", `${msg} Trust down — Doubtlings grow bolder.`, "#ef4444");
+    const bad = (msg: string) => {
+      const nt = Math.max(0, trustRef.current - 10);
+      trustRef.current = nt; setTrust(nt);
+      pushToast("Tough call...", `${msg} Blight spreads.`, "#ef4444");
+      S.blight = Math.min(1, S.blight + 0.25);
+      const emo = EMOTIONS[Math.floor(Math.random() * 3)];
+      recordEncounter(emo.id);
     };
     if (kind === "maya") {
       const setMem = (m: "good" | "bad") => {
         setMayaMemory(m);
         try { localStorage.setItem("pillarpath-maya", m); } catch { /* ignore */ }
       };
-      if (choice === "b") {
-        setMem("good");
-        good(mayaMemory === "bad"
-          ? "Maya lights up. \"I'll make it right!\" Redemption feels amazing."
-          : "Maya nods. \"Saving half, finding the owner — that's what a Pillar does.\"");
-      } else {
-        setMem("bad");
-        bad(choice === "a" && mayaMemory !== "good"
-          ? "Maya pockets it... but looks uneasy. Honest money feels better."
-          : "Sweet now, empty later. That's the trap.", 5);
-      }
+      if (choice === "b") { setMem("good"); good("Maya nods. \"That's what a Pillar does.\""); }
+      else { setMem("bad"); bad("Maya looks uneasy. Easy now, costly later."); }
     } else if (kind === "peer") {
-      if (choice === "a") bad("You borrow from the vault. Fun for a week — savings wrecked. Pressure is expensive.");
-      else good(choice === "b" ? "Jay thinks... \"You're right.\" Standing up to pressure is strength." : "Jay grins. \"Save together? More fun!\" Pressure became teamwork.");
+      if (choice === "a") bad("The vault cracks. Pressure is expensive.");
+      else good(choice === "b" ? "Jay thinks... \"You're right.\"" : "Jay grins. \"Save together? More fun!\"");
     } else if (kind === "sam") {
-      if (choice === "b") good("Sam breathes. \"Need it or want it?\" He puts it all back. The pause saved a fortune.");
-      else bad(choice === "a" ? "Panic-buy! Regret begins. Flash sales bypass your brain." : "The rush fades in minutes. Impulse steals futures.", 5);
-    }
-  };
-
-  const openChest = () => {
-    const p = stateRef.current.player;
-    const chest = stateRef.current.chests.find((c) => !c.opened && Math.hypot(p.x - c.x, p.y - c.y) < 85);
-    if (!chest) return;
-    chest.opened = true;
-    const roll = Math.random();
-    if (roll < 0.4) {
-      const nt = Math.min(100, trustRef.current + 5);
-      trustRef.current = nt;
-      setTrust(nt);
-      pushToast("Treasure!", "+5 Trust — the Doubtlings shrink.", "#4ade80");
-    } else if (roll < 0.7) {
-      setCourage((c) => c + 10);
-      stateRef.current.courage += 10;
-      pushToast("Treasure!", "+10 Courage — bravery compounds.", "#fbbf24");
-    } else {
-      const wisdoms = [
-        "💎 \"Wealth is what you don't see.\"",
-        "💎 \"A habit saved is a fortune built.\"",
-        "💎 \"The best investment is yourself.\"",
-      ];
-      pushToast("Wisdom found!", wisdoms[Math.floor(Math.random() * wisdoms.length)], "#e879f9");
-    }
-    const S = stateRef.current;
-    for (let i = 0; i < 20; i++) {
-      const a = Math.random() * Math.PI * 2;
-      const sp = 60 + Math.random() * 120;
-      S.particles.push({ x: chest.x, y: chest.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp, life: 0.8 + Math.random() * 0.4, color: "#fbbf24" });
+      if (choice === "b") good("Sam breathes. \"Need it or want it?\" Crisis averted.");
+      else bad("Panic-buy! The market district dims.");
     }
   };
 
   const acceptJob = (id: string) => {
     if (missionsDone.includes(id)) return;
     setMissionsDone((m) => [...m, id]);
-    setInterior(null);
-    pushToast("Mission accepted!", "Do this chore in real life, tell your parent — Units incoming.", "#4ade80");
+    setSelected(null);
+    pushToast("Mission accepted!", "Do it in real life, tell your parent — your Chore Village grows.", "#4ade80");
   };
 
-  /* ------------------------------ game loop ------------------------------ */
+  /* ------------------------------ canvas loop ------------------------------ */
   useEffect(() => {
     const canvas = canvasRef.current;
     if (!canvas) return;
@@ -497,20 +295,17 @@ export function PillarGame() {
 
     const sprites: Record<string, HTMLImageElement> = {};
     for (const [k, src] of Object.entries({
-      player: "/designs/game/game-kid.webp",
-      doubtling: "/designs/game/game-doubtling.webp",
-      orb: "/designs/game/game-orb.webp",
-      keeper: "/designs/game/game-keeper.webp",
       plaza: "/designs/game/game-plaza-bg.webp",
       chest: "/designs/game/game-chest.webp",
     })) {
-      const img = new Image();
-      img.src = src;
-      sprites[k] = img;
+      const img = new Image(); img.src = src; sprites[k] = img;
     }
 
+    // Fit whole city on screen.
+    let viewScale = 1;
+    let viewOX = 0;
+    let viewOY = 0;
     const resize = () => {
-      // Full-screen: fill the entire viewport minus nothing.
       const w = window.innerWidth;
       const h = window.innerHeight;
       const dpr = Math.min(window.devicePixelRatio || 1, 2);
@@ -519,63 +314,71 @@ export function PillarGame() {
       canvas.style.width = `${w}px`;
       canvas.style.height = `${h}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      viewScale = Math.min(w / WORLD_W, h / WORLD_H);
+      viewOX = (w - WORLD_W * viewScale) / 2;
+      viewOY = (h - WORLD_H * viewScale) / 2;
     };
     resize();
     window.addEventListener("resize", resize);
 
-    const keyDown = (e: KeyboardEvent) => { S.keys[e.key.toLowerCase()] = true; };
-    const keyUp = (e: KeyboardEvent) => { S.keys[e.key.toLowerCase()] = false; };
-    window.addEventListener("keydown", keyDown);
-    window.addEventListener("keyup", keyUp);
-
-    const joyBase = { x: 0, y: 0 };
-    let joyId: number | null = null;
-    const joyStart = (e: PointerEvent) => {
+    // Tap detection.
+    const onTap = (e: PointerEvent) => {
       const r = canvas.getBoundingClientRect();
-      const x = e.clientX - r.left;
-      const y = e.clientY - r.top;
-      if (x < r.width * 0.45 && y > r.height * 0.45) {
-        joyId = e.pointerId;
-        joyBase.x = x;
-        joyBase.y = y;
-        S.joy.active = true;
-        try { canvas.setPointerCapture(e.pointerId); } catch { /* noop */ }
+      const sx = e.clientX - r.left;
+      const sy = e.clientY - r.top;
+      const wx = (sx - viewOX) / viewScale;
+      const wy = (sy - viewOY) / viewScale;
+      // Check districts.
+      for (const d of S.districts) {
+        if (Math.hypot(wx - d.pos.x, wy - d.pos.y) < 110) {
+          setSelected(d.id);
+          return;
+        }
       }
+      // Check chests.
+      for (const c of S.chests) {
+        if (!c.opened && Math.hypot(wx - c.x, wy - c.y) < 60) {
+          openChest(c);
+          return;
+        }
+      }
+      // Check events.
+      for (const ev of S.events) {
+        if (Math.hypot(wx - ev.x, wy - ev.y) < 70) {
+          if (ev.type === "dilemma" && ev.dilemmaKind) {
+            triggerDilemma(ev.dilemmaKind);
+          } else if (ev.type === "kindness") {
+            const nt = Math.min(100, trustRef.current + 8);
+            trustRef.current = nt; setTrust(nt);
+            setCourage((c) => c + 5);
+            toastRef.current("Kindness!", "You helped the elder. +8 Trust, +5 Courage.", "#4ade80");
+            spawnBurst(ev.x, ev.y, "#4ade80", 16);
+          } else if (ev.type === "shower") {
+            setCourage((c) => c + 10);
+            const nt = Math.min(100, trustRef.current + 3);
+            trustRef.current = nt; setTrust(nt);
+            toastRef.current("Blessing!", "+10 Courage, +3 Trust. The city smiles.", "#fbbf24");
+            spawnBurst(ev.x, ev.y, "#fbbf24", 20);
+          }
+          S.events = S.events.filter((x) => x.id !== ev.id);
+          return;
+        }
+      }
+      setSelected(null);
     };
-    const joyMove = (e: PointerEvent) => {
-      if (e.pointerId !== joyId) return;
-      const r = canvas.getBoundingClientRect();
-      const dx = e.clientX - r.left - joyBase.x;
-      const dy = e.clientY - r.top - joyBase.y;
-      const len = Math.hypot(dx, dy) || 1;
-      const max = 70;
-      const cl = Math.min(1, max / len);
-      S.joy.x = (dx * cl) / max;
-      S.joy.y = (dy * cl) / max;
-    };
-    const joyEnd = (e: PointerEvent) => {
-      if (e.pointerId !== joyId) return;
-      joyId = null;
-      S.joy.active = false;
-      S.joy.x = 0;
-      S.joy.y = 0;
-    };
-    // Auto-start ambient sound on first touch (browsers require user gesture).
+    canvas.addEventListener("pointerdown", onTap);
+
+    // Auto-sound on first tap.
     let audioStarted = false;
     const autoAudio = () => {
       if (audioStarted || audioRef.current) return;
       audioStarted = true;
       toggleSound();
     };
-    canvas.addEventListener("pointerdown", joyStart);
     canvas.addEventListener("pointerdown", autoAudio, { once: true });
-    canvas.addEventListener("pointermove", joyMove);
-    canvas.addEventListener("pointerup", joyEnd);
-    canvas.addEventListener("pointercancel", joyEnd);
 
     let raf = 0;
     let last = performance.now();
-
     const spawnBurst = (x: number, y: number, color: string, n = 14) => {
       for (let i = 0; i < n; i++) {
         const a = Math.random() * Math.PI * 2;
@@ -584,715 +387,293 @@ export function PillarGame() {
       }
     };
 
-    const drawShadow = (x: number, y: number, rx: number, ry: number, alpha = 0.35) => {
-      ctx.save();
-      ctx.globalAlpha = alpha;
-      ctx.fillStyle = "#000";
-      ctx.beginPath();
-      ctx.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    };
-
-    const drawCloud = (c: StormCloud) => {
-      const flicker = Math.sin(S.time * 7 + c.ph) * 0.5 + 0.5;
-      ctx.save();
-      ctx.translate(c.x, c.y);
-      ctx.globalAlpha = 0.82;
-      const puffs: Array<[number, number, number]> = [
-        [0, 0, c.r * 0.55], [-c.r * 0.4, c.r * 0.1, c.r * 0.42],
-        [c.r * 0.4, c.r * 0.12, c.r * 0.45], [0, -c.r * 0.25, c.r * 0.4],
-      ];
-      for (const [px, py, pr] of puffs) {
-        const g = ctx.createRadialGradient(px, py, pr * 0.2, px, py, pr);
-        g.addColorStop(0, "rgba(75,85,105,0.95)");
-        g.addColorStop(0.7, "rgba(55,65,85,0.9)");
-        g.addColorStop(1, "rgba(40,48,68,0)");
-        ctx.fillStyle = g;
-        ctx.beginPath();
-        ctx.arc(px, py, pr, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      if (flicker > 0.86) {
-        ctx.strokeStyle = `rgba(253,224,71,${((flicker - 0.86) * 6).toFixed(2)})`;
-        ctx.lineWidth = 3;
-        ctx.beginPath();
-        const lx = Math.sin(c.ph * 7) * 0.5 * c.r;
-        ctx.moveTo(lx, -c.r * 0.3);
-        ctx.lineTo(lx + 12, 0);
-        ctx.lineTo(lx - 6, c.r * 0.25);
-        ctx.stroke();
-      }
-      ctx.restore();
-      ctx.globalAlpha = 1;
-    };
-
-    const dropOrb = (emotionId: string) => {
-      const p = S.player;
-      const free = S.orbs.find((o) => o.taken);
-      if (free) {
-        free.taken = false;
-        free.x = Math.max(40, Math.min(WORLD_W - 40, p.x + (Math.random() - 0.5) * 160));
-        free.y = Math.max(40, Math.min(WORLD_H - 40, p.y + (Math.random() - 0.5) * 160));
-        setOrbsHeld((n) => Math.max(0, n - 1));
-      }
-      S.slowUntil = S.time + 2.5;
-      setHits((h) => h + 1);
-      spawnBurst(p.x, p.y, "#a78bfa", 18);
-      const emotion = EMOTIONS.find((e) => e.id === emotionId);
-      if (emotion) {
-        const encounters = recordEncounter(emotionId);
-        const count = encounters[emotionId];
-        toastRef.current(`${emotion.icon} ${emotion.name}`, `"${emotion.whisper}" — ${emotion.truth} (Faced ${count}×)`, emotion.color);
-      }
-    };
-
     const loop = (now: number) => {
       raf = requestAnimationFrame(loop);
       const dt = Math.min((now - last) / 1000, 0.05);
       last = now;
       S.time += dt;
-
-      let ix = 0;
-      let iy = 0;
-      if (S.keys["w"] || S.keys["arrowup"]) iy -= 1;
-      if (S.keys["s"] || S.keys["arrowdown"]) iy += 1;
-      if (S.keys["a"] || S.keys["arrowleft"]) ix -= 1;
-      if (S.keys["d"] || S.keys["arrowright"]) ix += 1;
-      if (S.joy.active) { ix += S.joy.x; iy += S.joy.y; }
-      const il = Math.hypot(ix, iy);
-      if (il > 1) { ix /= il; iy /= il; }
-
-      for (const c of S.clouds) {
-        c.x += c.vx * dt;
-        if (c.x > WORLD_W + c.r) c.x = -c.r;
-        if (c.x < -c.r) c.x = WORLD_W + c.r;
-      }
-
-      const p = S.player;
-      const heldCount = S.orbs.filter((o) => o.taken).length;
-      const inStormNow = S.clouds.some((c) => Math.hypot(p.x - c.x, p.y - c.y) < c.r * 0.7);
-      S.inStorm = inStormNow;
-      const slowed = S.time < S.slowUntil ? 0.55 : 1;
-      const sp = PLAYER_SPEED * slowed * (inStormNow ? 0.6 : 1) * (1 - heldCount * 0.04);
-      const nx = p.x + ix * sp * dt;
-      const ny = p.y + iy * sp * dt;
-      if (!circleHit(nx, p.y, PLAYER_R)) p.x = Math.max(PLAYER_R, Math.min(WORLD_W - PLAYER_R, nx));
-      if (!circleHit(p.x, ny, PLAYER_R)) p.y = Math.max(PLAYER_R, Math.min(WORLD_H - PLAYER_R, ny));
-      if (il > 0.25) {
-        // Smooth angle to avoid jitter from touch noise.
-        const target = Math.atan2(iy, ix) - Math.PI / 4;
-        let diff = target - S.faceAngle;
-        while (diff > Math.PI) diff -= Math.PI * 2;
-        while (diff < -Math.PI) diff += Math.PI * 2;
-        S.faceAngle += diff * Math.min(1, dt * 10);
-      }
-
-      if (questRef.current === "active") {
-        for (const o of S.orbs) {
-          if (!o.taken && Math.hypot(p.x - o.x, p.y - o.y) < 36) {
-            o.taken = true;
-            setOrbsHeld((n) => n + 1);
-            spawnBurst(o.x, o.y, "#22d3ee", 12);
-          }
-        }
-      }
-
-      S.courageTimer += dt;
-      if (S.courageTimer > 8 && S.courageOrbs.filter((o) => !o.taken).length < 3) {
-        S.courageTimer = 0;
-        const d = S.doubtlings[Math.floor(Math.random() * S.doubtlings.length)];
-        const a = Math.random() * Math.PI * 2;
-        S.courageOrbs.push({
-          x: Math.max(60, Math.min(WORLD_W - 60, d.x + Math.cos(a) * 130)),
-          y: Math.max(60, Math.min(WORLD_H - 60, d.y + Math.sin(a) * 130)),
-          taken: false, ph: Math.random() * 6, value: 5,
-        });
-      }
-      for (const co of S.courageOrbs) {
-        if (!co.taken && Math.hypot(p.x - co.x, p.y - co.y) < 34) {
-          co.taken = true;
-          setCourage((c) => c + co.value);
-          S.courage += co.value;
-          spawnBurst(co.x, co.y, "#fbbf24", 10);
-        }
-      }
-
-      /* day/night cycle — full cycle ~6 minutes */
       S.dayTime = (S.dayTime + dt / 360) % 1;
 
-      /* random living events */
+      // Blight follows trust inversely.
+      const targetBlight = Math.max(0, (50 - trustRef.current) / 100);
+      S.blight += (targetBlight - S.blight) * Math.min(1, dt * 0.5);
+
+      // Random city events.
       S.eventTimer -= dt;
       if (S.eventTimer <= 0 && S.events.length < 2) {
-        S.eventTimer = 40 + Math.random() * 40;
-        const def = EVENT_DEFS[Math.floor(Math.random() * EVENT_DEFS.length)];
-        const a = Math.random() * Math.PI * 2;
-        const ex = Math.max(100, Math.min(WORLD_W - 100, p.x + Math.cos(a) * 300));
-        const ey = Math.max(100, Math.min(WORLD_H - 100, p.y + Math.sin(a) * 300));
+        S.eventTimer = 35 + Math.random() * 35;
         S.eventId += 1;
-        S.events.push({
-          id: S.eventId, type: def.type, label: def.label,
-          x: ex, y: ey, ttl: 60, data: 0, ph: Math.random() * 6,
-        });
-        toastRef.current(def.label, def.desc, "#e879f9");
-        if (def.type === "shower") {
-          for (let i = 0; i < 6; i++) {
-            S.bonusOrbs.push({
-              x: Math.max(60, Math.min(WORLD_W - 60, ex + (Math.random() - 0.5) * 400)),
-              y: Math.max(60, Math.min(WORLD_H - 60, ey + (Math.random() - 0.5) * 400)),
-              taken: false, ph: Math.random() * 6,
-            });
-          }
-        }
-        if (def.type === "surge") {
-          for (let i = 0; i < 2; i++) {
-            const sa = Math.random() * Math.PI * 2;
-            S.doubtlings.push({
-              x: Math.max(60, Math.min(WORLD_W - 60, p.x + Math.cos(sa) * 350)),
-              y: Math.max(60, Math.min(WORLD_H - 60, p.y + Math.sin(sa) * 350)),
-              ph: Math.random() * 6, dir: 0, speed: 110, stun: 0,
-              emotionId: ["doubt", "impulse", "loneliness"][Math.floor(Math.random() * 3)],
-            });
-          }
+        const roll = Math.random();
+        const a = Math.random() * Math.PI * 2;
+        const ex = 800 + Math.cos(a) * 320;
+        const ey = 600 + Math.sin(a) * 240;
+        if (roll < 0.5) {
+          const kinds: Array<"maya" | "peer" | "sam"> = ["maya", "peer", "sam"];
+          const dk = kinds[Math.floor(Math.random() * 3)];
+          const labels = { maya: "😢 Maya needs wisdom", peer: "😤 Jay needs advice", sam: "😱 Sam needs help" };
+          S.events.push({ id: S.eventId, type: "dilemma", label: labels[dk], x: ex, y: ey, ttl: 90, ph: Math.random() * 6, dilemmaKind: dk });
+          toastRef.current(labels[dk], "A citizen seeks your counsel. Tap the beacon!", "#e879f9");
+        } else if (roll < 0.75) {
+          S.events.push({ id: S.eventId, type: "kindness", label: "🤝 Help Needed!", x: ex, y: ey, ttl: 60, ph: Math.random() * 6 });
+          toastRef.current("🤝 Help Needed!", "An elder needs help. Tap the beacon!", "#4ade80");
+        } else {
+          S.events.push({ id: S.eventId, type: "shower", label: "✨ Blessing!", x: ex, y: ey, ttl: 45, ph: Math.random() * 6 });
+          toastRef.current("✨ Blessing!", "The city smiles on you. Tap the beacon!", "#fbbf24");
         }
       }
-      // Event interactions.
       for (let i = S.events.length - 1; i >= 0; i--) {
         const ev = S.events[i];
         ev.ttl -= dt;
-        const ed = Math.hypot(p.x - ev.x, p.y - ev.y);
-        if (ev.type === "kindness" && ed < 60) {
-          S.events.splice(i, 1);
-          const nt = Math.min(100, trustRef.current + 8);
-          trustRef.current = nt;
-          setTrust(nt);
-          setCourage((c) => c + 5);
-          toastRef.current("Kindness!", "You helped the elder. +8 Trust, +5 Courage. Small acts, big pillars.", "#4ade80");
-          spawnBurst(ev.x, ev.y, "#4ade80", 16);
-        } else if (ev.ttl <= 0) {
-          S.events.splice(i, 1);
-          if (ev.type === "surge") {
-            // Remove the surge Doubtlings (keep original 4).
-            S.doubtlings.splice(4);
-          }
-        }
+        if (ev.ttl <= 0) S.events.splice(i, 1);
       }
-      // Bonus orbs from shower.
-      for (const bo of S.bonusOrbs) {
-        if (!bo.taken && Math.hypot(p.x - bo.x, p.y - bo.y) < 34) {
-          bo.taken = true;
-          setCourage((c) => c + 3);
-          spawnBurst(bo.x, bo.y, "#e879f9", 10);
-        }
-      }
+      // Kindness/shower auto-resolve on tap (handled in onTap for dilemma; others give instant reward).
+      // (Tap handling above covers interaction.)
 
-      for (const w of S.wanderers) {
-        if (w.pauseT > 0) { w.pauseT -= dt; continue; }
-        w.dir += dt * 0.4;
-        const wx = w.x + Math.cos(w.dir + w.ph) * w.speed * dt;
-        const wy = w.y + Math.sin(w.dir * 0.7 + w.ph) * w.speed * dt;
-        if (!circleHit(wx, w.y, 14)) w.x = Math.max(30, Math.min(WORLD_W - 30, wx));
-        else w.dir += 1.5;
-        if (!circleHit(w.x, wy, 14)) w.y = Math.max(30, Math.min(WORLD_H - 30, wy));
-        else w.dir += 1.5;
-        if (Math.random() < dt * 0.12) w.pauseT = 1 + Math.random() * 2;
-      }
-
-      const heldForSpeed = S.orbs.filter((o) => o.taken).length;
-      const trustFactor = 1.3 - (trustRef.current / 100) * 0.6;
-      let nearestDist = Infinity;
-      for (const d of S.doubtlings) {
-        if (d.stun > 0) { d.stun -= dt; continue; }
-        const dx = p.x - d.x;
-        const dy = p.y - d.y;
-        const dist = Math.hypot(dx, dy);
-        nearestDist = Math.min(nearestDist, dist);
-        const rageSpeed = d.speed * (1 + heldForSpeed * 0.18) * trustFactor;
-        let mx = 0;
-        let my = 0;
-        if (questRef.current === "active" && dist < 280) {
-          mx = (dx / dist) * rageSpeed;
-          my = (dy / dist) * rageSpeed;
-        } else {
-          d.dir += dt * 0.7;
-          mx = Math.cos(d.dir + d.ph) * d.speed * 0.4;
-          my = Math.sin(d.dir * 0.8 + d.ph) * d.speed * 0.4;
-        }
-        const dnx = d.x + mx * dt;
-        const dny = d.y + my * dt;
-        if (!circleHit(dnx, d.y, 14)) d.x = Math.max(20, Math.min(WORLD_W - 20, dnx));
-        if (!circleHit(d.x, dny, 14)) d.y = Math.max(20, Math.min(WORLD_H - 20, dny));
-        if (questRef.current === "active" && dist < 32 && S.time > S.slowUntil) {
-          d.stun = 3;
-          dropOrb(d.emotionId);
-        }
-      }
-
+      // Particles.
       for (let i = S.particles.length - 1; i >= 0; i--) {
         const pt = S.particles[i];
         pt.life -= dt;
-        pt.x += pt.vx * dt;
-        pt.y += pt.vy * dt;
-        pt.vx *= 0.96;
-        pt.vy *= 0.96;
+        pt.x += pt.vx * dt; pt.y += pt.vy * dt;
+        pt.vx *= 0.96; pt.vy *= 0.96;
         if (pt.life <= 0) S.particles.splice(i, 1);
       }
 
-      /* camera — stable smooth follow, no oscillation */
-      const ZOOM = 0.82;
-      const dpr = Math.min(window.devicePixelRatio || 1, 2);
-      const svw = canvas.width / dpr;
-      const svh = canvas.height / dpr;
-      const vw = svw / ZOOM;
-      const vh = svh / ZOOM;
-      const lookX = ix * 60;
-      const lookY = iy * 60;
-      const tx = p.x - vw / 2 + lookX;
-      const ty = p.y - vh / 2 + lookY;
-      const ck = Math.min(1, dt * 4);
-      S.cam.x += (tx - S.cam.x) * ck;
-      S.cam.y += (ty - S.cam.y) * ck;
-      S.cam.x = Math.max(-60, Math.min(WORLD_W - vw + 60, S.cam.x));
-      S.cam.y = Math.max(-60, Math.min(WORLD_H - vh + 60, S.cam.y));
-
       /* ------------------------------ render ------------------------------ */
-      ctx.clearRect(0, 0, canvas.width / dpr, canvas.height / dpr);
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      const sw = canvas.width / dpr;
+      const sh = canvas.height / dpr;
+      ctx.clearRect(0, 0, sw, sh);
       ctx.save();
-      ctx.scale(ZOOM, ZOOM);
-      ctx.translate(-S.cam.x, -S.cam.y);
+      ctx.translate(viewOX, viewOY);
+      ctx.scale(viewScale, viewScale);
 
+      // Background.
       const plazaImg = sprites.plaza;
       if (plazaImg.complete && plazaImg.naturalWidth > 0) {
         ctx.drawImage(plazaImg, 0, 0, WORLD_W, WORLD_H);
       } else {
         ctx.fillStyle = "#070b1c";
-        ctx.fillRect(S.cam.x - 20, S.cam.y - 20, vw + 40, vh + 40);
+        ctx.fillRect(0, 0, WORLD_W, WORLD_H);
       }
 
-      /* fireflies */
+      // Fireflies.
       if (!S.fireflies) {
-        S.fireflies = Array.from({ length: 28 }, () => ({
+        S.fireflies = Array.from({ length: 24 }, () => ({
           x: Math.random() * WORLD_W, y: Math.random() * WORLD_H,
-          ph: Math.random() * 6, sp: 10 + Math.random() * 22,
+          ph: Math.random() * 6, sp: 8 + Math.random() * 16,
         }));
       }
       for (const f of S.fireflies) {
-        f.x += Math.cos(S.time * 0.5 + f.ph) * f.sp * dt;
-        f.y += Math.sin(S.time * 0.7 + f.ph) * f.sp * dt;
-        if (f.x > S.cam.x - 20 && f.x < S.cam.x + vw + 20 && f.y > S.cam.y - 20 && f.y < S.cam.y + vh + 20) {
+        f.x += Math.cos(S.time * 0.4 + f.ph) * f.sp * dt;
+        f.y += Math.sin(S.time * 0.6 + f.ph) * f.sp * dt;
+        ctx.save();
+        ctx.globalAlpha = (0.25 + 0.45 * Math.abs(Math.sin(S.time * 1.5 + f.ph))) * 0.6;
+        ctx.fillStyle = "#fde68a";
+        ctx.beginPath(); ctx.arc(f.x, f.y, 3, 0, Math.PI * 2); ctx.fill();
+        ctx.restore();
+      }
+
+      // Central monument — grows with rank.
+      const rk = rankRef.current;
+      const rankIdx = ["Seedling", "Sprout", "Trailblazer", "Luminary", "Pillar"].indexOf(rk.name);
+      const monSize = 90 + rankIdx * 22;
+      const monPulse = 1 + Math.sin(S.time * 2) * 0.03;
+      ctx.save();
+      ctx.translate(800, 600);
+      ctx.scale(monPulse, monPulse);
+      // Glow.
+      const mg = ctx.createRadialGradient(0, 0, 10, 0, 0, monSize * 1.4);
+      mg.addColorStop(0, "rgba(34,211,238,0.35)");
+      mg.addColorStop(1, "rgba(34,211,238,0)");
+      ctx.fillStyle = mg;
+      ctx.beginPath(); ctx.arc(0, 0, monSize * 1.4, 0, Math.PI * 2); ctx.fill();
+      // Pillar.
+      ctx.fillStyle = "#1e293b";
+      roundRect(ctx, -monSize * 0.22, -monSize * 0.7, monSize * 0.44, monSize * 1.4, 12);
+      ctx.fill();
+      ctx.strokeStyle = "#22d3ee";
+      ctx.lineWidth = 3;
+      roundRect(ctx, -monSize * 0.22, -monSize * 0.7, monSize * 0.44, monSize * 1.4, 12);
+      ctx.stroke();
+      // Top orb.
+      ctx.fillStyle = "#22d3ee";
+      ctx.shadowColor = "#22d3ee"; ctx.shadowBlur = 24;
+      ctx.beginPath(); ctx.arc(0, -monSize * 0.85, 16, 0, Math.PI * 2); ctx.fill();
+      ctx.shadowBlur = 0;
+      ctx.restore();
+      // Rank label.
+      ctx.font = "bold 20px system-ui";
+      ctx.textAlign = "center";
+      ctx.fillStyle = "rgba(0,0,0,0.6)";
+      const rlw = ctx.measureText(`🏛️ ${rk.name}`).width;
+      roundRect(ctx, 800 - rlw / 2 - 12, 600 + monSize * 0.85, rlw + 24, 32, 14);
+      ctx.fill();
+      ctx.fillStyle = "#fff";
+      ctx.fillText(`🏛️ ${rk.name}`, 800, 600 + monSize * 0.85 + 22);
+
+      // Districts.
+      for (const d of S.districts) {
+        const lvl = districtLevels[d.id] ?? 1;
+        const isLocked = (d.id === "vault" && !vaultUnlocked) || (d.id === "market" && !marketUnlocked);
+        const size = 64 + lvl * 14;
+        const pulse = 1 + Math.sin(S.time * 2 + d.pos.x) * 0.02;
+
+        // Blight overlay.
+        if (S.blight > 0.15) {
           ctx.save();
-          ctx.globalAlpha = (0.3 + 0.5 * Math.abs(Math.sin(S.time * 2 + f.ph))) * 0.7;
-          ctx.fillStyle = "#fde68a";
-          ctx.shadowColor = "#fde68a";
-          ctx.shadowBlur = 8;
-          ctx.beginPath();
-          ctx.arc(f.x, f.y, 2.5, 0, Math.PI * 2);
-          ctx.fill();
+          ctx.globalAlpha = S.blight * 0.5;
+          ctx.fillStyle = "#4c1d95";
+          ctx.beginPath(); ctx.arc(d.pos.x, d.pos.y, size * 1.3, 0, Math.PI * 2); ctx.fill();
           ctx.restore();
+        }
+
+        ctx.save();
+        ctx.translate(d.pos.x, d.pos.y);
+        ctx.scale(pulse, pulse);
+        // Shadow.
+        ctx.fillStyle = "rgba(0,0,0,0.4)";
+        ctx.beginPath(); ctx.ellipse(0, size * 0.55, size * 0.5, size * 0.16, 0, 0, Math.PI * 2); ctx.fill();
+        // Glow.
+        const g = ctx.createRadialGradient(0, 0, 8, 0, 0, size * 1.2);
+        g.addColorStop(0, `${d.color}44`);
+        g.addColorStop(1, `${d.color}00`);
+        ctx.fillStyle = g;
+        ctx.beginPath(); ctx.arc(0, 0, size * 1.2, 0, Math.PI * 2); ctx.fill();
+        // Building base.
+        ctx.fillStyle = isLocked ? "#1f2937" : "#0f172a";
+        roundRect(ctx, -size / 2, -size / 2, size, size, 18);
+        ctx.fill();
+        ctx.strokeStyle = isLocked ? "#4b5563" : d.color;
+        ctx.lineWidth = 3;
+        roundRect(ctx, -size / 2, -size / 2, size, size, 18);
+        ctx.stroke();
+        // Icon.
+        ctx.font = `${Math.round(size * 0.5)}px system-ui`;
+        ctx.textAlign = "center";
+        ctx.globalAlpha = isLocked ? 0.4 : 1;
+        ctx.fillText(d.icon, 0, size * 0.18);
+        ctx.globalAlpha = 1;
+        if (isLocked) {
+          ctx.font = "bold 28px system-ui";
+          ctx.fillText("🔒", 0, -size * 0.28);
+        }
+        ctx.restore();
+
+        // Name + level pips.
+        ctx.font = "bold 15px system-ui";
+        ctx.textAlign = "center";
+        const nw = ctx.measureText(d.name).width;
+        ctx.fillStyle = "rgba(0,0,0,0.65)";
+        roundRect(ctx, d.pos.x - nw / 2 - 10, d.pos.y + size / 2 + 8, nw + 20, 26, 12);
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.fillText(d.name, d.pos.x, d.pos.y + size / 2 + 26);
+        // Level pips.
+        for (let li = 0; li < 5; li++) {
+          ctx.fillStyle = li < lvl ? d.color : "rgba(255,255,255,0.18)";
+          ctx.beginPath();
+          ctx.arc(d.pos.x - 28 + li * 14, d.pos.y + size / 2 + 44, 5, 0, Math.PI * 2);
+          ctx.fill();
         }
       }
 
-      for (const c of S.clouds) drawCloud(c);
-
-      /* building labels (visual anchors matching background) */
-      for (const o of RECT_OBS) {
-        if (!o.label) continue;
-        ctx.fillStyle = "rgba(0,0,0,0.5)";
-        roundRect(ctx, o.x + o.w / 2 - 62, o.y - 30, 124, 24, 10);
-        ctx.fill();
-        ctx.fillStyle = o.color;
-        ctx.font = "bold 12px system-ui";
-        ctx.textAlign = "center";
-        ctx.fillText(o.label, o.x + o.w / 2, o.y - 13);
-      }
-
-      /* chests */
+      // Chests.
       const chestImg = sprites.chest;
       for (const c of S.chests) {
-        const bob = c.opened ? 0 : Math.sin(S.time * 2 + c.ph) * 3;
-        drawShadow(c.x, c.y + 18, 20, 7, 0.4);
+        if (c.opened) continue;
+        const bob = Math.sin(S.time * 2 + c.ph) * 4;
         if (chestImg.complete && chestImg.naturalWidth > 0) {
           ctx.save();
           ctx.translate(c.x, c.y + bob);
-          if (!c.opened) {
-            ctx.shadowColor = "#fbbf24";
-            ctx.shadowBlur = 14 + Math.sin(S.time * 3 + c.ph) * 6;
-          }
-          ctx.globalAlpha = c.opened ? 0.55 : 1;
-          ctx.drawImage(chestImg, -28, -28, 56, 56);
+          ctx.shadowColor = "#fbbf24"; ctx.shadowBlur = 12;
+          ctx.drawImage(chestImg, -26, -26, 52, 52);
           ctx.restore();
-          ctx.globalAlpha = 1;
         }
-        if (!c.opened) {
-          ctx.fillStyle = `rgba(251,191,36,${(0.5 + 0.4 * Math.sin(S.time * 4 + c.ph)).toFixed(2)})`;
-          ctx.font = "bold 16px system-ui";
-          ctx.textAlign = "center";
-          ctx.fillText("✦", c.x + 20, c.y - 24 + bob);
-        }
-      }
-
-      /* courage orbs */
-      for (const co of S.courageOrbs) {
-        if (co.taken) continue;
-        const bob = Math.sin(S.time * 5 + co.ph) * 4;
-        drawShadow(co.x, co.y + 12, 10, 4, 0.3);
-        ctx.save();
-        ctx.translate(co.x, co.y + bob);
-        ctx.shadowColor = "#fbbf24";
-        ctx.shadowBlur = 16;
-        const cg = ctx.createRadialGradient(0, 0, 2, 0, 0, 12);
-        cg.addColorStop(0, "#fff");
-        cg.addColorStop(0.4, "#fde68a");
-        cg.addColorStop(1, "#b45309");
-        ctx.fillStyle = cg;
-        ctx.beginPath();
-        ctx.arc(0, 0, 11, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-
-      /* events — pulsing markers */
-      for (const ev of S.events) {
-        const pulse = 1 + Math.sin(S.time * 5 + ev.ph) * 0.2;
-        const bounce = Math.abs(Math.sin(S.time * 3 + ev.ph)) * 8;
-        drawShadow(ev.x, ev.y + 16, 16, 6, 0.35);
-        // Beacon beam.
-        const beamG = ctx.createLinearGradient(ev.x, ev.y - 120, ev.x, ev.y);
-        beamG.addColorStop(0, "rgba(232,121,249,0)");
-        beamG.addColorStop(1, "rgba(232,121,249,0.35)");
-        ctx.fillStyle = beamG;
-        ctx.fillRect(ev.x - 12, ev.y - 120 - bounce, 24, 120);
-        // Icon.
-        ctx.font = "bold 32px system-ui";
+        ctx.fillStyle = `rgba(251,191,36,${(0.5 + 0.4 * Math.sin(S.time * 4 + c.ph)).toFixed(2)})`;
+        ctx.font = "bold 18px system-ui";
         ctx.textAlign = "center";
-        const icons: Record<string, string> = { lost: "😢", kindness: "🤝", shower: "✨", surge: "🌪️" };
-        ctx.fillText(icons[ev.type] || "❗", ev.x, ev.y - 30 - bounce);
-        // Label.
-        ctx.font = "bold 12px system-ui";
-        ctx.fillStyle = "rgba(0,0,0,0.6)";
+        ctx.fillText("✦", c.x + 24, c.y - 26 + bob);
+      }
+
+      // Events.
+      for (const ev of S.events) {
+        const bounce = Math.abs(Math.sin(S.time * 3 + ev.ph)) * 10;
+        const beamG = ctx.createLinearGradient(ev.x, ev.y - 140, ev.x, ev.y);
+        beamG.addColorStop(0, "rgba(232,121,249,0)");
+        beamG.addColorStop(1, "rgba(232,121,249,0.4)");
+        ctx.fillStyle = beamG;
+        ctx.fillRect(ev.x - 14, ev.y - 140 - bounce, 28, 140);
+        ctx.font = "bold 36px system-ui";
+        ctx.textAlign = "center";
+        const icons: Record<string, string> = { dilemma: "❗", kindness: "🤝", shower: "✨", lost: "😢" };
+        ctx.fillText(icons[ev.type] || "❗", ev.x, ev.y - 36 - bounce);
+        ctx.font = "bold 14px system-ui";
         const lw = ctx.measureText(ev.label).width;
-        roundRect(ctx, ev.x - lw / 2 - 8, ev.y + 22, lw + 16, 20, 10);
+        ctx.fillStyle = "rgba(0,0,0,0.65)";
+        roundRect(ctx, ev.x - lw / 2 - 10, ev.y + 18, lw + 20, 26, 12);
         ctx.fill();
         ctx.fillStyle = "#e879f9";
         ctx.fillText(ev.label, ev.x, ev.y + 36);
-        void pulse;
       }
 
-      /* bonus orbs */
-      for (const bo of S.bonusOrbs) {
-        if (bo.taken) continue;
-        const bob = Math.sin(S.time * 4 + bo.ph) * 5;
-        drawShadow(bo.x, bo.y + 12, 10, 4, 0.3);
-        ctx.save();
-        ctx.translate(bo.x, bo.y + bob);
-        ctx.shadowColor = "#e879f9";
-        ctx.shadowBlur = 14;
-        const bg = ctx.createRadialGradient(0, 0, 2, 0, 0, 11);
-        bg.addColorStop(0, "#fff");
-        bg.addColorStop(0.4, "#f5d0fe");
-        bg.addColorStop(1, "#a21caf");
-        ctx.fillStyle = bg;
-        ctx.beginPath();
-        ctx.arc(0, 0, 10, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.restore();
-      }
-
-      /* orbs */
-      const orbImg = sprites.orb;
-      for (const o of S.orbs) {
-        if (o.taken) continue;
-        const bob = Math.sin(S.time * 3 + o.ph) * 5;
-        const size = 46 * (1 + Math.sin(S.time * 4 + o.ph) * 0.12);
-        drawShadow(o.x, o.y + 14, 12, 5, 0.3);
-        if (orbImg.complete && orbImg.naturalWidth > 0) {
-          ctx.drawImage(orbImg, o.x - size / 2, o.y + bob - size / 2, size, size);
-        }
-      }
-
-      const drawNPC = (pos: Vec, name: string, color: string, marker: string, markerColor: string, img: HTMLImageElement | null, rotExtra = 0) => {
-        const bob = Math.sin(S.time * 2 + pos.x) * 3;
-        drawShadow(pos.x, pos.y + 20, 18, 7, 0.35);
-        if (img && img.complete && img.naturalWidth > 0) {
-          ctx.save();
-          ctx.translate(pos.x, pos.y + bob);
-          ctx.rotate(Math.PI / 4 + rotExtra + Math.sin(S.time * 0.8 + pos.x) * 0.15);
-          ctx.drawImage(img, -26, -26, 52, 52);
-          ctx.restore();
-        }
-        ctx.fillStyle = "rgba(0,0,0,0.55)";
-        roundRect(ctx, pos.x - 40, pos.y - 44 + bob, 80, 20, 8);
-        ctx.fill();
-        ctx.fillStyle = color;
-        ctx.font = "bold 11px system-ui";
-        ctx.textAlign = "center";
-        ctx.fillText(name, pos.x, pos.y - 30 + bob);
-        const bounce = Math.abs(Math.sin(S.time * 4 + pos.x)) * 6;
-        ctx.fillStyle = markerColor;
-        ctx.font = "bold 22px system-ui";
-        ctx.fillText(marker, pos.x + 26, pos.y - 32 - bounce + bob);
-      };
-
-      const kidImg = sprites.player;
-      const keeperImg = sprites.keeper;
-      drawNPC(KEEPER_POS, "The Keeper", "#fde68a", questRef.current !== "active" ? "!" : "", "#fbbf24", keeperImg, 0);
-      drawNPC(MAYA_POS, "Maya", "#fde68a", "?", "#e879f9", kidImg);
-      drawNPC(PEER_POS, "Jay", "#fbbf24", "?", "#e879f9", kidImg);
-      drawNPC(SAM_POS, "Sam", "#38bdf8", "?", "#e879f9", kidImg);
-
-      for (const w of S.wanderers) {
-        const bob = Math.sin(S.time * 3 + w.ph) * 2;
-        drawShadow(w.x, w.y + 18, 16, 6, 0.3);
-        if (kidImg.complete && kidImg.naturalWidth > 0) {
-          ctx.save();
-          ctx.translate(w.x, w.y + bob);
-          ctx.rotate(w.dir + w.ph - Math.PI / 4);
-          ctx.globalAlpha = 0.9;
-          ctx.drawImage(kidImg, -22, -22, 44, 44);
-          ctx.restore();
-          ctx.globalAlpha = 1;
-        }
-        ctx.fillStyle = "rgba(0,0,0,0.45)";
-        roundRect(ctx, w.x - 28, w.y - 38 + bob, 56, 16, 7);
-        ctx.fill();
-        ctx.fillStyle = "rgba(255,255,255,0.85)";
-        ctx.font = "bold 10px system-ui";
-        ctx.textAlign = "center";
-        ctx.fillText(w.name, w.x, w.y - 26 + bob);
-      }
-
-      /* doubtlings */
-      const doubtImg = sprites.doubtling;
-      for (const d of S.doubtlings) {
-        const wob = Math.sin(S.time * 6 + d.ph) * 4;
-        const flip = p.x - d.x < 0 ? -1 : 1;
-        drawShadow(d.x, d.y + 20, 18, 7, 0.45);
-        if (doubtImg.complete && doubtImg.naturalWidth > 0) {
-          ctx.save();
-          ctx.translate(d.x, d.y + wob);
-          ctx.scale(flip, 1);
-          ctx.drawImage(doubtImg, -28, -28, 56, 56);
-          ctx.restore();
-        }
-      }
-
-      /* player */
-      {
-        const playerImg = sprites.player;
-        const moving = il > 0.1;
-        const bob = moving ? Math.abs(Math.sin(S.time * 6)) * 1.5 : Math.sin(S.time * 2) * 1;
-        drawShadow(p.x, p.y + 22, 20, 8);
-        if (playerImg.complete && playerImg.naturalWidth > 0) {
-          ctx.save();
-          ctx.translate(p.x, p.y - bob);
-          ctx.rotate(S.faceAngle);
-          ctx.shadowColor = "rgba(34,211,238,0.6)";
-          ctx.shadowBlur = 14;
-          ctx.drawImage(playerImg, -28, -28, 56, 56);
-          ctx.restore();
-        }
-        // Real rank badge — compact, above player.
-        const rk = rankRef.current;
-        const rankColors: Record<string, string> = {
-          Seedling: "#4ade80", Sprout: "#22d3ee", Trailblazer: "#fbbf24",
-          Luminary: "#e879f9", Pillar: "#f472b6",
-        };
-        const rc = rankColors[rk.name] || "#22d3ee";
-        ctx.font = "bold 10px system-ui";
-        const label = `🏅 ${rk.name}`;
-        const tw = ctx.measureText(label).width;
-        ctx.fillStyle = "rgba(0,0,0,0.55)";
-        roundRect(ctx, p.x - tw / 2 - 6, p.y - 46 + bob, tw + 12, 16, 8);
-        ctx.fill();
-        ctx.fillStyle = rc;
-        ctx.textAlign = "center";
-        ctx.fillText(label, p.x, p.y - 34 + bob);
-      }
-
-      /* soft mist at world edges — hides the "box" */
-      {
-        const edge = 220;
-        // Left edge (x=0)
-        let g = ctx.createLinearGradient(0, 0, edge, 0);
-        g.addColorStop(0, "rgba(7,11,28,0.6)");
-        g.addColorStop(1, "rgba(7,11,28,0)");
-        ctx.fillStyle = g;
-        ctx.fillRect(-40, -40, edge + 40, WORLD_H + 80);
-        // Right edge (x=WORLD_W)
-        g = ctx.createLinearGradient(WORLD_W, 0, WORLD_W - edge, 0);
-        g.addColorStop(0, "rgba(7,11,28,0.6)");
-        g.addColorStop(1, "rgba(7,11,28,0)");
-        ctx.fillStyle = g;
-        ctx.fillRect(WORLD_W - edge, -40, edge + 40, WORLD_H + 80);
-        // Top edge (y=0)
-        g = ctx.createLinearGradient(0, 0, 0, edge);
-        g.addColorStop(0, "rgba(7,11,28,0.6)");
-        g.addColorStop(1, "rgba(7,11,28,0)");
-        ctx.fillStyle = g;
-        ctx.fillRect(-40, -40, WORLD_W + 80, edge + 40);
-        // Bottom edge (y=WORLD_H)
-        g = ctx.createLinearGradient(0, WORLD_H, 0, WORLD_H - edge);
-        g.addColorStop(0, "rgba(7,11,28,0.6)");
-        g.addColorStop(1, "rgba(7,11,28,0)");
-        ctx.fillStyle = g;
-        ctx.fillRect(-40, WORLD_H - edge, WORLD_W + 80, edge + 40);
-      }
-
+      // Particles.
       for (const pt of S.particles) {
         ctx.globalAlpha = Math.max(0, pt.life * 1.4);
         ctx.fillStyle = pt.color;
-        ctx.beginPath();
-        ctx.arc(pt.x, pt.y, 3, 0, Math.PI * 2);
-        ctx.fill();
+        ctx.beginPath(); ctx.arc(pt.x, pt.y, 3.5, 0, Math.PI * 2); ctx.fill();
       }
       ctx.globalAlpha = 1;
       ctx.restore();
 
-      if (inStormNow) {
-        ctx.fillStyle = "rgba(60,70,95,0.22)";
-        ctx.fillRect(0, 0, svw, svh);
+      // Day/night tint (screen space).
+      const t = S.dayTime;
+      let tint: string | null = null;
+      let mood: "dawn" | "day" | "sunset" | "night" = "day";
+      if (t > 0.42 && t < 0.58) {
+        const k = Math.sin(((t - 0.42) / 0.16) * Math.PI);
+        tint = `rgba(251,146,60,${(k * 0.16).toFixed(3)})`;
+        mood = "sunset";
+      } else if (t >= 0.58 && t < 0.92) {
+        const k = Math.sin(((t - 0.58) / 0.34) * Math.PI);
+        tint = `rgba(30,27,75,${(k * 0.32).toFixed(3)})`;
+        mood = "night";
+      } else if (t >= 0.92 || t < 0.08) {
+        mood = "dawn";
+        tint = `rgba(244,114,182,${(0.1).toFixed(3)})`;
       }
-
-      if (questRef.current === "active" && nearestDist < 170) {
-        const danger = 1 - nearestDist / 170;
-        const pulse = 0.22 + Math.sin(S.time * 3) * 0.08;
-        const vg = ctx.createRadialGradient(svw / 2, svh / 2, Math.min(svw, svh) * 0.35, svw / 2, svh / 2, Math.max(svw, svh) * 0.75);
-        vg.addColorStop(0, "rgba(239,68,68,0)");
-        vg.addColorStop(1, `rgba(239,68,68,${(danger * pulse).toFixed(3)})`);
-        ctx.fillStyle = vg;
-        ctx.fillRect(0, 0, svw, svh);
-      }
-
-      if (questRef.current === "active" && nearestDist < 55 && nearestDist >= 32) {
-        if (S.time > S.nearMissCd) {
-          S.nearMissCd = S.time + 2;
-          S.nearMissT = S.time;
-        }
-      }
-      if (S.nearMissT && S.time - S.nearMissT < 0.9) {
-        const a = 1 - (S.time - S.nearMissT) / 0.9;
-        ctx.globalAlpha = a;
-        ctx.fillStyle = "#fbbf24";
-        ctx.font = "bold 26px system-ui";
-        ctx.textAlign = "center";
-        ctx.shadowColor = "#fbbf24";
-        ctx.shadowBlur = 16;
-        ctx.fillText("CLOSE!", svw / 2, svh * 0.3);
-        ctx.shadowBlur = 0;
-        ctx.globalAlpha = 1;
-      }
-
-      /* day/night tint */
-      {
-        const t = S.dayTime;
-        let tint: string | null = null;
-        if (t > 0.42 && t < 0.58) {
-          // Sunset — warm.
-          const k = Math.sin(((t - 0.42) / 0.16) * Math.PI);
-          tint = `rgba(251,146,60,${(k * 0.18).toFixed(3)})`;
-        } else if (t >= 0.58 && t < 0.92) {
-          // Night — cool dark + stars.
-          const k = Math.sin(((t - 0.58) / 0.34) * Math.PI);
-          tint = `rgba(30,27,75,${(k * 0.35).toFixed(3)})`;
-          if (k > 0.5) {
-            ctx.fillStyle = `rgba(255,255,255,${((k - 0.5) * 0.9).toFixed(3)})`;
-            for (let i = 0; i < 40; i++) {
-              const sx = ((i * 173.3) % svw);
-              const sy = ((i * 97.7) % (svh * 0.6));
-              const tw2 = 0.5 + 0.5 * Math.sin(S.time * 2 + i);
-              ctx.globalAlpha = ((k - 0.5) * tw2).toFixed(3) as unknown as number;
-              ctx.fillRect(sx, sy, 2, 2);
-            }
-            ctx.globalAlpha = 1;
-          }
-        } else if (t >= 0.92 || t < 0.08) {
-          // Dawn — soft pink.
-          const k = t >= 0.92 ? (t - 0.92) / 0.16 : (0.08 - t) / 0.16;
-          const kk = Math.sin(Math.min(1, k) * Math.PI);
-          tint = `rgba(244,114,182,${(kk * 0.12).toFixed(3)})`;
-        }
-        if (tint) {
-          ctx.fillStyle = tint;
-          ctx.fillRect(0, 0, svw, svh);
-        }
-      }
-
-      /* minimap */
-      const mmW = 110;
-      const mmH = 82;
-      const mmX = svw - mmW - 12;
-      const mmY = 12;
-      ctx.fillStyle = "rgba(0,0,0,0.55)";
-      roundRect(ctx, mmX, mmY, mmW, mmH, 10);
-      ctx.fill();
-      ctx.strokeStyle = "rgba(34,211,238,0.4)";
-      ctx.lineWidth = 1.5;
-      roundRect(ctx, mmX, mmY, mmW, mmH, 10);
-      ctx.stroke();
-      const sx = mmW / WORLD_W;
-      const sy = mmH / WORLD_H;
-      ctx.fillStyle = "#22d3ee";
-      for (const o of S.orbs) {
-        if (o.taken) continue;
-        ctx.beginPath();
-        ctx.arc(mmX + o.x * sx, mmY + o.y * sy, 2, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.fillStyle = "#e879f9";
-      for (const d of S.doubtlings) {
-        ctx.beginPath();
-        ctx.arc(mmX + d.x * sx, mmY + d.y * sy, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      ctx.fillStyle = "#fff";
-      ctx.strokeStyle = "#22d3ee";
-      ctx.lineWidth = 1.5;
-      ctx.beginPath();
-      ctx.arc(mmX + p.x * sx, mmY + p.y * sy, 4, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.stroke();
-      // viewport rect
-      ctx.strokeStyle = "rgba(255,255,255,0.3)";
-      ctx.lineWidth = 1;
-      ctx.strokeRect(mmX + S.cam.x * sx, mmY + S.cam.y * sy, svw * sx, svh * sy);
-
-      /* joystick */
-      if (S.joy.active) {
-        ctx.strokeStyle = "rgba(255,255,255,0.35)";
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(joyBase.x, joyBase.y, 70, 0, Math.PI * 2);
-        ctx.stroke();
-        ctx.fillStyle = "rgba(34,211,238,0.5)";
-        ctx.beginPath();
-        ctx.arc(joyBase.x + S.joy.x * 70, joyBase.y + S.joy.y * 70, 26, 0, Math.PI * 2);
-        ctx.fill();
-      }
+      if (tint) { ctx.fillStyle = tint; ctx.fillRect(0, 0, sw, sh); }
+      if (mood !== cityMood) setCityMood(mood);
     };
     raf = requestAnimationFrame(loop);
 
     return () => {
       cancelAnimationFrame(raf);
       window.removeEventListener("resize", resize);
-      window.removeEventListener("keydown", keyDown);
-      window.removeEventListener("keyup", keyUp);
-      canvas.removeEventListener("pointerdown", joyStart);
-      canvas.removeEventListener("pointermove", joyMove);
-      canvas.removeEventListener("pointerup", joyEnd);
-      canvas.removeEventListener("pointercancel", joyEnd);
+      canvas.removeEventListener("pointerdown", onTap);
+      canvas.removeEventListener("pointerdown", autoAudio);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  /* ------------------------------ codex view ------------------------------ */
+  // Handle kindness/shower event taps via selected state effect.
+  useEffect(() => {
+    const S = stateRef.current;
+    // Auto-resolve non-dilemma events when tapped (they're handled in onTap by proximity; this is a fallback).
+  }, [selected]);
+
+  /* ------------------------------ district panels ------------------------------ */
+  const selDef = selected ? DISTRICT_DEFS.find((d) => d.id === selected) : null;
+  const selLevel = selected ? districtLevels[selected] ?? 1 : 1;
+  const selLocked = selected === "vault" ? !vaultUnlocked : selected === "market" ? !marketUnlocked : false;
+
   if (showCodex) {
     const enc = getEncounters();
     const discovered = EMOTIONS.filter((e) => enc[e.id] > 0).length;
     return (
-      <div className="fixed inset-0 z-50 overflow-y-auto bg-background">
+      <div className="fixed inset-0 z-[60] overflow-y-auto bg-background">
         <div className="mx-auto max-w-3xl space-y-4 px-4 py-4">
           <Button variant="ghost" size="sm" onClick={() => setShowCodex(false)} className="gap-1">
-            <ArrowLeft className="size-4" /> Back to the Plaza
+            <ArrowLeft className="size-4" /> Back to the City
           </Button>
           <div className="text-center">
             <p className="text-xs font-semibold uppercase tracking-widest text-accent">Name it to tame it</p>
@@ -1330,89 +711,7 @@ export function PillarGame() {
     );
   }
 
-  /* ------------------------------ interiors ------------------------------ */
-  if (interior) {
-    const data = {
-      chore: { img: "/designs/game/game-interior-chore.webp", title: "Chore Village", sub: "Pick a mission. Do it in real life. Earn real Units." },
-      vault: { img: "/designs/game/game-interior-vault.webp", title: "Vault Mountain", sub: "Your savings live here. Guard them well." },
-      market: { img: "/designs/game/game-interior-market.webp", title: "Market Harbor", sub: "Every purchase is a decision." },
-    }[interior];
-    return (
-      <div className="fixed inset-0 z-50 overflow-y-auto bg-background">
-        <div className="mx-auto max-w-3xl space-y-3 px-4 py-4">
-          <Button variant="ghost" size="sm" onClick={() => setInterior(null)} className="gap-1">
-            <ArrowLeft className="size-4" /> Back to the Plaza
-          </Button>
-          <div className="relative overflow-hidden rounded-2xl border border-accent/25">
-            <img src={data.img} alt={data.title} className="h-56 w-full object-cover" />
-            <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent" />
-            <div className="absolute bottom-3 left-4">
-              <h2 className="font-display text-2xl font-bold text-white">{data.title}</h2>
-              <p className="text-sm text-white/75">{data.sub}</p>
-            </div>
-          </div>
-          {interior === "chore" && (
-            <div className="space-y-3">
-              {JOBS.map((job) => {
-                const done = missionsDone.includes(job.id);
-                return (
-                  <div key={job.id} className="flex items-center justify-between rounded-2xl border border-accent/20 bg-card p-4">
-                    <div>
-                      <p className="font-display font-bold">{job.name}</p>
-                      <p className="text-sm text-muted">{job.desc}</p>
-                      <p className="mt-1 text-sm font-bold text-amber-300">+{job.reward} Units</p>
-                    </div>
-                    <Button size="sm" disabled={done} onClick={() => acceptJob(job.id)} className={done ? "" : "bg-amber-400 font-bold text-black hover:bg-amber-300"}>
-                      {done ? "Accepted!" : "Accept"}
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-          {interior === "vault" && (
-            <div className="rounded-2xl border border-amber-300/25 bg-card p-5">
-              <div className="flex items-center justify-between">
-                <p className="font-display font-bold">Savings Vault</p>
-                <p className="text-2xl font-bold text-amber-300">{vault} Units</p>
-              </div>
-              <div className="mt-3 h-3 overflow-hidden rounded-full bg-surface">
-                <div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-200" style={{ width: `${vaultTarget > 0 ? Math.min(100, Math.round((vault / vaultTarget) * 100)) : 0}%` }} />
-              </div>
-              <div className="mt-4 rounded-xl bg-surface p-4">
-                <p className="font-display text-sm font-bold text-amber-300">💡 The Keeper's Wisdom</p>
-                <p className="mt-1 text-sm leading-relaxed">Every Unit in your vault is a soldier for your future. Savers don't just have more money — they have more <em>choices</em>.</p>
-              </div>
-            </div>
-          )}
-          {interior === "market" && (
-            <div className="rounded-2xl border border-violet-300/25 bg-card p-5">
-              <p className="font-display font-bold">The Merchant's Test</p>
-              <p className="mt-1 text-sm text-muted">You have 80 Units. Three deals. Choose.</p>
-              {!marketChoice ? (
-                <div className="mt-3 space-y-2">
-                  <Button variant="outline" className="w-full justify-start" onClick={() => setMarketChoice("candy")}>🍬 Candy — 30U</Button>
-                  <Button variant="outline" className="w-full justify-start" onClick={() => setMarketChoice("book")}>📚 Skill Book — 50U</Button>
-                  <Button variant="outline" className="w-full justify-start" onClick={() => setMarketChoice("save")}>💰 Save it all</Button>
-                </div>
-              ) : (
-                <div className="mt-3 rounded-xl bg-surface p-4">
-                  <p className="text-sm leading-relaxed">
-                    {marketChoice === "candy" && "Tasty! Gone tomorrow. Wants fade fast — will you care in a week?"}
-                    {marketChoice === "book" && "Excellent! Knowledge pays forever. A Pillar move."}
-                    {marketChoice === "save" && "Disciplined! Sometimes the best purchase is the one you don't make."}
-                  </p>
-                  <Button variant="ghost" size="sm" className="mt-2" onClick={() => setMarketChoice(null)}>Try again</Button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-    );
-  }
-
-  /* ------------------------------ full-screen plaza ------------------------------ */
+  /* ------------------------------ main view ------------------------------ */
   return (
     <div className="fixed inset-0 z-[60] bg-black">
       <canvas ref={canvasRef} className="block touch-none" />
@@ -1422,53 +721,51 @@ export function PillarGame() {
         <Button variant="ghost" size="sm" onClick={() => setScreen("home")} className="gap-1 text-white hover:bg-white/15 hover:text-white">
           <ArrowLeft className="size-4" /> World
         </Button>
-        <div className="flex items-center gap-3">
-          <Button variant="ghost" size="sm" onClick={toggleSound} className="gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
-            {soundOn ? "🔊" : "🔇"}
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={toggleSound} className="px-2 text-white hover:bg-white/15 hover:text-white">
+            {soundOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
           </Button>
           <Button variant="ghost" size="sm" onClick={() => setShowCodex(true)} className="gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
             <BookOpen className="size-4" /> Codex
           </Button>
-          <div className="flex items-center gap-1 text-xs font-bold text-white">
+          <div className="flex items-center gap-1 text-xs font-bold text-white" title="Trust">
             <Heart className="size-4" style={{ color: trust >= 70 ? "#4ade80" : trust >= 40 ? "#fbbf24" : "#ef4444" }} />
             <span>{trust}</span>
           </div>
-          <div className="flex items-center gap-1 text-xs font-bold text-amber-300">
+          <div className="flex items-center gap-1 text-xs font-bold text-amber-300" title="Courage">
             <span>💪</span><span>{courage}</span>
           </div>
-          <div className="flex items-center gap-1 text-sm font-bold text-cyan-300">
-            <Sparkles className="size-4" /> {orbsHeld}/8
+          <div className="flex items-center gap-1 text-xs font-bold text-cyan-300" title="Rank">
+            <Sparkles className="size-4" /> {rank.name}
           </div>
         </div>
       </div>
 
-      {inStorm && (
-        <div className="absolute left-1/2 top-14 -translate-x-1/2 rounded-full bg-slate-500/30 px-4 py-1.5 text-xs font-semibold text-slate-200 backdrop-blur-sm">
-          ⛈️ Storm — slowed!
+      {/* City mood indicator */}
+      <div className="absolute left-3 top-14 rounded-full bg-black/60 px-3 py-1 text-[11px] font-semibold text-white/80 backdrop-blur-sm">
+        {cityMood === "day" && "☀️ Day in the city"}
+        {cityMood === "sunset" && "🌅 Sunset over the plaza"}
+        {cityMood === "night" && "🌙 Night — the city glows"}
+        {cityMood === "dawn" && "🌄 Dawn — a new day"}
+      </div>
+
+      {/* Toasts */}
+      {toasts.length > 0 && (
+        <div className="pointer-events-none absolute inset-x-3 top-24 z-30 space-y-2">
+          {toasts.map((t) => (
+            <div key={t.id} className="rounded-2xl border bg-black/85 p-3 backdrop-blur-sm" style={{ borderColor: `${t.color}55` }}>
+              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: t.color }}>{t.title}</p>
+              <p className="mt-0.5 text-sm leading-snug text-white">{t.msg}</p>
+            </div>
+          ))}
         </div>
       )}
 
-      {dialog && (
-        <div className="absolute inset-x-3 bottom-3 rounded-2xl border border-amber-300/30 bg-black/85 p-4 backdrop-blur-sm">
-          <p className="text-xs font-bold uppercase tracking-widest text-amber-300">The Keeper</p>
-          <p className="mt-1 whitespace-pre-line text-sm leading-relaxed text-white">{dialog}</p>
-          <div className="mt-3 flex gap-2">
-            {quest === "intro" && (
-              <Button size="sm" onClick={startQuest} className="bg-amber-400 font-bold text-black hover:bg-amber-300">
-                Accept the quest
-              </Button>
-            )}
-            <Button size="sm" variant="outline" onClick={() => setDialog(null)} className="border-white/25 text-white hover:bg-white/10 hover:text-white">
-              {quest === "intro" ? "Not yet" : "Continue"}
-            </Button>
-          </div>
-        </div>
-      )}
-
+      {/* Dilemma modal */}
       {dilemma && (
         <div className="absolute inset-x-3 bottom-3 rounded-2xl border border-fuchsia-300/30 bg-black/90 p-4 backdrop-blur-sm">
           <p className="text-xs font-bold uppercase tracking-widest text-fuchsia-300">
-            {dilemmaKind === "maya" ? "Maya needs advice" : dilemmaKind === "peer" ? "Jay is pressuring you" : "Sam needs help"}
+            {dilemmaKind === "maya" ? "Maya needs wisdom" : dilemmaKind === "peer" ? "Jay needs advice" : "Sam needs help"}
           </p>
           <p className="mt-1 text-sm leading-relaxed text-white">{dilemma.q}</p>
           <div className="mt-3 space-y-2">
@@ -1481,65 +778,117 @@ export function PillarGame() {
         </div>
       )}
 
-      {toasts.length > 0 && (
-        <div className="pointer-events-none absolute inset-x-3 top-14 z-30 space-y-2">
-          {toasts.map((t) => (
-            <div key={t.id} className="rounded-2xl border bg-black/85 p-3 backdrop-blur-sm" style={{ borderColor: `${t.color}55` }}>
-              <p className="text-xs font-bold uppercase tracking-widest" style={{ color: t.color }}>{t.title}</p>
-              <p className="mt-0.5 text-sm leading-snug text-white">{t.msg}</p>
+      {/* District detail sheet */}
+      {selDef && (
+        <div className="absolute inset-x-0 bottom-0 max-h-[70%] overflow-y-auto rounded-t-3xl border-t border-white/15 bg-[#0b1020]/95 p-5 backdrop-blur-md">
+          <div className="mx-auto mb-3 h-1 w-12 rounded-full bg-white/20" />
+          <div className="flex items-start justify-between">
+            <div>
+              <p className="font-display text-xl font-bold text-white">{selDef.icon} {selDef.name}</p>
+              <p className="mt-1 text-sm text-white/70">{selDef.desc}</p>
+              <div className="mt-2 flex items-center gap-1">
+                {Array.from({ length: 5 }).map((_, i) => (
+                  <span key={i} className="text-lg" style={{ color: i < selLevel ? selDef.color : "rgba(255,255,255,0.15)" }}>●</span>
+                ))}
+                <span className="ml-2 text-xs font-bold text-white/60">Level {selLevel}/5</span>
+              </div>
             </div>
-          ))}
+            <Button variant="ghost" size="sm" onClick={() => setSelected(null)} className="text-white hover:bg-white/10">✕</Button>
+          </div>
+
+          {selLocked ? (
+            <div className="mt-4 flex items-center gap-2 rounded-xl bg-white/5 p-4 text-sm text-white/80">
+              <Lock className="size-5" style={{ color: selDef.color }} />
+              {selected === "vault"
+                ? `Save ${50 - vault} more Units in real life to unlock Vault Mountain.`
+                : `Complete ${3 - choresDone} more real chores to unlock Market Harbor.`}
+            </div>
+          ) : (
+            <div className="mt-4">
+              {selected === "chore" && (
+                <div className="space-y-2">
+                  {JOBS.map((job) => {
+                    const done = missionsDone.includes(job.id);
+                    return (
+                      <div key={job.id} className="flex items-center justify-between rounded-xl bg-white/5 p-3">
+                        <div>
+                          <p className="font-bold text-white">{job.name}</p>
+                          <p className="text-xs text-white/60">{job.desc}</p>
+                          <p className="mt-1 text-xs font-bold text-amber-300">+{job.reward} Units</p>
+                        </div>
+                        <Button size="sm" disabled={done} onClick={() => acceptJob(job.id)} className={done ? "" : "bg-emerald-400 font-bold text-black hover:bg-emerald-300"}>
+                          {done ? "✓" : "Accept"}
+                        </Button>
+                      </div>
+                    );
+                  })}
+                  <p className="pt-1 text-center text-xs text-white/50">Do these in real life — your village grows with every chore.</p>
+                </div>
+              )}
+              {selected === "vault" && (
+                <div>
+                  <div className="flex items-center justify-between">
+                    <p className="font-bold text-white">Savings Vault</p>
+                    <p className="text-xl font-bold text-amber-300">{vault} Units</p>
+                  </div>
+                  <div className="mt-2 h-3 overflow-hidden rounded-full bg-white/10">
+                    <div className="h-full rounded-full bg-gradient-to-r from-amber-400 to-yellow-200" style={{ width: `${vaultTarget > 0 ? Math.min(100, Math.round((vault / vaultTarget) * 100)) : 0}%` }} />
+                  </div>
+                  <p className="mt-3 rounded-xl bg-white/5 p-3 text-sm text-white/75">💡 Every Unit saved makes the mountain taller. Savers have more <em>choices</em>.</p>
+                </div>
+              )}
+              {selected === "market" && (
+                <div>
+                  {!marketChoice ? (
+                    <div className="space-y-2">
+                      <p className="text-sm text-white/70">The Merchant's Test — you have 80 Units:</p>
+                      <Button variant="outline" className="w-full justify-start border-white/20 text-white hover:bg-white/10" onClick={() => setMarketChoice("candy")}>🍬 Candy — 30U</Button>
+                      <Button variant="outline" className="w-full justify-start border-white/20 text-white hover:bg-white/10" onClick={() => setMarketChoice("book")}>📚 Skill Book — 50U</Button>
+                      <Button variant="outline" className="w-full justify-start border-white/20 text-white hover:bg-white/10" onClick={() => setMarketChoice("save")}>💰 Save it all</Button>
+                    </div>
+                  ) : (
+                    <div className="rounded-xl bg-white/5 p-4">
+                      <p className="text-sm text-white/85">
+                        {marketChoice === "candy" && "Tasty! Gone tomorrow. Will you care in a week?"}
+                        {marketChoice === "book" && "Excellent! Knowledge pays forever."}
+                        {marketChoice === "save" && "Disciplined! Sometimes the best purchase is none."}
+                      </p>
+                      <Button variant="ghost" size="sm" className="mt-2 text-white" onClick={() => setMarketChoice(null)}>Try again</Button>
+                    </div>
+                  )}
+                </div>
+              )}
+              {(selected === "studio" || selected === "learn" || selected === "hall") && (
+                <p className="rounded-xl bg-white/5 p-4 text-sm text-white/70">
+                  {selected === "studio" && "🎨 Your creations live here. The more you make in the Studio, the brighter this island glows."}
+                  {selected === "learn" && "📚 Every lesson completed deepens the lagoon. Knowledge compounds."}
+                  {selected === "hall" && "🏛️ Your journey, carved in stone. Each rank adds a new chapter to your story."}
+                </p>
+              )}
+            </div>
+          )}
         </div>
       )}
 
-      {!dialog && !dilemma && nearWhat && (
-        <div className="absolute bottom-3 right-3 flex gap-2">
-          {nearWhat === "keeper" && <Button size="sm" onClick={talkToKeeper} className="bg-amber-400 font-bold text-black">Talk</Button>}
-          {nearWhat === "maya" && <Button size="sm" onClick={talkToMaya} className="bg-fuchsia-400 font-bold text-black">Help Maya</Button>}
-          {nearWhat === "peer" && <Button size="sm" onClick={talkToPeer} className="bg-amber-400 font-bold text-black">Talk to Jay</Button>}
-          {nearWhat === "sam" && <Button size="sm" onClick={talkToSam} className="bg-sky-400 font-bold text-black">Talk to Sam</Button>}
-          {nearWhat === "chore" && <Button size="sm" onClick={() => setInterior("chore")} className="bg-emerald-400 font-bold text-black">Enter</Button>}
-          {nearWhat === "chest" && <Button size="sm" onClick={openChest} className="bg-amber-400 font-bold text-black">🗝️ Open</Button>}
-          {nearWhat === "vault" && (vaultUnlocked
-            ? <Button size="sm" onClick={() => setInterior("vault")} className="bg-amber-400 font-bold text-black">Enter</Button>
-            : <div className="flex items-center gap-1.5 rounded-lg bg-black/70 px-3 py-2 text-xs font-semibold text-white"><Lock className="size-4 text-amber-300" /> Save {50 - vault} more</div>)}
-          {nearWhat === "market" && (marketUnlocked
-            ? <Button size="sm" onClick={() => setInterior("market")} className="bg-violet-400 font-bold text-black">Enter</Button>
-            : <div className="flex items-center gap-1.5 rounded-lg bg-black/70 px-3 py-2 text-xs font-semibold text-white"><Lock className="size-4 text-violet-300" /> {3 - choresDone} more chores</div>)}
-        </div>
-      )}
-
-      {won && !dialog && (
-        <div className="absolute inset-x-8 top-20 rounded-2xl border border-amber-300/40 bg-black/85 p-5 text-center backdrop-blur-sm">
-          <p className="font-display text-xl font-bold text-amber-300">Quest Complete!</p>
-          <p className="mt-1 text-sm text-white/85">{hits === 0 ? "FLAWLESS! +15 Trust, +20 Courage." : `${hits} hits taken.`} +50 Units.</p>
-          <Button size="sm" className="mt-3" onClick={() => setScreen("home")}>Back to the World</Button>
-        </div>
-      )}
-
+      {/* Ceremony */}
       {ceremony && (
         <div className="absolute inset-0 z-20 grid place-items-center bg-black/70 backdrop-blur-sm">
           <div className="mx-6 rounded-3xl border border-amber-300/50 bg-gradient-to-b from-amber-950/90 to-black/90 p-8 text-center">
             <p className="text-5xl">🎉</p>
-            <p className="mt-2 text-xs font-bold uppercase tracking-widest text-amber-300">Rank Up!</p>
+            <p className="mt-2 text-xs font-bold uppercase tracking-widest text-amber-300">Your city grows!</p>
             <p className="mt-2 font-display text-3xl font-bold text-white">Welcome, {ceremony}!</p>
-            <Button className="mt-4 bg-amber-400 font-bold text-black" onClick={() => setCeremony(null)}>Continue</Button>
+            <p className="mt-1 text-sm text-white/70">The monument rises. New districts shine.</p>
+            <Button className="mt-4 bg-amber-400 font-bold text-black" onClick={() => setCeremony(null)}>Behold my city</Button>
           </div>
         </div>
       )}
 
-      {/* Real-life gates panel — top-left, compact, never overlaps dialogs */}
-      <details className="absolute left-3 top-14 rounded-xl border border-accent/20 bg-black/70 px-2.5 py-1.5 backdrop-blur-sm">
-        <summary className="cursor-pointer text-[11px] font-bold text-white">🔓 Unlocks</summary>
-        <div className="mt-1.5 space-y-1 text-[11px] text-white/80">
-          <p>{vaultUnlocked ? "✅" : "🔒"} Vault — {vaultUnlocked ? "open" : `${50 - vault} to save`}</p>
-          <p>{marketUnlocked ? "✅" : "🔒"} Market — {marketUnlocked ? "open" : `${3 - choresDone} chores left`}</p>
+      {/* Hint */}
+      {!selected && !dilemma && (
+        <div className="absolute bottom-4 left-1/2 -translate-x-1/2 rounded-full bg-black/60 px-4 py-1.5 text-[11px] font-medium text-white/70 backdrop-blur-sm">
+          👆 Tap a district to enter · Tap ✦ chests for treasure
         </div>
-      </details>
-
-      <div className="absolute bottom-3 left-1/2 hidden -translate-x-1/2 text-[11px] text-white/50 sm:block">
-        WASD / arrows to move · drag left side on touch
-      </div>
+      )}
     </div>
   );
 }
