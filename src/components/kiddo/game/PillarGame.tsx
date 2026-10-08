@@ -305,7 +305,9 @@ export function PillarGame() {
     }
 
     // Camera: fill screen by default, pinch to zoom, drag to pan.
-    const cam = { cx: WORLD_W / 2, cy: WORLD_H / 2, zoom: 1 };
+    // Default view is biased left so Chore Village + Studio Island are in frame.
+    const DEFAULT_CX = WORLD_W / 2 - 180;
+    const cam = { cx: DEFAULT_CX, cy: WORLD_H / 2, zoom: 1 };
     let minZoom = 0.2;
     let maxZoom = 2.5;
     const resize = () => {
@@ -458,7 +460,7 @@ export function PillarGame() {
         clampCam(window.innerWidth, window.innerHeight);
       },
       reset: () => {
-        cam.cx = WORLD_W / 2; cam.cy = WORLD_H / 2;
+        cam.cx = DEFAULT_CX; cam.cy = WORLD_H / 2;
         cam.zoom = Math.max(window.innerWidth / WORLD_W, window.innerHeight / WORLD_H);
         clampCam(window.innerWidth, window.innerHeight);
       },
