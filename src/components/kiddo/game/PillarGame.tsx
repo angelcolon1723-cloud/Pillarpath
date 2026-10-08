@@ -1343,20 +1343,20 @@ export function PillarGame() {
         <Button variant="ghost" size="sm" onClick={() => setScreen("home")} className="gap-1 text-white hover:bg-white/15 hover:text-white">
           <ArrowLeft className="size-4" /> World
         </Button>
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={toggleSound} className="px-2 text-white hover:bg-white/15 hover:text-white">
+        <div className="flex max-w-[62vw] items-center gap-2 overflow-x-auto [scrollbar-width:none] [&::-webkit-scrollbar]:hidden sm:max-w-none">
+          <Button variant="ghost" size="sm" onClick={toggleSound} className="shrink-0 px-2 text-white hover:bg-white/15 hover:text-white">
             {soundOn ? <Volume2 className="size-4" /> : <VolumeX className="size-4" />}
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setShowCodex(true)} className="gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
+          <Button variant="ghost" size="sm" onClick={() => setShowCodex(true)} className="shrink-0 gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
             <BookOpen className="size-4" /> Codex
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setShowQuests(true)} className="gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
+          <Button variant="ghost" size="sm" onClick={() => setShowQuests(true)} className="shrink-0 gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
             <span>🎯</span> Quests
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setPlaza3d(true)} className="gap-1 text-xs font-extrabold text-white hover:bg-white/15 hover:text-white" title="Walk the plaza in 3D">
+          <Button variant="ghost" size="sm" onClick={() => setPlaza3d(true)} className="shrink-0 gap-1 text-xs font-extrabold text-white hover:bg-white/15 hover:text-white" title="Walk the plaza in 3D">
             <span>🏙️</span> 3D
           </Button>
-          <Button variant="ghost" size="sm" onClick={() => setShowNews(true)} className="relative gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
+          <Button variant="ghost" size="sm" onClick={() => setShowNews(true)} className="relative shrink-0 gap-1 text-xs text-white hover:bg-white/15 hover:text-white">
             <span>📰</span>
             {city.news.length > 0 && (
               <span className="absolute -right-0.5 -top-0.5 grid size-4 place-items-center rounded-full bg-red-500 text-[9px] font-bold text-white">
@@ -1397,6 +1397,16 @@ export function PillarGame() {
         <Button size="sm" variant="ghost" className="h-10 w-10 rounded-full bg-black/60 p-0 text-xl text-white backdrop-blur-sm hover:bg-black/80 hover:text-white" onClick={() => zoomRef.current.zoomOut()}>－</Button>
         <Button size="sm" variant="ghost" className="h-10 w-10 rounded-full bg-black/60 p-0 text-sm text-white backdrop-blur-sm hover:bg-black/80 hover:text-white" onClick={() => zoomRef.current.reset()}>⟡</Button>
       </div>
+
+      {/* Floating 3D Plaza entry — unmissable on small phones */}
+      {!plaza3d && (
+        <button
+          onClick={() => setPlaza3d(true)}
+          className="absolute bottom-4 left-3 z-20 flex items-center gap-2 rounded-full bg-gradient-to-r from-cyan-500 via-violet-500 to-fuchsia-500 px-5 py-3 text-sm font-extrabold text-white shadow-xl shadow-violet-900/60 active:scale-95"
+        >
+          <span className="text-lg">🏙️</span> 3D Plaza
+        </button>
+      )}
 
       {/* Toasts */}
       {toasts.length > 0 && (
