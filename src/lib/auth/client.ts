@@ -215,7 +215,18 @@ export async function signInDirect(
     } catch {
       /* listener unsupported — the guard expires on its own TTL */
     }
-    await Browser.open({ url: start });
+    try {
+      await Browser.open({ url: start });
+    } catch (e) {
+      // An old installed shell (pre-plugin APK) can't open the browser
+      // tab at all — say so plainly instead of leaking the raw error.
+      if (e instanceof Error && /not implemented/i.test(e.message)) {
+        throw new Error(
+          "This copy of the app is out of date. Please delete it and install the newest PillarPath app file, then sign in again.",
+        );
+      }
+      throw e;
+    }
     return;
   }
   await authClient.signOut().catch(() => {});
