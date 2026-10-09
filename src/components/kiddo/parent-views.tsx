@@ -1669,9 +1669,30 @@ export function ParentClassroom() {
         })),
     )
     .sort((a, b) => (a.at < b.at ? 1 : -1));
-  const composeConn = connections.find((c) => c.id === composeFor) ?? null;
+  /** The teacher the persistent compose box sends to: an explicit pick,
+   * or the only approved connection when there's just one. */
+  const composeTarget =
+    approved.find((c) => c.id === composeFor) ??
+    (approved.length === 1 ? approved[0] : null);
 
-  /** Open the existing thread for a connection, or start composing one. */
+  function focusCompose() {
+    window.setTimeout(
+      () => document.getElementById("inbox-compose-input")?.focus(),
+      60,
+    );
+  }
+
+  function scrollToJoin() {
+    document
+      .getElementById("join-classroom-card")
+      ?.scrollIntoView({ behavior: "smooth", block: "start" });
+    window.setTimeout(
+      () => document.getElementById("join-classroom-code")?.focus({ preventScroll: true }),
+      400,
+    );
+  }
+
+  /** Open the existing thread for a connection, or aim the compose box at it. */
   function messageTeacher(c: ParentClassroomConnection) {
     setShowPicker(false);
     const existing = threads.find(
@@ -1683,37 +1704,53 @@ export function ParentClassroom() {
     if (existing) {
       setOpenThreadId(existing.id);
     } else {
-      setDraft("");
       setComposeFor(c.id);
+      focusCompose();
     }
   }
 
-  /** The inbox's primary action: with one connected teacher go straight
-   * to composing; with several, show the picker; with none, jump up to
-   * the join form — messaging starts with a classroom connection. */
+  /** The inbox's primary action: one teacher → aim the box; several →
+   * picker; none → jump to the join form. */
   function newMessage() {
     if (approved.length === 1) {
       messageTeacher(approved[0]);
     } else if (approved.length > 1) {
       setShowPicker((v) => !v);
     } else {
-      document
-        .getElementById("join-classroom-card")
-        ?.scrollIntoView({ behavior: "smooth", block: "start" });
-      window.setTimeout(
-        () => document.getElementById("join-classroom-code")?.focus({ preventScroll: true }),
-        400,
-      );
+      scrollToJoin();
     }
   }
 
-  async function sendNew() {
+  /**
+   * Send from the persistent compose box. The box is ALWAYS visible and
+   * typeable (King's report: "when I try to write nothing pops up") —
+   * with no approved connection yet, Send explains the one missing step
+   * and jumps to the join form instead of pretending to send.
+   */
+  async function sendDraft() {
     const text = draft.trim();
-    if (!text || !composeFor) return;
+    if (!text) return;
+    if (!composeTarget) {
+      if (approved.length > 1) {
+        setShowPicker(true);
+        toast.message("Choose which teacher to message first.");
+      } else if (connections.length > 0) {
+        toast.message(
+          "Your classroom connection is still waiting for the teacher's approval.",
+        );
+      } else {
+        toast.message(
+          "First join your child's classroom — enter the teacher's join code above.",
+        );
+        scrollToJoin();
+      }
+      return;
+    }
     setBusy(true);
     try {
-      const r = await startParentThread({ data: { connectionId: composeFor, body: text } });
-      setComposeFor(null);
+      const r = await startParentThread({
+        data: { connectionId: composeTarget.id, body: text },
+      });
       setDraft("");
       await load();
       setOpenThreadId(r.id);
@@ -1843,33 +1880,6 @@ export function ParentClassroom() {
                     }}
                   />
                   <Button disabled={busy || !reply.trim()} onClick={() => void sendReply(openThread.id)}>
-                    Send
-                  </Button>
-                </div>
-              </div>
-            ) : composeConn ? (
-              <div className="mt-3">
-                <button
-                  type="button"
-                  onClick={() => setComposeFor(null)}
-                  className="mb-2 text-xs font-medium text-accent"
-                >
-                  ← Back to inbox
-                </button>
-                <p className="text-sm font-semibold">Message {composeConn.teacherName}</p>
-                <p className="text-xs text-muted">
-                  {composeConn.classroomName} · {composeConn.childName}
-                </p>
-                <div className="mt-3 flex gap-2">
-                  <Input
-                    value={draft}
-                    onChange={(e) => setDraft(e.target.value)}
-                    placeholder="Write a message…"
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") void sendNew();
-                    }}
-                  />
-                  <Button disabled={busy || !draft.trim()} onClick={() => void sendNew()}>
                     Send
                   </Button>
                 </div>
@@ -2032,6 +2042,44 @@ export function ParentClassroom() {
                   </p>
                 )}
               </>
+            )}
+            {!openThread && (
+              <div className="mt-4 border-t border-white/10 pt-3">
+                <p className="mb-2 text-xs leading-5 text-muted">
+                  {composeTarget ? (
+                    <>
+                      To:{" "}
+                      <span className="font-semibold text-ink">
+                        {composeTarget.teacherName}
+                      </span>{" "}
+                      · {composeTarget.classroomName} ({composeTarget.childName})
+                    </>
+                  ) : approved.length > 1 ? (
+                    "Pick a teacher above, then write your message here."
+                  ) : connections.length > 0 ? (
+                    "Your classroom connection is pending approval — you can write now, and send as soon as the teacher approves."
+                  ) : (
+                    "Join your child's classroom above, then you can message their teacher right here."
+                  )}
+                </p>
+                <div className="flex gap-2">
+                  <Input
+                    id="inbox-compose-input"
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    placeholder="Write a message…"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void sendDraft();
+                    }}
+                  />
+                  <Button
+                    disabled={busy || !draft.trim()}
+                    onClick={() => void sendDraft()}
+                  >
+                    Send
+                  </Button>
+                </div>
+              </div>
             )}
           </Card>
         </>
