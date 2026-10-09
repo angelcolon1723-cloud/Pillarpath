@@ -50,6 +50,7 @@ import {
   listMyClassroomConnections,
   listParentThreads,
   sendParentThreadMessage,
+  startParentThread,
   type ParentClassroomConnection,
   type ParentThread,
 } from "@/lib/teacher-server";
@@ -1579,6 +1580,8 @@ export function ParentClassroom() {
   const [childName, setChildName] = useState("");
   const [openThreadId, setOpenThreadId] = useState<string | null>(null);
   const [reply, setReply] = useState("");
+  const [composeFor, setComposeFor] = useState<string | null>(null);
+  const [draft, setDraft] = useState("");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -1639,7 +1642,41 @@ export function ParentClassroom() {
   }
 
   const openThread = threads.find((t) => t.id === openThreadId) ?? null;
-  const unreadCount = threads.length;
+  const approved = connections.filter((c) => c.status === "approved");
+  const composeConn = connections.find((c) => c.id === composeFor) ?? null;
+
+  /** Open the existing thread for a connection, or start composing one. */
+  function messageTeacher(c: ParentClassroomConnection) {
+    const existing = threads.find(
+      (t) =>
+        t.classroomName === c.classroomName &&
+        t.childName === c.childName &&
+        t.teacherName === c.teacherName,
+    );
+    if (existing) {
+      setOpenThreadId(existing.id);
+    } else {
+      setDraft("");
+      setComposeFor(c.id);
+    }
+  }
+
+  async function sendNew() {
+    const text = draft.trim();
+    if (!text || !composeFor) return;
+    setBusy(true);
+    try {
+      const r = await startParentThread({ data: { connectionId: composeFor, body: text } });
+      setComposeFor(null);
+      setDraft("");
+      await load();
+      setOpenThreadId(r.id);
+    } catch (e) {
+      toast.error(e instanceof Error ? e.message : "Could not send the message.");
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <div className="screen-enter space-y-4">
@@ -1711,16 +1748,12 @@ export function ParentClassroom() {
 
           <Card className="p-4">
             <div className="flex items-center justify-between">
-              <CardTitle className="text-base">Teacher messages</CardTitle>
-              {unreadCount > 0 && (
-                <Badge tone="accent">{unreadCount}</Badge>
+              <CardTitle className="text-base">📥 Inbox</CardTitle>
+              {threads.length > 0 && (
+                <Badge tone="accent">{threads.length}</Badge>
               )}
             </div>
-            {threads.length === 0 ? (
-              <p className="mt-2 text-sm text-muted">
-                No conversations yet. Once your child's teacher starts one, it will appear here.
-              </p>
-            ) : openThread ? (
+            {openThread ? (
               <div className="mt-3">
                 <button
                   type="button"
@@ -1767,28 +1800,125 @@ export function ParentClassroom() {
                   </Button>
                 </div>
               </div>
-            ) : (
-              <div className="mt-3 divide-y divide-white/10">
-                {threads.map((t) => {
-                  const last = t.messages[t.messages.length - 1];
-                  return (
-                    <button
-                      key={t.id}
-                      type="button"
-                      onClick={() => setOpenThreadId(t.id)}
-                      className="flex w-full items-center justify-between gap-3 py-2.5 text-left"
-                    >
-                      <div className="min-w-0">
-                        <p className="truncate text-sm font-semibold">{t.teacherName}</p>
-                        <p className="truncate text-xs text-muted">
-                          {last ? last.body : "New conversation"} · {t.classroomName}
-                        </p>
-                      </div>
-                      <span className="shrink-0 text-xs text-muted">→</span>
-                    </button>
-                  );
-                })}
+            ) : composeConn ? (
+              <div className="mt-3">
+                <button
+                  type="button"
+                  onClick={() => setComposeFor(null)}
+                  className="mb-2 text-xs font-medium text-accent"
+                >
+                  ← Back to inbox
+                </button>
+                <p className="text-sm font-semibold">Message {composeConn.teacherName}</p>
+                <p className="text-xs text-muted">
+                  {composeConn.classroomName} · {composeConn.childName}
+                </p>
+                <div className="mt-3 flex gap-2">
+                  <Input
+                    value={draft}
+                    onChange={(e) => setDraft(e.target.value)}
+                    placeholder="Write a message…"
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") void sendNew();
+                    }}
+                  />
+                  <Button disabled={busy || !draft.trim()} onClick={() => void sendNew()}>
+                    Send
+                  </Button>
+                </div>
               </div>
+            ) : (
+              <>
+                {threads.length === 0 ? (
+                  <div className="mt-3 rounded-xl bg-surface-2/50 p-4 text-center">
+                    <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-accent/15 text-2xl">
+                      💬
+                    </div>
+                    <p className="mt-2 text-sm font-semibold">Your inbox is empty</p>
+                    <p className="mx-auto mt-1 max-w-xs text-xs leading-5 text-muted">
+                      This is where conversations with your child's teachers live. When a
+                      teacher messages you — or you message them first — it shows up here,
+                      and you can reply right from this screen.
+                    </p>
+                    <div className="mx-auto mt-3 max-w-xs rounded-xl bg-surface p-3 text-left opacity-70">
+                      <div className="flex items-center gap-2.5">
+                        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent/25 text-sm font-bold">
+                          T
+                        </span>
+                        <div className="min-w-0">
+                          <p className="truncate text-xs font-semibold">Your child's teacher</p>
+                          <p className="truncate text-xs text-muted">
+                            "Welcome to our classroom! 👋"
+                          </p>
+                        </div>
+                        <span className="ml-auto shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-semibold text-muted">
+                          Example
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 divide-y divide-white/10">
+                    {threads.map((t) => {
+                      const last = t.messages[t.messages.length - 1];
+                      return (
+                        <button
+                          key={t.id}
+                          type="button"
+                          onClick={() => setOpenThreadId(t.id)}
+                          className="flex w-full items-center gap-3 py-2.5 text-left"
+                        >
+                          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-accent/25 text-sm font-bold">
+                            {t.teacherName.charAt(0)}
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold">{t.teacherName}</span>
+                            <span className="block truncate text-xs text-muted">
+                              {last ? last.body : "New conversation"} · {t.classroomName}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-xs text-muted">→</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
+                {approved.length > 0 && (
+                  <div className="mt-4 border-t border-white/10 pt-3">
+                    <p className="text-xs font-semibold uppercase tracking-widest text-muted">
+                      Message a teacher
+                    </p>
+                    <div className="mt-2 space-y-2">
+                      {approved.map((c) => (
+                        <button
+                          key={c.id}
+                          type="button"
+                          onClick={() => messageTeacher(c)}
+                          className="flex w-full items-center gap-3 rounded-xl bg-surface-2/60 px-3 py-2.5 text-left"
+                        >
+                          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent/25 text-sm font-bold">
+                            {c.teacherName.charAt(0)}
+                          </span>
+                          <span className="min-w-0">
+                            <span className="block truncate text-sm font-semibold">
+                              💬 {c.teacherName}
+                            </span>
+                            <span className="block truncate text-xs text-muted">
+                              {c.classroomName} · {c.childName}
+                            </span>
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {connections.length > 0 && approved.length === 0 && (
+                  <p className="mt-3 text-xs leading-5 text-muted">
+                    Your classroom request is still pending. Once the teacher approves it,
+                    you can message them right from this inbox.
+                  </p>
+                )}
+              </>
             )}
           </Card>
         </>
