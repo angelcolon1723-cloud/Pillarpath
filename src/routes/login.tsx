@@ -161,14 +161,28 @@ function OtpForm({ autoSend }: { autoSend?: boolean }) {
   const [lastSentAt, setLastSentAt] = useState<number | null>(autoSend ? null : Date.now());
   const [now, setNow] = useState(() => Date.now());
 
+  /** Enter the app (used when the ceremony cleared itself — e.g. the
+   * code email couldn't be delivered and the server lifted the lock). */
+  async function proceedIn() {
+    const dest = loginRedirect();
+    forgetRedirect();
+    await navigate({ to: dest });
+  }
+
   useEffect(() => {
     if (!autoSend) return;
     let cancelled = false;
     requestLoginOtp()
       .then((r) => {
-        if (!cancelled && r.sent) {
+        if (cancelled) return;
+        if (r.sent) {
           setLastSentAt(Date.now());
           toast.success("Verification code sent to your email.");
+        } else if (r.deliveryFailed) {
+          toast.message(
+            "We couldn't email a verification code, so we signed you in without the extra step this time.",
+          );
+          void proceedIn();
         }
       })
       .catch((err) => {
@@ -222,6 +236,11 @@ function OtpForm({ autoSend }: { autoSend?: boolean }) {
       if (r.sent) {
         setLastSentAt(Date.now());
         toast.success("New code sent to your email.");
+      } else if (r.deliveryFailed) {
+        toast.message(
+          "We couldn't email a verification code, so we signed you in without the extra step this time.",
+        );
+        await proceedIn();
       }
     } catch (error) {
       toast.error(error instanceof Error ? error.message : "Couldn't send a new code.");
@@ -365,6 +384,11 @@ function LoginForm() {
         setStep("otp");
         setBusy(false);
         return;
+      }
+      if (otp.deliveryFailed) {
+        toast.message(
+          "We couldn't email a verification code, so we signed you in without the extra step this time.",
+        );
       }
       const dest = loginRedirect();
       forgetRedirect();

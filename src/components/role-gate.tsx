@@ -19,6 +19,7 @@ import { chooseRole, getMyRole, type MyRole } from "@/lib/roles-server";
 export function RoleGate({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<MyRole | null>(null);
   const [failed, setFailed] = useState<string | null>(null);
+  const [otpRedirect, setOtpRedirect] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -27,12 +28,36 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
         if (!cancelled) setRole(r);
       })
       .catch((e: unknown) => {
-        if (!cancelled) setFailed(e instanceof Error ? e.message : "unknown error");
+        if (cancelled) return;
+        const msg = e instanceof Error ? e.message : "unknown error";
+        // A password login that still owes its 4-digit code is NOT an
+        // account failure — the code screen lives on /login (SignedInRouter
+        // shows it for exactly this state). Route there instead of
+        // dead-ending on the error screen (the brother's OTP_REQUIRED wall).
+        if (msg.includes("OTP_REQUIRED")) {
+          setOtpRedirect(true);
+          window.location.assign("/login");
+          return;
+        }
+        setFailed(msg);
       });
     return () => {
       cancelled = true;
     };
   }, []);
+
+  if (otpRedirect) {
+    return (
+      <div className="grid min-h-dvh place-items-center bg-bg px-5 text-center text-ink">
+        <div>
+          <p className="font-display text-xl font-semibold">One more step</p>
+          <p className="mt-2 text-sm text-muted">
+            Taking you to verify your sign-in…
+          </p>
+        </div>
+      </div>
+    );
+  }
 
   if (failed) {
     return (

@@ -98,7 +98,10 @@ async function getUserEmail(userId: string): Promise<string | null> {
  */
 export const requestLoginOtp = createServerFn({ method: "POST" })
   .middleware([otpBypassMiddleware])
-  .handler(async ({ context }): Promise<{ sent: boolean }> => {
+  .handler(
+    async ({
+      context,
+    }): Promise<{ sent: boolean; deliveryFailed?: boolean }> => {
     const { userId } = context;
     if (!isEmailConfigured()) return { sent: false };
 
@@ -133,7 +136,14 @@ export const requestLoginOtp = createServerFn({ method: "POST" })
       await sendLoginCodeEmail(email, code);
     } catch (err) {
       if (err instanceof EmailNotConfiguredError) return { sent: false };
-      throw err;
+      // The code could not be delivered (e.g. the sandbox sending domain
+      // can only reach the account owner's inbox). Never leave the
+      // account locked behind a code that isn't coming: clear the whole
+      // ceremony so the session is usable, and report the failure so
+      // the client can sign the user in without the extra step — with
+      // a visible notice, never silently.
+      await deleteRows([otpIdentifier(userId), requiredIdentifier(userId)]);
+      return { sent: false, deliveryFailed: true };
     }
     return { sent: true };
   });
