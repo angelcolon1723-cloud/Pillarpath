@@ -18,7 +18,7 @@
  */
 
 import { createServerFn } from "@tanstack/react-start";
-import { ForbiddenError, roleMiddleware } from "@/lib/auth/middleware";
+import { authMiddleware, ForbiddenError, roleMiddleware } from "@/lib/auth/middleware";
 import type { Identity } from "@/lib/auth/verify.server";
 import { getSql, type Sql } from "@/lib/db";
 import { CLASSROOM_ACTIVITY_SEED } from "@/lib/chores";
@@ -1889,6 +1889,49 @@ export const startParentThread = createServerFn({ method: "POST" })
       values (${crypto.randomUUID()}, ${threadId}, 'parent', ${body})`;
     await sql`update family_threads set updated_at = now() where id = ${threadId}`;
     return { id: threadId };
+  });
+
+/**
+ * Unread family-message count for the signed-in user (either side of a
+ * thread): messages from the other party newer than the user's read
+ * marker. Powers the header mail badge on both dashboards.
+ */
+export const getMyUnreadMessageCount = createServerFn({ method: "GET" })
+  .middleware([authMiddleware])
+  .handler(async ({ context }): Promise<{ count: number }> => {
+    const userId = context.userId;
+    const sql = await getSql();
+    const rows = await sql<{ n: number }>`
+      select count(*)::int as n
+      from thread_messages tm
+      join family_threads ft on ft.id = tm.thread_id
+      left join thread_reads tr
+        on tr.thread_id = ft.id and tr.user_id = ${userId}
+      where ((ft.parent_user_id = ${userId} and tm.sender = 'teacher')
+          or (ft.teacher_id = ${userId} and tm.sender = 'parent'))
+        and tm.created_at > coalesce(tr.last_read_at, 'epoch'::timestamptz)`;
+    return { count: rows[0]?.n ?? 0 };
+  });
+
+/** Mark one thread read for the signed-in user (must be a party to it). */
+export const markThreadRead = createServerFn({ method: "POST" })
+  .middleware([authMiddleware])
+  .validator((input: { threadId: string }) => input)
+  .handler(async ({ context, data }): Promise<{ ok: true }> => {
+    const userId = context.userId;
+    const threadId = assertUuid(data.threadId, "threadId");
+    const sql = await getSql();
+    const party = await sql<{ id: string }>`
+      select id from family_threads
+      where id = ${threadId}
+        and (parent_user_id = ${userId} or teacher_id = ${userId})`;
+    if (party.length === 0) throw new Error("Conversation not found.");
+    await sql`
+      insert into thread_reads (thread_id, user_id, last_read_at)
+      values (${threadId}, ${userId}, now())
+      on conflict (thread_id, user_id)
+      do update set last_read_at = excluded.last_read_at`;
+    return { ok: true };
   });
 
 /** Parent replies in their thread. */

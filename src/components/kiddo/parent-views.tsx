@@ -49,6 +49,7 @@ import {
   joinClassroomByCode,
   listMyClassroomConnections,
   listParentThreads,
+  markThreadRead,
   sendParentThreadMessage,
   startParentThread,
   type ParentClassroomConnection,
@@ -1583,6 +1584,7 @@ export function ParentClassroom() {
   const [composeFor, setComposeFor] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
   const [showPicker, setShowPicker] = useState(false);
+  const [box, setBox] = useState<"inbox" | "outbox">("inbox");
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -1644,6 +1646,29 @@ export function ParentClassroom() {
 
   const openThread = threads.find((t) => t.id === openThreadId) ?? null;
   const approved = connections.filter((c) => c.status === "approved");
+
+  // Opening a conversation marks it read (clears the header mail badge).
+  const openMsgCount = openThread?.messages.length ?? 0;
+  useEffect(() => {
+    if (!openThreadId) return;
+    markThreadRead({ data: { threadId: openThreadId } })
+      .then(() => window.dispatchEvent(new Event("pp:unread-refresh")))
+      .catch(() => {});
+  }, [openThreadId, openMsgCount]);
+
+  /** Outbox: every message this parent has sent, newest first. */
+  const sentMessages = threads
+    .flatMap((t) =>
+      t.messages
+        .filter((m) => m.sender === "parent")
+        .map((m) => ({
+          ...m,
+          threadId: t.id,
+          teacherName: t.teacherName,
+          classroomName: t.classroomName,
+        })),
+    )
+    .sort((a, b) => (a.at < b.at ? 1 : -1));
   const composeConn = connections.find((c) => c.id === composeFor) ?? null;
 
   /** Open the existing thread for a connection, or start composing one. */
@@ -1851,7 +1876,59 @@ export function ParentClassroom() {
               </div>
             ) : (
               <>
-                {threads.length === 0 ? (
+                <div className="mt-3 flex gap-2">
+                  <Button
+                    size="sm"
+                    variant={box === "inbox" ? "default" : "outline"}
+                    onClick={() => setBox("inbox")}
+                  >
+                    📥 Inbox
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant={box === "outbox" ? "default" : "outline"}
+                    onClick={() => setBox("outbox")}
+                  >
+                    📤 Outbox
+                  </Button>
+                </div>
+                {box === "outbox" ? (
+                  sentMessages.length === 0 ? (
+                    <div className="mt-3 rounded-xl bg-surface-2/50 p-4 text-center">
+                      <p className="text-sm font-semibold">Nothing sent yet</p>
+                      <p className="mx-auto mt-1 max-w-xs text-xs leading-5 text-muted">
+                        Messages you send to teachers will show up here.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="mt-3 divide-y divide-white/10">
+                      {sentMessages.map((m) => (
+                        <button
+                          key={m.id}
+                          type="button"
+                          onClick={() => {
+                            setBox("inbox");
+                            setOpenThreadId(m.threadId);
+                          }}
+                          className="flex w-full items-center gap-3 py-2.5 text-left"
+                        >
+                          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-surface-2 text-base">
+                            📤
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="block truncate text-sm font-semibold">
+                              To {m.teacherName} · {m.classroomName}
+                            </span>
+                            <span className="block truncate text-xs text-muted">{m.body}</span>
+                          </span>
+                          <span className="shrink-0 text-xs text-muted">
+                            {new Date(m.at).toLocaleDateString()}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  )
+                ) : threads.length === 0 ? (
                   <div className="mt-3 rounded-xl bg-surface-2/50 p-4 text-center">
                     <div className="mx-auto grid size-12 place-items-center rounded-2xl bg-accent/15 text-2xl">
                       💬
@@ -1916,12 +1993,12 @@ export function ParentClassroom() {
                     })}
                   </div>
                 )}
-                {approved.length > 0 && threads.length > 0 && (
+                {box === "inbox" && approved.length > 0 && threads.length > 0 && (
                   <Button className="mt-4 w-full" variant="secondary" onClick={newMessage}>
                     ✉️ New message
                   </Button>
                 )}
-                {showPicker && approved.length > 0 && (
+                {box === "inbox" && showPicker && approved.length > 0 && (
                   <div className="mt-3 space-y-2">
                     <p className="text-xs font-semibold uppercase tracking-widest text-muted">
                       Message which teacher?
@@ -1948,7 +2025,7 @@ export function ParentClassroom() {
                     ))}
                   </div>
                 )}
-                {connections.length > 0 && approved.length === 0 && (
+                {box === "inbox" && connections.length > 0 && approved.length === 0 && (
                   <p className="mt-3 text-xs leading-5 text-muted">
                     Your classroom request is still pending. Once the teacher approves it,
                     you can message them right from this inbox.

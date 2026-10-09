@@ -9,6 +9,7 @@ import {
   Home,
   LayoutDashboard,
   LineChart,
+  Mail,
   MoreHorizontal,
   PackageCheck,
   Settings,
@@ -28,6 +29,7 @@ import {
   setCartQuantity,
 } from "@/lib/pillarpath-server";
 import { getSocietyStatus } from "@/lib/society-server";
+import { getMyUnreadMessageCount } from "@/lib/teacher-server";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
@@ -242,6 +244,31 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
     navIndexRef.current = navHistoryRef.current.length - 1;
     sync();
   }, [locationKey]);
+
+  // ---- Header mail badge (King's ask, 2026-10-08) ---------------------
+  // Unread family-message count for the mail icon in the header of the
+  // parent and teacher dashboards. Polls on navigation + every minute;
+  // opening a thread dispatches "pp:unread-refresh" for an instant drop.
+  const [unreadMsgs, setUnreadMsgs] = useState(0);
+  useEffect(() => {
+    if (!user || user.isDevFallback) return;
+    let cancelled = false;
+    const load = () => {
+      getMyUnreadMessageCount()
+        .then((r) => {
+          if (!cancelled) setUnreadMsgs(r.count);
+        })
+        .catch(() => {});
+    };
+    load();
+    const iv = setInterval(load, 60000);
+    window.addEventListener("pp:unread-refresh", load);
+    return () => {
+      cancelled = true;
+      clearInterval(iv);
+      window.removeEventListener("pp:unread-refresh", load);
+    };
+  }, [user, locationKey]);
 
   if (loading || !data || !user) {
     return (
@@ -467,6 +494,24 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
                 <h1 className="font-display text-xl font-semibold">{title}</h1>
               </div>
               <div className="flex items-center gap-2">
+                {role !== "child" && (
+                  <button
+                    type="button"
+                    onClick={() => navigate(role === "teacher" ? "messages" : "teachers")}
+                    aria-label="Messages inbox"
+                    className={cn(
+                      "relative grid size-11 place-items-center rounded-xl border border-border bg-surface",
+                      unreadMsgs > 0 ? "text-accent" : "text-muted hover:text-ink",
+                    )}
+                  >
+                    <Mail className="size-5" />
+                    {unreadMsgs > 0 && (
+                      <span className="absolute -right-1 -top-1 grid min-w-5 place-items-center rounded-full bg-accent px-1 text-[10px] font-bold text-accent-foreground shadow-[0_0_14px_rgba(34,211,238,0.55)]">
+                        {unreadMsgs > 99 ? "99+" : unreadMsgs}
+                      </span>
+                    )}
+                  </button>
+                )}
                 <div className="flex items-center gap-0.5 rounded-xl border border-border bg-surface p-1">
                   <button
                     type="button"

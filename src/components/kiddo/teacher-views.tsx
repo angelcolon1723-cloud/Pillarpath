@@ -30,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { markThreadRead } from "@/lib/teacher-server";
 import { AccountSettingsCard } from "@/components/account-settings";
 import { Button } from "@/components/ui/button";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
@@ -2223,6 +2224,16 @@ function TeacherFamilyThreads({
   const [childName, setChildName] = useState("");
   const [linkedParentId, setLinkedParentId] = useState<string | null>(null);
   const [reply, setReply] = useState("");
+  const [box, setBox] = useState<"inbox" | "outbox">("inbox");
+
+  // Opening a conversation marks it read (clears the header mail badge).
+  // Local-only demo threads aren't server threads; the call just no-ops.
+  useEffect(() => {
+    if (!openId) return;
+    markThreadRead({ data: { threadId: openId } })
+      .then(() => window.dispatchEvent(new Event("pp:unread-refresh")))
+      .catch(() => {});
+  }, [openId ]);
 
   const linkedFamilies = useMemo(
     () =>
@@ -2257,6 +2268,20 @@ function TeacherFamilyThreads({
     [threads, activeClassroom],
   );
   const open = visible.find((t) => t.id === openId) ?? null;
+
+  /** Outbox: every message this teacher has sent, newest first. */
+  const sentMessages = visible
+    .flatMap((t) =>
+      t.messages
+        .filter((m) => m.from === "teacher")
+        .map((m) => ({
+          ...m,
+          threadId: t.id,
+          parentName: t.parentName,
+          childName: t.childName,
+        })),
+    )
+    .sort((a, b) => (a.at < b.at ? 1 : -1));
 
   function newThread() {
     if (!activeClassroom) {
@@ -2329,6 +2354,25 @@ function TeacherFamilyThreads({
         </Button>
       </Card>
 
+      {!open && (
+        <div className="flex gap-2">
+          <Button
+            size="sm"
+            variant={box === "inbox" ? "default" : "outline"}
+            onClick={() => setBox("inbox")}
+          >
+            📥 Inbox
+          </Button>
+          <Button
+            size="sm"
+            variant={box === "outbox" ? "default" : "outline"}
+            onClick={() => setBox("outbox")}
+          >
+            📤 Outbox
+          </Button>
+        </div>
+      )}
+
       {open ? (
         <Card className="space-y-3 p-4">
           <div className="flex items-center justify-between">
@@ -2384,6 +2428,32 @@ function TeacherFamilyThreads({
             <Button onClick={send}>Send</Button>
           </div>
         </Card>
+      ) : box === "outbox" ? (
+        sentMessages.length === 0 ? (
+          <EmptyHint text="Nothing sent yet — messages you send to families will show up here." />
+        ) : (
+          <div className="space-y-2">
+            {sentMessages.map((m) => (
+              <button
+                key={m.id}
+                type="button"
+                onClick={() => {
+                  setBox("inbox");
+                  setOpenId(m.threadId);
+                }}
+                className="w-full rounded-xl border border-border bg-card p-4 text-left hover:border-accent/40"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <p className="font-semibold">
+                    To {m.parentName} · {m.childName}
+                  </p>
+                  <span className="text-xs text-muted">{formatWhen(m.at)}</span>
+                </div>
+                <p className="mt-1 truncate text-sm text-muted">{m.text}</p>
+              </button>
+            ))}
+          </div>
+        )
       ) : visible.length === 0 ? (
         <EmptyHint text="No family conversations yet." />
       ) : (
