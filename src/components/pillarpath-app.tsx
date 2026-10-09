@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   BarChart3,
+  ChevronLeft,
   ChevronRight,
   CreditCard,
   Gift,
@@ -199,6 +200,49 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
     0,
   );
 
+  // ---- In-app Back / Forward history (King's ask, 2026-10-08) --------
+  // Browser-style navigation for the whole app: every workspace, tab,
+  // and screen change is recorded as a location snapshot, and the
+  // header's ‹ › buttons walk the stack. Snapshots are role-scoped —
+  // the kid screen only counts in the child workspace, the family tab
+  // only in the parent's — so background state changes in inactive
+  // workspaces never pollute the trail.
+  const navHistoryRef = useRef<string[]>([]);
+  const navIndexRef = useRef(-1);
+  const navApplyingRef = useRef<string | null>(null);
+  const [canGoBack, setCanGoBack] = useState(false);
+  const [canGoForward, setCanGoForward] = useState(false);
+  const locationKey =
+    role === "child"
+      ? `child|${ledgerScreen}`
+      : role === "parent"
+        ? `parent|${parentSection}|${familyTab}`
+        : `teacher|${teacherSection}`;
+
+  useEffect(() => {
+    const sync = () => {
+      setCanGoBack(navIndexRef.current > 0);
+      setCanGoForward(navIndexRef.current < navHistoryRef.current.length - 1);
+    };
+    if (navApplyingRef.current) {
+      // A back/forward jump is being applied — don't record the
+      // intermediate renders as new history.
+      if (navApplyingRef.current === locationKey) navApplyingRef.current = null;
+      sync();
+      return;
+    }
+    const h = navHistoryRef.current;
+    if (h[navIndexRef.current] === locationKey) {
+      sync();
+      return;
+    }
+    navHistoryRef.current = h.slice(0, navIndexRef.current + 1);
+    navHistoryRef.current.push(locationKey);
+    if (navHistoryRef.current.length > 60) navHistoryRef.current.shift();
+    navIndexRef.current = navHistoryRef.current.length - 1;
+    sync();
+  }, [locationKey]);
+
   if (loading || !data || !user) {
     return (
       <div className="grid min-h-dvh place-items-center bg-bg text-ink">
@@ -263,6 +307,50 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
     }
     else if (role === "child") setLedgerScreen(id as Screen);
     else setTeacherSection(id as TeacherSection);
+  }
+
+  /** Restore a recorded location snapshot (Back/Forward jumps). Uses the
+   * raw setters on purpose: no splash replay, no consent re-gate — the
+   * user already legitimately visited this location in this session. */
+  function applyLocation(key: string) {
+    const [r, a, b] = key.split("|");
+    navApplyingRef.current = key;
+    // Safety: if a setter no-ops and the target key never renders, don't
+    // let the applying flag wedge the history recorder.
+    setTimeout(() => {
+      if (navApplyingRef.current === key) navApplyingRef.current = null;
+    }, 900);
+    if (r === "child") {
+      setRole("child");
+      setLedgerRole("child");
+      setLedgerScreen(a as Screen);
+    } else if (r === "parent") {
+      setRole("parent");
+      setLedgerRole("parent");
+      setParentSection(a as ParentSection);
+      setFamilyTab(b === "ledger" ? "ledger" : "profiles");
+    } else {
+      setRole("teacher");
+      setLedgerRole("parent");
+      setTeacherSection(a as TeacherSection);
+    }
+    setMoreOpen(false);
+  }
+
+  function goBack() {
+    if (navIndexRef.current <= 0) return;
+    navIndexRef.current -= 1;
+    applyLocation(navHistoryRef.current[navIndexRef.current]);
+    setCanGoBack(navIndexRef.current > 0);
+    setCanGoForward(true);
+  }
+
+  function goForward() {
+    if (navIndexRef.current >= navHistoryRef.current.length - 1) return;
+    navIndexRef.current += 1;
+    applyLocation(navHistoryRef.current[navIndexRef.current]);
+    setCanGoBack(true);
+    setCanGoForward(navIndexRef.current < navHistoryRef.current.length - 1);
   }
 
   const title =
@@ -379,6 +467,26 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
                 <h1 className="font-display text-xl font-semibold">{title}</h1>
               </div>
               <div className="flex items-center gap-2">
+                <div className="flex items-center gap-0.5 rounded-xl border border-border bg-surface p-1">
+                  <button
+                    type="button"
+                    onClick={goBack}
+                    disabled={!canGoBack}
+                    aria-label="Go back"
+                    className="grid size-9 place-items-center rounded-lg text-muted transition hover:text-ink disabled:opacity-30"
+                  >
+                    <ChevronLeft className="size-5" />
+                  </button>
+                  <button
+                    type="button"
+                    onClick={goForward}
+                    disabled={!canGoForward}
+                    aria-label="Go forward"
+                    className="grid size-9 place-items-center rounded-lg text-muted transition hover:text-ink disabled:opacity-30"
+                  >
+                    <ChevronRight className="size-5" />
+                  </button>
+                </div>
                 <button
                   type="button"
                   onClick={() => setBasketOpen(true)}
