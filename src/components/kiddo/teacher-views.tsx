@@ -30,6 +30,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { AccountSettingsCard } from "@/components/account-settings";
 import { Button } from "@/components/ui/button";
 import { Card, CardHint, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -2429,6 +2430,7 @@ function TeacherSettings() {
   return (
     <div className="space-y-5">
       <SectionHeader eyebrow="Settings" title="Teacher settings" />
+      <AccountSettingsCard />
       <Card className="space-y-3 p-4">
         <CardTitle className="text-base">Profile</CardTitle>
         <div>

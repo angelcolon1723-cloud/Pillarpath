@@ -27,6 +27,7 @@ import {
   X,
 } from "lucide-react";
 import { toast } from "sonner";
+import { AccountSettingsCard } from "@/components/account-settings";
 import {
   addToCart,
   createCampaign,
@@ -1507,6 +1508,7 @@ export function SettingsView({
         title="Settings and profile"
         text="Manage the parent account, communication preferences, and commerce defaults."
       />
+      <AccountSettingsCard />
       <Card className="max-w-2xl space-y-4">
         <div className="grid gap-3 sm:grid-cols-2">
           <div>
