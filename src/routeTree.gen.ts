@@ -14,6 +14,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as PrivacyRouteImport } from './routes/privacy'
 import { Route as SocietyRouteImport } from './routes/society'
 import { Route as TermsRouteImport } from './routes/terms'
+import { Route as AuthAppCookieRouteImport } from './routes/auth/app-cookie'
 import { Route as AuthAppReturnRouteImport } from './routes/auth/app-return'
 import { Route as AuthAppStartRouteImport } from './routes/auth/app-start'
 import { Route as CheckoutSuccessRouteImport } from './routes/checkout/success'
@@ -45,6 +46,11 @@ const SocietyRoute = SocietyRouteImport.update({
 const TermsRoute = TermsRouteImport.update({
   id: '/terms',
   path: '/terms',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AuthAppCookieRoute = AuthAppCookieRouteImport.update({
+  id: '/auth/app-cookie',
+  path: '/auth/app-cookie',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AuthAppReturnRoute = AuthAppReturnRouteImport.update({
@@ -89,6 +95,7 @@ export interface FileRoutesByFullPath {
   '/privacy': typeof PrivacyRoute
   '/society': typeof SocietyRoute
   '/terms': typeof TermsRoute
+  '/auth/app-cookie': typeof AuthAppCookieRoute
   '/auth/app-return': typeof AuthAppReturnRoute
   '/auth/app-start': typeof AuthAppStartRoute
   '/checkout/success': typeof CheckoutSuccessRoute
@@ -103,6 +110,7 @@ export interface FileRoutesByTo {
   '/privacy': typeof PrivacyRoute
   '/society': typeof SocietyRoute
   '/terms': typeof TermsRoute
+  '/auth/app-cookie': typeof AuthAppCookieRoute
   '/auth/app-return': typeof AuthAppReturnRoute
   '/auth/app-start': typeof AuthAppStartRoute
   '/checkout/success': typeof CheckoutSuccessRoute
@@ -118,6 +126,7 @@ export interface FileRoutesById {
   '/privacy': typeof PrivacyRoute
   '/society': typeof SocietyRoute
   '/terms': typeof TermsRoute
+  '/auth/app-cookie': typeof AuthAppCookieRoute
   '/auth/app-return': typeof AuthAppReturnRoute
   '/auth/app-start': typeof AuthAppStartRoute
   '/checkout/success': typeof CheckoutSuccessRoute
@@ -134,6 +143,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/society'
     | '/terms'
+    | '/auth/app-cookie'
     | '/auth/app-return'
     | '/auth/app-start'
     | '/checkout/success'
@@ -148,6 +158,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/society'
     | '/terms'
+    | '/auth/app-cookie'
     | '/auth/app-return'
     | '/auth/app-start'
     | '/checkout/success'
@@ -162,6 +173,7 @@ export interface FileRouteTypes {
     | '/privacy'
     | '/society'
     | '/terms'
+    | '/auth/app-cookie'
     | '/auth/app-return'
     | '/auth/app-start'
     | '/checkout/success'
@@ -177,6 +189,7 @@ export interface RootRouteChildren {
   PrivacyRoute: typeof PrivacyRoute
   SocietyRoute: typeof SocietyRoute
   TermsRoute: typeof TermsRoute
+  AuthAppCookieRoute: typeof AuthAppCookieRoute
   AuthAppReturnRoute: typeof AuthAppReturnRoute
   AuthAppStartRoute: typeof AuthAppStartRoute
   CheckoutSuccessRoute: typeof CheckoutSuccessRoute
@@ -221,6 +234,13 @@ declare module '@tanstack/react-router' {
       path: '/terms'
       fullPath: '/terms'
       preLoaderRoute: typeof TermsRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/auth/app-cookie': {
+      id: '/auth/app-cookie'
+      path: '/auth/app-cookie'
+      fullPath: '/auth/app-cookie'
+      preLoaderRoute: typeof AuthAppCookieRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/auth/app-return': {
@@ -281,6 +301,7 @@ const rootRouteChildren: RootRouteChildren = {
   PrivacyRoute: PrivacyRoute,
   SocietyRoute: SocietyRoute,
   TermsRoute: TermsRoute,
+  AuthAppCookieRoute: AuthAppCookieRoute,
   AuthAppReturnRoute: AuthAppReturnRoute,
   AuthAppStartRoute: AuthAppStartRoute,
   CheckoutSuccessRoute: CheckoutSuccessRoute,

@@ -260,7 +260,11 @@ export async function completeAppAuthDeepLink(rawUrl: string): Promise<boolean> 
   } catch {
     /* custom tab already closed */
   }
-  window.location.href = dest;
+  // Transplant the session into the WebView's cookie jar (server
+  // functions resolve sessions from cookies): /auth/app-cookie
+  // validates the token and sets the real session cookie, then lands
+  // on dest.
+  window.location.href = `/auth/app-cookie?token=${encodeURIComponent(token)}&dest=${encodeURIComponent(dest)}`;
   return true;
 }
 

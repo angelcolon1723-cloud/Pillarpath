@@ -18,7 +18,7 @@ import { chooseRole, getMyRole, type MyRole } from "@/lib/roles-server";
  */
 export function RoleGate({ children }: { children: React.ReactNode }) {
   const [role, setRole] = useState<MyRole | null>(null);
-  const [failed, setFailed] = useState(false);
+  const [failed, setFailed] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -26,8 +26,8 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
       .then((r) => {
         if (!cancelled) setRole(r);
       })
-      .catch(() => {
-        if (!cancelled) setFailed(true);
+      .catch((e: unknown) => {
+        if (!cancelled) setFailed(e instanceof Error ? e.message : "unknown error");
       });
     return () => {
       cancelled = true;
@@ -40,6 +40,7 @@ export function RoleGate({ children }: { children: React.ReactNode }) {
         <div>
           <p className="font-display text-xl font-semibold">Couldn&rsquo;t load your account</p>
           <p className="mt-2 text-sm text-muted">Check your connection and try again.</p>
+          <p className="mt-2 text-xs text-muted/70">Detail: {failed}</p>
           <Button className="mt-4" onClick={() => window.location.reload()}>
             Retry
           </Button>
