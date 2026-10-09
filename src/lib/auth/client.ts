@@ -143,8 +143,8 @@ function readOAuthInflight(): number | null {
  * sign-out and when the login page loads with an `?error=` (a failed attempt
  * must not lock the user out), and expires on its own after the TTL.
  */
-function claimOAuthInflight(): void {
-  if (readOAuthInflight() !== null) {
+function claimOAuthInflight(takeOver = false): void {
+  if (readOAuthInflight() !== null && !takeOver) {
     throw new Error(
       "A sign-in is already in progress in another tab — please finish it there, or close the other PillarPath tabs and try once.",
     );
@@ -187,7 +187,12 @@ export async function signInDirect(
   // impatient second tap (or another tab) while the first POST is still
   // cold-starting would otherwise overwrite the single last-write-wins
   // `better-auth.state` cookie and the first flow dies with state_mismatch.
-  claimOAuthInflight();
+  // In the native shell there is exactly ONE WebView — no other tab exists
+  // — and a leftover claim from an abandoned browser attempt must never
+  // lock the user out ("already in progress in another tab" with no tab).
+  // The newest attempt takes the claim over; each native attempt starts a
+  // fresh server-side flow and whichever completes returns by deep link.
+  claimOAuthInflight(isNativeShell());
   const callbackURL = opts.callbackURL ?? "/";
   if (isNativeShell()) {
     // Native shell: Google blocks OAuth inside embedded WebViews (the
