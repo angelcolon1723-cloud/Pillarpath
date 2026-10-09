@@ -117,8 +117,16 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
   const [loading, setLoading] = useState(true);
   // Workspace role comes from the DB-fresh `initialRole` handed down by
   // RoleGate — never a hardcoded default. ("admin" has no separate app
-  // shell; admins land in the parent workspace.) Manual tab switches can
-  // still change it afterwards via pickRole.
+  // shell; admins land in the parent workspace.)
+  //
+  // ROLE LOCK (King's rule, 2026-10-08): every account gets its OWN
+  // independent dashboard and that's it. A teacher account can never
+  // open the parent or child dashboards, a parent can never open the
+  // teacher dashboard, and the child view offers no route into either.
+  // The workspace switcher therefore renders ONLY for admin (the
+  // company master key, same pattern as the Society doorway); for
+  // everyone else `role` is fixed at mount and no UI can change it.
+  const isAdmin = initialRole === "admin";
   const [role, setRole] = useState<Role>(initialRole === "teacher" ? "teacher" : "parent");
   const [parentSection, setParentSection] = useState<ParentSection>("dashboard");
   const [teacherSection, setTeacherSection] = useState<TeacherSection>("dashboard");
@@ -215,6 +223,13 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
   }
 
   function pickRole(next: Role) {
+    // Role lock (defense in depth — the switcher UI is admin-only, and
+    // a non-admin call that tries to leave the account's own dashboard
+    // is refused outright).
+    if (!isAdmin) {
+      const home = initialRole === "teacher" ? "teacher" : "parent";
+      if (next !== home) return;
+    }
     if (next === "child" && !consent) {
       toast.message("Verify parental consent in Family before opening the child view");
       setRole("parent");
@@ -275,40 +290,42 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
               <p className="text-xs text-muted">Family commerce</p>
             </div>
           </div>
-          <div className="mb-5 rounded-2xl border border-border bg-surface-2 p-2">
-            <div className="grid grid-cols-3 gap-1">
-              <button
-                type="button"
-                onClick={() => pickRole("parent")}
-                className={cn(
-                  "min-h-11 rounded-xl px-2 py-2 text-xs font-semibold",
-                  role === "parent" ? "bg-bg text-ink" : "text-muted",
-                )}
-              >
-                Parent
-              </button>
-              <button
-                type="button"
-                onClick={() => pickRole("child")}
-                className={cn(
-                  "min-h-11 rounded-xl px-2 py-2 text-xs font-semibold",
-                  role === "child" ? "bg-accent text-accent-foreground" : "text-muted",
-                )}
-              >
-                Child
-              </button>
-              <button
-                type="button"
-                onClick={() => pickRole("teacher")}
-                className={cn(
-                  "min-h-11 rounded-xl px-2 py-2 text-xs font-semibold",
-                  role === "teacher" ? "bg-bg text-ink" : "text-muted",
-                )}
-              >
-                Teacher
-              </button>
+          {isAdmin ? (
+            <div className="mb-5 rounded-2xl border border-border bg-surface-2 p-2">
+              <div className="grid grid-cols-3 gap-1">
+                <button
+                  type="button"
+                  onClick={() => pickRole("parent")}
+                  className={cn(
+                    "min-h-11 rounded-xl px-2 py-2 text-xs font-semibold",
+                    role === "parent" ? "bg-bg text-ink" : "text-muted",
+                  )}
+                >
+                  Parent
+                </button>
+                <button
+                  type="button"
+                  onClick={() => pickRole("child")}
+                  className={cn(
+                    "min-h-11 rounded-xl px-2 py-2 text-xs font-semibold",
+                    role === "child" ? "bg-accent text-accent-foreground" : "text-muted",
+                  )}
+                >
+                  Child
+                </button>
+                <button
+                  type="button"
+                  onClick={() => pickRole("teacher")}
+                  className={cn(
+                    "min-h-11 rounded-xl px-2 py-2 text-xs font-semibold",
+                    role === "teacher" ? "bg-bg text-ink" : "text-muted",
+                  )}
+                >
+                  Teacher
+                </button>
+              </div>
             </div>
-          </div>
+          ) : null}
           <nav className="space-y-1">
             {activeNav.map(([id, label, Icon]) => (
               <button
@@ -468,30 +485,35 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
                 </button>
               </div>
               <div className="flex-1 overflow-y-auto px-5 py-5">
-                {/* Workspace switcher */}
-                <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
-                  Workspace
-                </p>
-                <div className="grid grid-cols-3 gap-2 rounded-2xl border border-border bg-surface p-2">
-                  {(["parent", "child", "teacher"] as const).map((r) => (
-                    <button
-                      key={r}
-                      type="button"
-                      onClick={() => {
-                        pickRole(r);
-                        setMoreOpen(false);
-                      }}
-                      className={cn(
-                        "min-h-12 rounded-xl px-2 text-sm font-semibold capitalize",
-                        role === r
-                          ? "bg-accent text-accent-foreground"
-                          : "text-muted",
-                      )}
-                    >
-                      {r}
-                    </button>
-                  ))}
-                </div>
+                {/* Workspace switcher — admin only (role lock: every
+                    account lives in its own dashboard; see isAdmin). */}
+                {isAdmin ? (
+                  <>
+                    <p className="mb-2 text-xs font-semibold uppercase tracking-widest text-muted">
+                      Workspace
+                    </p>
+                    <div className="grid grid-cols-3 gap-2 rounded-2xl border border-border bg-surface p-2">
+                      {(["parent", "child", "teacher"] as const).map((r) => (
+                        <button
+                          key={r}
+                          type="button"
+                          onClick={() => {
+                            pickRole(r);
+                            setMoreOpen(false);
+                          }}
+                          className={cn(
+                            "min-h-12 rounded-xl px-2 text-sm font-semibold capitalize",
+                            role === r
+                              ? "bg-accent text-accent-foreground"
+                              : "text-muted",
+                          )}
+                        >
+                          {r}
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                ) : null}
 
                 {/* Sections */}
                 <p className="mb-2 mt-6 text-xs font-semibold uppercase tracking-widest text-muted">
