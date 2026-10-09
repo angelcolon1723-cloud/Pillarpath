@@ -1582,6 +1582,7 @@ export function ParentClassroom() {
   const [reply, setReply] = useState("");
   const [composeFor, setComposeFor] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
+  const [showPicker, setShowPicker] = useState(false);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
 
@@ -1647,6 +1648,7 @@ export function ParentClassroom() {
 
   /** Open the existing thread for a connection, or start composing one. */
   function messageTeacher(c: ParentClassroomConnection) {
+    setShowPicker(false);
     const existing = threads.find(
       (t) =>
         t.classroomName === c.classroomName &&
@@ -1658,6 +1660,25 @@ export function ParentClassroom() {
     } else {
       setDraft("");
       setComposeFor(c.id);
+    }
+  }
+
+  /** The inbox's primary action: with one connected teacher go straight
+   * to composing; with several, show the picker; with none, jump up to
+   * the join form — messaging starts with a classroom connection. */
+  function newMessage() {
+    if (approved.length === 1) {
+      messageTeacher(approved[0]);
+    } else if (approved.length > 1) {
+      setShowPicker((v) => !v);
+    } else {
+      document
+        .getElementById("join-classroom-card")
+        ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      window.setTimeout(
+        () => document.getElementById("join-classroom-code")?.focus({ preventScroll: true }),
+        400,
+      );
     }
   }
 
@@ -1694,7 +1715,7 @@ export function ParentClassroom() {
         <p className="py-6 text-center text-sm text-muted">Loading…</p>
       ) : (
         <>
-          <Card className="space-y-3 p-4">
+          <Card className="space-y-3 p-4" id="join-classroom-card">
             <CardTitle className="text-base">Join a classroom</CardTitle>
             <p className="text-xs text-muted">
               Ask your child's teacher for the classroom join code.
@@ -1703,6 +1724,7 @@ export function ParentClassroom() {
               <div>
                 <FieldLabel>Join code</FieldLabel>
                 <Input
+                  id="join-classroom-code"
                   value={code}
                   onChange={(e) => setCode(e.target.value.toUpperCase())}
                   placeholder="e.g. ABC123"
@@ -1840,22 +1862,33 @@ export function ParentClassroom() {
                       teacher messages you — or you message them first — it shows up here,
                       and you can reply right from this screen.
                     </p>
-                    <div className="mx-auto mt-3 max-w-xs rounded-xl bg-surface p-3 text-left opacity-70">
+                    <div className="mx-auto mt-3 max-w-sm rounded-xl bg-surface p-3 text-left opacity-70">
                       <div className="flex items-center gap-2.5">
                         <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent/25 text-sm font-bold">
                           T
                         </span>
-                        <div className="min-w-0">
-                          <p className="truncate text-xs font-semibold">Your child's teacher</p>
-                          <p className="truncate text-xs text-muted">
-                            "Welcome to our classroom! 👋"
-                          </p>
-                        </div>
-                        <span className="ml-auto shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-semibold text-muted">
+                        <p className="min-w-0 flex-1 truncate text-xs font-semibold">
+                          Your child's teacher
+                        </p>
+                        <span className="shrink-0 rounded-full bg-surface-2 px-2 py-0.5 text-[10px] font-semibold text-muted">
                           Example
                         </span>
                       </div>
+                      <p className="mt-1.5 text-xs leading-5 text-muted">
+                        "Welcome to our classroom! 👋"
+                      </p>
                     </div>
+                    <Button className="mt-4 w-full" onClick={newMessage}>
+                      {approved.length > 0
+                        ? "✉️ New message"
+                        : "Join a classroom to message a teacher"}
+                    </Button>
+                    {connections.length === 0 && (
+                      <p className="mt-2 text-xs text-muted">
+                        Your child's teacher gives you the join code — it takes
+                        ten seconds.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div className="mt-3 divide-y divide-white/10">
@@ -1883,33 +1916,36 @@ export function ParentClassroom() {
                     })}
                   </div>
                 )}
-                {approved.length > 0 && (
-                  <div className="mt-4 border-t border-white/10 pt-3">
+                {approved.length > 0 && threads.length > 0 && (
+                  <Button className="mt-4 w-full" variant="secondary" onClick={newMessage}>
+                    ✉️ New message
+                  </Button>
+                )}
+                {showPicker && approved.length > 0 && (
+                  <div className="mt-3 space-y-2">
                     <p className="text-xs font-semibold uppercase tracking-widest text-muted">
-                      Message a teacher
+                      Message which teacher?
                     </p>
-                    <div className="mt-2 space-y-2">
-                      {approved.map((c) => (
-                        <button
-                          key={c.id}
-                          type="button"
-                          onClick={() => messageTeacher(c)}
-                          className="flex w-full items-center gap-3 rounded-xl bg-surface-2/60 px-3 py-2.5 text-left"
-                        >
-                          <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent/25 text-sm font-bold">
-                            {c.teacherName.charAt(0)}
+                    {approved.map((c) => (
+                      <button
+                        key={c.id}
+                        type="button"
+                        onClick={() => messageTeacher(c)}
+                        className="flex w-full items-center gap-3 rounded-xl bg-surface-2/60 px-3 py-2.5 text-left"
+                      >
+                        <span className="grid size-9 shrink-0 place-items-center rounded-full bg-accent/25 text-sm font-bold">
+                          {c.teacherName.charAt(0)}
+                        </span>
+                        <span className="min-w-0">
+                          <span className="block truncate text-sm font-semibold">
+                            💬 {c.teacherName}
                           </span>
-                          <span className="min-w-0">
-                            <span className="block truncate text-sm font-semibold">
-                              💬 {c.teacherName}
-                            </span>
-                            <span className="block truncate text-xs text-muted">
-                              {c.classroomName} · {c.childName}
-                            </span>
+                          <span className="block truncate text-xs text-muted">
+                            {c.classroomName} · {c.childName}
                           </span>
-                        </button>
-                      ))}
-                    </div>
+                        </span>
+                      </button>
+                    ))}
                   </div>
                 )}
                 {connections.length > 0 && approved.length === 0 && (
