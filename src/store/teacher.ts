@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { toast } from "sonner";
+import { createAccountScopedStorage } from "@/lib/account-scope";
 import {
   CLASSROOM_ACTIVITY_SEED,
   type ClassroomActivityTemplate,
@@ -1519,7 +1520,10 @@ export const useTeacher = create<TeacherState>()(
     },
     {
       name: STORAGE_KEY,
-      storage: createJSONStorage(() => localStorage),
+      // Persisted under the signed-in account's scope (see
+      // @/lib/account-scope) — a teacher's on-device workspace stays
+      // theirs alone on a shared device.
+      storage: createJSONStorage(() => createAccountScopedStorage()),
     },
   ),
 );

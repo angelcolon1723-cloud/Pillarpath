@@ -3,6 +3,7 @@ import { genericOAuthClient } from "better-auth/client/plugins";
 import { createAuthClient } from "better-auth/react";
 import { runPreSignInSignOut, runSignOut } from "../../../scripts/sign-out-plan.mjs";
 import { GROK_PROVIDERS } from "./providers";
+import { clearAccountScope } from "../account-scope";
 import type { SocialProviderInfo } from "./social-providers-list";
 
 /**
@@ -426,6 +427,9 @@ function waitForPopupToken(popup: Window): Promise<string | null> {
  */
 export async function signOut(redirectTo = "/"): Promise<void> {
   clearOAuthInflight();
+  // On-device stores stop pointing at this account immediately, so the
+  // next person on this device never hydrates from this account's scope.
+  clearAccountScope();
   await runSignOut({
     livePreview: inLivePreview(),
     hasBearer: Boolean(getBearerToken()),

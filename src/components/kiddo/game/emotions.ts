@@ -2,6 +2,8 @@
 /* Emotion Codex — every feeling has a name. Naming it makes it smaller.*/
 /* ------------------------------------------------------------------ */
 
+import { scopedStorageKey } from "@/lib/account-scope";
+
 export interface Emotion {
   id: string;
   name: string;
@@ -125,9 +127,16 @@ export const EMOTIONS: Emotion[] = [
 
 const STORAGE_KEY = "pillarpath-emotion-codex";
 
+// Resolved per call through the active account scope (see
+// @/lib/account-scope) so Codex progress stays with its own account on
+// a shared device.
+function codexKey(): string {
+  return scopedStorageKey(STORAGE_KEY);
+}
+
 export function getEncounters(): Record<string, number> {
   try {
-    return JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
+    return JSON.parse(localStorage.getItem(codexKey()) || "{}");
   } catch {
     return {};
   }
@@ -137,7 +146,7 @@ export function recordEncounter(emotionId: string): Record<string, number> {
   const e = getEncounters();
   e[emotionId] = (e[emotionId] || 0) + 1;
   try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(e));
+    localStorage.setItem(codexKey(), JSON.stringify(e));
   } catch {
     /* ignore */
   }

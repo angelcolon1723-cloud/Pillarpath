@@ -26,6 +26,7 @@ import {
   plazaPassCrewClaim,
   plazaPassLiveSync,
 } from "@/lib/plaza-pass-server";
+import { scopedStorageKey } from "@/lib/account-scope";
 
 /**
  * PillarPlaza3D — the 3D Pillar Plaza built on the Three.js foundation
@@ -426,7 +427,10 @@ const NPCS = [
 ];
 const R = 48;
 const GATE = 15;
-const SAVE_KEY = "pillar-plaza-3d";
+// Scoped to the signed-in account (see @/lib/account-scope): on a
+// shared device each account's plaza keeps its own local save; the
+// server copy stays per-child as before and still wins when newer.
+const SAVE_KEY = scopedStorageKey("pillar-plaza-3d");
 /** Kid-device pass token (issued by a parent from the dashboard). */
 const PASS_KEY = "pillar-plaza-pass-v1";
 // Local fallback caps — used only when the server is unreachable (offline).
@@ -445,7 +449,7 @@ function localCapConsume(key: string, limit: number): boolean {
     return false;
   }
 }
-const REWARD_KEY = "pillar-plaza-3d-rewards";
+const REWARD_KEY = scopedStorageKey("pillar-plaza-3d-rewards");
 const RANK_ORDER = ["Seedling", "Sprout", "Trailblazer", "Luminary", "Pillar"];
 const WISDOM = [
   "Wealth is what you don't see.",

@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { useLedger } from "@/store/ledger";
 import { uid } from "@/lib/utils";
+import { createAccountScopedStorage } from "@/lib/account-scope";
 
 /* ------------------------------------------------------------------ */
 /* PillarPath social & creator store                                     */
@@ -536,16 +537,9 @@ export const useSocial = create<SocialState>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createJSONStorage(() => {
-        if (typeof window === "undefined") {
-          return {
-            getItem: () => null,
-            setItem: () => {},
-            removeItem: () => {},
-          };
-        }
-        return localStorage;
-      }),
+      // Persisted under the signed-in account's scope (see
+      // @/lib/account-scope) — never shared across accounts on a device.
+      storage: createJSONStorage(() => createAccountScopedStorage()),
       skipHydration: true,
     },
   ),

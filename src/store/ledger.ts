@@ -2,6 +2,7 @@ import { create } from "zustand";
 import { persist, createJSONStorage } from "zustand/middleware";
 import { CHORE_SEED, type ChoreCategory, type ChoreTemplate } from "@/lib/chores";
 import { uid } from "@/lib/utils";
+import { createAccountScopedStorage } from "@/lib/account-scope";
 
 /** A real, published storefront product on the kid's marketplace shelf. */
 export type MarketplaceSelection = {
@@ -861,16 +862,10 @@ export const useLedger = create<LedgerState>()(
     }),
     {
       name: STORAGE_KEY,
-      storage: createJSONStorage(() => {
-        if (typeof window === "undefined") {
-          return {
-            getItem: () => null,
-            setItem: () => {},
-            removeItem: () => {},
-          };
-        }
-        return localStorage;
-      }),
+      // Persisted under the signed-in account's scope (see
+      // @/lib/account-scope) so a shared device never surfaces one
+      // account's family ledger to another account.
+      storage: createJSONStorage(() => createAccountScopedStorage()),
       skipHydration: true,
       partialize: (state) => ({
         consent: state.consent,

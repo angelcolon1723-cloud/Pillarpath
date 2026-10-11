@@ -23,6 +23,7 @@ import {
 import { toast } from "sonner";
 import { UserButton } from "@/lib/auth/gates";
 import { useCurrentUser } from "@/lib/auth/use-current-user";
+import { activateAccountScope } from "@/lib/account-scope";
 import {
   createCheckout,
   getPillarpathData,
@@ -162,11 +163,25 @@ export function PillarpathApp({ initialRole }: { initialRole?: "parent" | "teach
   const setLedgerRole = useLedger((s) => s.setRole);
   const setLedgerScreen = useLedger((s) => s.setScreen);
 
+  // Per-account on-device data (see @/lib/account-scope): once the
+  // session user is known, point every local store at THIS account's
+  // scope. If the scope moved (a different account signed in on this
+  // device), reset the stores to their fresh state first so nothing
+  // from the previous account survives in memory, then rehydrate from
+  // this account's own slice of storage.
+  const scopedUserId = user?.id ?? null;
+  const scopedUserRole = user?.role ?? null;
   useEffect(() => {
+    if (!scopedUserId || !scopedUserRole) return;
+    if (activateAccountScope(scopedUserId, scopedUserRole) === "changed") {
+      useLedger.getState().resetDemo();
+      useTeacher.getState().resetDemo();
+      useSocial.getState().resetDemo();
+    }
     void Promise.resolve(useLedger.persist.rehydrate());
     void Promise.resolve(useTeacher.persist.rehydrate());
     void Promise.resolve(useSocial.persist.rehydrate());
-  }, []);
+  }, [scopedUserId, scopedUserRole]);
 
   const refresh = useCallback(async () => {
     setLoading(true);
