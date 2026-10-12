@@ -1695,13 +1695,13 @@ export const requestTeacherVerification = createServerFn({ method: "POST" })
     // column, so the upsert refreshes the fields and re-derives status while
     // keeping created_at.)
     const existing = await sql<{ status: string }>`
-      select status from teacher_verifications where teacher_id = ${teacherId}`;
+      select status from teacher_verifications where user_id = ${teacherId}`;
     const status = existing[0]?.status === "verified" ? "verified" : "pending";
 
     await sql`
-      insert into teacher_verifications (teacher_id, school, district, work_email, notes, status)
+      insert into teacher_verifications (user_id, school, district, work_email, notes, status)
       values (${teacherId}, ${school}, ${district}, ${workEmail}, ${notes}, ${status})
-      on conflict (teacher_id) do update set
+      on conflict (user_id) do update set
         school = excluded.school,
         district = excluded.district,
         work_email = excluded.work_email,

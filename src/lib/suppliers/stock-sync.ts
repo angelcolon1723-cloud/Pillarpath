@@ -161,6 +161,14 @@ export async function syncCjStock(): Promise<StockSyncResult> {
     }
   }
 
+  if (result.checked > 0 && result.skipped === result.checked) {
+    result.errors.push({
+      productId: "",
+      name: "",
+      error: "All products skipped — CJ inventory response parsed to empty for every product. Check extractStockRows keys against a raw getInventoryByPid response.",
+    });
+  }
+
   result.finishedAt = new Date().toISOString();
   return result;
 }

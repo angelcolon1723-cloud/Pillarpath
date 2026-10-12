@@ -564,13 +564,19 @@ export const listTeacherVerifications = createServerFn({ method: "GET" })
   .middleware([roleMiddleware("admin")])
   .handler(async (): Promise<{ items: TeacherVerificationRequest[] }> => {
     const sql = await getSql();
-    // Schema note: migration 0005 created teacher_verifications with user_id;
-    // migration 0008's version (teacher_id, school, district...) never applied
-    // because of `if not exists`. Query the actual 0005 schema.
+    // Schema note: migration 0005 created teacher_verifications with user_id
+    // (migration 0008's teacher_id version never applied because of
+    // `if not exists`); migration 0027 aligned the table to the code's shape
+    // by adding school / district / work_email / notes. Read the new columns
+    // and fall back to the legacy school_email / evidence_url for old rows.
     const rows = await sql<{
       user_id: string;
       email: string | null;
       name: string | null;
+      school: string | null;
+      district: string | null;
+      work_email: string | null;
+      notes: string | null;
       school_email: string | null;
       evidence_url: string | null;
       status: string;
@@ -580,6 +586,10 @@ export const listTeacherVerifications = createServerFn({ method: "GET" })
       select tv.user_id,
              u.email,
              u.name,
+             tv.school,
+             tv.district,
+             tv.work_email,
+             tv.notes,
              tv.school_email,
              tv.evidence_url,
              tv.status,
@@ -594,10 +604,10 @@ export const listTeacherVerifications = createServerFn({ method: "GET" })
         teacherId: r.user_id,
         email: r.email,
         name: r.name,
-        school: "",
-        district: "",
-        workEmail: r.school_email ?? "",
-        notes: r.evidence_url ?? "",
+        school: r.school ?? "",
+        district: r.district ?? "",
+        workEmail: r.work_email || r.school_email || "",
+        notes: r.notes || r.evidence_url || "",
         status: r.status,
         createdAt: new Date(r.created_at).toISOString(),
         reviewedAt:
@@ -619,7 +629,7 @@ export const reviewTeacherVerification = createServerFn({ method: "POST" })
       set status = ${status},
           reviewed_by = ${context.identity.userId},
           reviewed_at = now()
-      where teacher_id = ${data.teacherId} and status = 'pending'
+      where user_id = ${data.teacherId} and status = 'pending'
       returning school`;
     if (updated.length === 0) {
       throw new Error("This verification request is no longer pending.");

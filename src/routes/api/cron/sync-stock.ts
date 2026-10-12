@@ -33,7 +33,7 @@ export const Route = createFileRoute("/api/cron/sync-stock")({
         }
         try {
           const result = await syncCjStock();
-          return Response.json({ ok: true, ...result });
+          return Response.json({ ok: result.errors.length === 0, ...result });
         } catch (e) {
           const msg = e instanceof Error ? e.message : String(e);
           return Response.json({ ok: false, error: msg }, { status: 500 });

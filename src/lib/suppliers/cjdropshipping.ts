@@ -543,24 +543,22 @@ export class CjDropshippingClient {
 
   /** Live inventory for one variant across warehouses. */
   async getVariantStock(vid: string): Promise<CjWarehouseStock[]> {
-    const raw = await this.request<{ list?: unknown[] } | unknown[]>(
+    const raw = await this.request<unknown>(
       "GET",
       "/product/stock/queryByVid",
       { query: { vid } },
     );
-    const list = Array.isArray(raw) ? raw : (raw.list ?? []);
-    return (list as Record<string, unknown>[]).map(mapWarehouseStock);
+    return extractStockRows(raw).map(mapWarehouseStock);
   }
 
   /** Live inventory for every variant of a product. */
   async getInventoryByPid(pid: string): Promise<CjWarehouseStock[]> {
-    const raw = await this.request<{ list?: unknown[] } | unknown[]>(
+    const raw = await this.request<unknown>(
       "GET",
       "/product/stock/getInventoryByPid",
       { query: { pid } },
     );
-    const list = Array.isArray(raw) ? raw : (raw.list ?? []);
-    return (list as Record<string, unknown>[]).map(mapWarehouseStock);
+    return extractStockRows(raw).map(mapWarehouseStock);
   }
 
   /* ---------------- logistics ---------------- */
@@ -728,6 +726,33 @@ function mapVariant(raw: Record<string, unknown>): CjVariant {
     variantWeightG: raw.variantWeight != null ? toNumber(raw.variantWeight) : null,
     image: raw.variantImage ? str(raw.variantImage) : null,
   };
+}
+
+/**
+ * CJ stock endpoints do not agree on the array key: the live-verified
+ * payload for getInventoryByPid carries a top-level `inventories` array
+ * (per-variant entries may nest their warehouse rows one level down).
+ * Accept every known key and flatten one level; summarizeWarehouseStock
+ * dedupes by warehouse (max per warehouse), so flattened rows stay correct.
+ */
+function extractStockRows(raw: unknown): Record<string, unknown>[] {
+  if (Array.isArray(raw)) return raw as Record<string, unknown>[];
+  if (!raw || typeof raw !== "object") return [];
+  const obj = raw as Record<string, unknown>;
+  const candidates = [obj.inventories, obj.list, obj.inventoryList, obj.warehouseList];
+  for (const c of candidates) {
+    if (!Array.isArray(c)) continue;
+    const rows: Record<string, unknown>[] = [];
+    for (const entry of c as Record<string, unknown>[]) {
+      if (entry && typeof entry === "object") {
+        const nested = entry.inventories ?? entry.warehouseList ?? entry.stockList;
+        if (Array.isArray(nested)) rows.push(...(nested as Record<string, unknown>[]));
+        else rows.push(entry);
+      }
+    }
+    return rows;
+  }
+  return [];
 }
 
 function mapWarehouseStock(raw: Record<string, unknown>): CjWarehouseStock {
